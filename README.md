@@ -12,21 +12,35 @@ light + dark mode, fully responsive from 375px up.
   date, profile row that opens Settings
 - **Model selector** — pick from a configurable list of OpenRouter models
   (`server/config/models.json`)
-- **Documents dashboard** — a docked side panel (bottom sheet on mobile) of
-  structured document cards, not a chat thread
+- **Dashboard** — a docked side panel (bottom sheet on mobile) with stats and
+  three tabs: versioned document cards, Brains, and connected Apps — not a
+  chat thread
+- **Company & Personal Brains** — two persistent knowledge stores, editable
+  from the Dashboard, injected into every conversation while enabled
+- **Profile personalization** — name, work context, and response preferences
+  (Claude-style) ride along with every chat
+- **Connectors** — Google OAuth built in (Gmail/Calendar/Drive read scopes,
+  token refresh, recent-inbox widget); Slack/Notion/GitHub registered in the
+  framework
+- **Supabase or SQLite** — storage adapter uses Supabase (Postgres) when
+  configured and reachable, otherwise local SQLite; identical interface
 - **Invoice generator** — form → AI-drafted copy → styled document → PDF
   export. Every edit is saved as a **new version**, never overwritten
-- **Settings** — profile, light/dark/system appearance, default model, and
-  OpenRouter API key management
-- **Persistence** — conversations, messages, documents, and versions stored in
-  SQLite on the server
+- **Full settings dialog** — tabbed like Claude's: Profile, Appearance,
+  Models (with add-your-own OpenRouter models), Connectors, API & Data
 
 ## Architecture
 
 ```
 client/   React 18 + Vite + Tailwind (TypeScript)
-server/   Express (ESM) — OpenRouter SSE proxy, SQLite, PDF export
+server/   Express (ESM) — OpenRouter SSE proxy, storage adapter, OAuth, PDF export
 ```
+
+Storage is an adapter (`server/src/storage/`): `SupabaseStorage` (Data API,
+tables prefixed `bermi_*`) when `SUPABASE_URL` + `SUPABASE_KEY` are set and
+reachable at startup, `SqliteStorage` otherwise — same async interface, so
+routes never care. The chat system prompt is assembled per request from the
+base prompt + profile personalization + enabled brains.
 
 The browser never talks to OpenRouter directly. The Express server owns the
 API key (environment variable or the server-side settings store) and proxies
@@ -64,11 +78,23 @@ npm start                   # Express serves API + built client on :3001
 
 | What | Where |
 | --- | --- |
-| OpenRouter API key | `.env` (`OPENROUTER_API_KEY`) or the Settings modal |
-| Available models | `server/config/models.json` |
+| OpenRouter API key | `.env` (`OPENROUTER_API_KEY`) or Settings → API & Data |
+| Available models | `server/config/models.json` + Settings → Models (custom) |
 | Model used for invoice drafting | `DRAFT_MODEL` env var (default: `anthropic/claude-haiku-4.5`) |
+| Supabase database | `SUPABASE_URL` + `SUPABASE_KEY` env vars |
+| Google connector | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars |
+| OAuth redirect base | `PUBLIC_URL` env var (defaults to the request host) |
 | Chromium binary for PDF export | `CHROME_PATH` env var |
 | Server port | `PORT` (default 3001) |
+
+### Google connector setup
+
+1. Create OAuth 2.0 credentials in Google Cloud Console (type: Web application)
+2. Add redirect URI: `http://localhost:3001/api/connectors/google/callback`
+   (or `<PUBLIC_URL>/api/connectors/google/callback` in production)
+3. Put the client id/secret in `.env`, restart, then Settings → Connectors →
+   Connect Google. Gmail (readonly), Calendar (readonly), and Drive (metadata)
+   scopes are requested with offline access; tokens auto-refresh.
 
 ## Responsive behavior
 
