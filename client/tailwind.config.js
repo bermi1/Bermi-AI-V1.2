@@ -27,6 +27,7 @@ export default {
       },
       fontFamily: {
         sans: ['"Inter Variable"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ['Charter', 'Georgia', 'Cambria', '"Times New Roman"', 'serif'],
       },
       borderRadius: {
         xl: '0.875rem',

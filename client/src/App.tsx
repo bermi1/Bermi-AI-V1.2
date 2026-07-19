@@ -4,11 +4,18 @@ import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
 import { DashboardPanel } from './components/DashboardPanel'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsDialog } from './components/SettingsDialog'
 import { InvoiceForm } from './components/InvoiceForm'
 import { DocumentEditor } from './components/DocumentEditor'
+import { BrainEditor } from './components/BrainEditor'
 import * as api from './lib/api'
-import type { Conversation, DocumentSummary, Message, ModelOption } from './lib/types'
+import type {
+  Brain,
+  Conversation,
+  DocumentSummary,
+  Message,
+  ModelOption,
+} from './lib/types'
 
 const isDesktop = () => window.matchMedia('(min-width: 768px)').matches
 
@@ -21,12 +28,16 @@ export default function App() {
     () => localStorage.getItem('bermi-model') || '',
   )
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
+  const [brains, setBrains] = useState<Brain[]>([])
+  const [userName, setUserName] = useState('')
 
   const [sidebarOpen, setSidebarOpen] = useState(isDesktop)
   const [dashboardOpen, setDashboardOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'connectors'>('profile')
   const [invoiceFormOpen, setInvoiceFormOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  const [editingBrain, setEditingBrain] = useState<Brain | null>(null)
 
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
@@ -40,20 +51,42 @@ export default function App() {
     () => api.listDocuments().then(setDocuments).catch(() => {}),
     [],
   )
+  const refreshBrains = useCallback(
+    () => api.listBrains().then(setBrains).catch(() => {}),
+    [],
+  )
+  const refreshModels = useCallback(
+    () =>
+      api
+        .listModels()
+        .then((list) => {
+          setModels(list)
+          setSelectedModel((cur) =>
+            cur && list.some((m) => m.id === cur) ? cur : (list[0]?.id ?? ''),
+          )
+        })
+        .catch(() => {}),
+    [],
+  )
 
   useEffect(() => {
     refreshConversations()
     refreshDocuments()
+    refreshBrains()
+    refreshModels()
     api
-      .listModels()
-      .then((list) => {
-        setModels(list)
-        setSelectedModel((cur) =>
-          cur && list.some((m) => m.id === cur) ? cur : (list[0]?.id ?? ''),
-        )
-      })
+      .getSettings()
+      .then((s) => setUserName(s.profile.name))
       .catch(() => {})
-  }, [refreshConversations, refreshDocuments])
+
+    // Returning from a connector OAuth flow: land on the relevant settings tab.
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('connected') || params.has('connector_error')) {
+      setSettingsTab('connectors')
+      setSettingsOpen(true)
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [refreshConversations, refreshDocuments, refreshBrains, refreshModels])
 
   useEffect(() => {
     if (selectedModel) localStorage.setItem('bermi-model', selectedModel)
@@ -162,6 +195,11 @@ export default function App() {
     [refreshDocuments],
   )
 
+  const openSettings = useCallback((tab: 'profile' | 'connectors' = 'profile') => {
+    setSettingsTab(tab)
+    setSettingsOpen(true)
+  }, [])
+
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar
@@ -172,7 +210,8 @@ export default function App() {
         onSelect={selectConversation}
         onNewChat={newChat}
         onDelete={deleteConversation}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => openSettings('profile')}
+        userName={userName}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -203,10 +242,10 @@ export default function App() {
                 ? 'bg-primary-soft text-primary'
                 : 'text-ink-muted hover:bg-surface-sunken'
             }`}
-            aria-label="Toggle documents panel"
+            aria-label="Toggle dashboard"
           >
             <LayoutGrid size={15} />
-            <span className="hidden sm:inline">Documents</span>
+            <span className="hidden sm:inline">Dashboard</span>
             {documents.length > 0 && (
               <span className="rounded-full bg-primary px-1.5 text-[10.5px] font-semibold text-white">
                 {documents.length}
@@ -215,7 +254,12 @@ export default function App() {
           </button>
         </header>
 
-        <ChatPanel messages={messages} streaming={streaming} error={chatError} />
+        <ChatPanel
+          messages={messages}
+          streaming={streaming}
+          error={chatError}
+          userName={userName}
+        />
 
         <InputBar
           models={models}
@@ -234,14 +278,20 @@ export default function App() {
         onNewInvoice={() => setInvoiceFormOpen(true)}
         onOpenDocument={setOpenDocId}
         onDeleteDocument={deleteDocument}
+        brains={brains}
+        onEditBrain={setEditingBrain}
+        onRefreshBrains={refreshBrains}
       />
 
       {settingsOpen && (
-        <SettingsModal
+        <SettingsDialog
           onClose={() => setSettingsOpen(false)}
+          initialTab={settingsTab}
           models={models}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
+          onModelsChanged={refreshModels}
+          onProfileSaved={(p) => setUserName(p.name)}
         />
       )}
 
@@ -262,6 +312,14 @@ export default function App() {
           documentId={openDocId}
           onClose={() => setOpenDocId(null)}
           onSaved={refreshDocuments}
+        />
+      )}
+
+      {editingBrain && (
+        <BrainEditor
+          brain={editingBrain}
+          onClose={() => setEditingBrain(null)}
+          onSaved={refreshBrains}
         />
       )}
     </div>

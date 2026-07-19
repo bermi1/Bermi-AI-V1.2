@@ -11,6 +11,7 @@ interface SidebarProps {
   onNewChat: () => void
   onDelete: (id: string) => void
   onOpenSettings: () => void
+  userName?: string
 }
 
 function groupLabel(iso: string): string {
@@ -34,6 +35,7 @@ export function Sidebar({
   onNewChat,
   onDelete,
   onOpenSettings,
+  userName,
 }: SidebarProps) {
   const [query, setQuery] = useState('')
 
@@ -149,10 +151,10 @@ export function Sidebar({
             className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-surface-raised"
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-semibold text-primary">
-              U
+              {(userName || 'U').slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">You</div>
+              <div className="truncate text-sm font-medium">{userName || 'You'}</div>
               <div className="truncate text-xs text-ink-faint">Settings & profile</div>
             </div>
             <Settings size={15} className="shrink-0 text-ink-faint" />

@@ -6,9 +6,18 @@ interface ChatPanelProps {
   messages: Message[]
   streaming: boolean
   error: string | null
+  userName?: string
 }
 
-export function ChatPanel({ messages, streaming, error }: ChatPanelProps) {
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 5) return 'Up late'
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+export function ChatPanel({ messages, streaming, error, userName }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -32,16 +41,17 @@ export function ChatPanel({ messages, streaming, error }: ChatPanelProps) {
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center px-6">
-        <div className="max-w-md text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-2xl font-bold text-primary">
-            B
+        <div className="max-w-lg text-center">
+          <div className="mb-4 text-3xl text-primary" aria-hidden>
+            ✳
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            How can Bermi help you today?
+          <h1 className="font-serif text-3xl font-medium tracking-tight md:text-4xl">
+            {greeting()}
+            {userName ? `, ${userName.split(' ')[0]}` : ''}
           </h1>
-          <p className="mt-2 text-[15px] text-ink-muted">
-            Ask anything, or generate an invoice from the Documents panel — drafts land
-            there as editable, exportable cards.
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
+            Ask anything, or open the Dashboard to generate documents, teach your brains,
+            and connect your apps.
           </p>
         </div>
       </div>
