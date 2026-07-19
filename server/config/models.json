@@ -1,0 +1,32 @@
+[
+  {
+    "id": "anthropic/claude-sonnet-4.5",
+    "label": "Claude Sonnet 4.5",
+    "description": "Strong all-round model, great at writing and code"
+  },
+  {
+    "id": "anthropic/claude-haiku-4.5",
+    "label": "Claude Haiku 4.5",
+    "description": "Fast and inexpensive"
+  },
+  {
+    "id": "openai/gpt-4o",
+    "label": "GPT-4o",
+    "description": "OpenAI flagship multimodal model"
+  },
+  {
+    "id": "openai/gpt-4o-mini",
+    "label": "GPT-4o mini",
+    "description": "Small, fast OpenAI model"
+  },
+  {
+    "id": "google/gemini-2.5-flash",
+    "label": "Gemini 2.5 Flash",
+    "description": "Fast Google model with long context"
+  },
+  {
+    "id": "meta-llama/llama-3.3-70b-instruct",
+    "label": "Llama 3.3 70B",
+    "description": "Open-weights generalist"
+  }
+]

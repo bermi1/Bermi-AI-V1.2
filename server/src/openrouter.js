@@ -1,0 +1,95 @@
+import { getSetting } from './db.js'
+
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
+/**
+ * The key never leaves the server: it is read from the environment or the
+ * server-side settings store, and only a masked hint is ever sent to clients.
+ */
+export function resolveApiKey() {
+  const stored = getSetting('openrouter_api_key')
+  if (stored) return { key: stored, source: 'settings' }
+  if (process.env.OPENROUTER_API_KEY) {
+    return { key: process.env.OPENROUTER_API_KEY, source: 'env' }
+  }
+  return { key: null, source: null }
+}
+
+export function apiKeyInfo() {
+  const { key, source } = resolveApiKey()
+  return {
+    hasApiKey: Boolean(key),
+    apiKeySource: source,
+    apiKeyHint: key ? `…${key.slice(-4)}` : null,
+  }
+}
+
+function headers(key) {
+  return {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://bermi.ai',
+    'X-Title': 'Bermi AI',
+  }
+}
+
+/**
+ * Streaming chat completion. Returns the raw Response so callers can pipe
+ * the SSE body. Throws with a readable message on non-2xx.
+ */
+export async function streamCompletion({ model, messages, signal }) {
+  const { key } = resolveApiKey()
+  if (!key) {
+    const err = new Error(
+      'No OpenRouter API key configured. Add one in Settings or set OPENROUTER_API_KEY on the server.',
+    )
+    err.status = 401
+    throw err
+  }
+  const res = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: headers(key),
+    body: JSON.stringify({ model, messages, stream: true }),
+    signal,
+  })
+  if (!res.ok) {
+    let detail = `OpenRouter error (${res.status})`
+    try {
+      const body = await res.json()
+      detail = body.error?.message || detail
+    } catch {
+      /* non-JSON error body */
+    }
+    const err = new Error(detail)
+    err.status = res.status
+    throw err
+  }
+  return res
+}
+
+/**
+ * Non-streaming completion, used for structured tasks like invoice drafting.
+ * Returns the assistant message content as a string, or null when no key is
+ * configured (callers fall back to deterministic output).
+ */
+export async function complete({ model, messages, maxTokens = 1024 }) {
+  const { key } = resolveApiKey()
+  if (!key) return null
+  const res = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: headers(key),
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+  })
+  if (!res.ok) {
+    let detail = `OpenRouter error (${res.status})`
+    try {
+      const body = await res.json()
+      detail = body.error?.message || detail
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail)
+  }
+  const body = await res.json()
+  return body.choices?.[0]?.message?.content ?? null
+}
