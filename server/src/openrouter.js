@@ -53,18 +53,25 @@ export async function streamCompletion({ model, messages, signal }) {
     signal,
   })
   if (!res.ok) {
-    let detail = `OpenRouter error (${res.status})`
-    try {
-      const body = await res.json()
-      detail = body.error?.message || detail
-    } catch {
-      /* non-JSON error body */
-    }
-    const err = new Error(detail)
+    const err = new Error(await errorDetail(res))
     err.status = res.status
     throw err
   }
   return res
+}
+
+async function errorDetail(res) {
+  const fallback = `OpenRouter error (${res.status})`
+  try {
+    const text = (await res.text()).slice(0, 300)
+    try {
+      return JSON.parse(text).error?.message || fallback
+    } catch {
+      return text ? `${fallback}: ${text}` : fallback
+    }
+  } catch {
+    return fallback
+  }
 }
 
 /**
@@ -81,14 +88,7 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
     body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
   })
   if (!res.ok) {
-    let detail = `OpenRouter error (${res.status})`
-    try {
-      const body = await res.json()
-      detail = body.error?.message || detail
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(detail)
+    throw new Error(await errorDetail(res))
   }
   const body = await res.json()
   return body.choices?.[0]?.message?.content ?? null

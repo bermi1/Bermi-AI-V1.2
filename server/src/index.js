@@ -1,9 +1,15 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const envDir = dirname(fileURLToPath(import.meta.url))
+// Load server/.env first, then the repo-root .env as fallback, so the key is
+// found no matter which directory the server is started from.
+dotenv.config({ path: join(envDir, '..', '.env') })
+dotenv.config({ path: join(envDir, '..', '..', '.env') })
 import { chatRouter } from './routes/chat.js'
 import { conversationsRouter } from './routes/conversations.js'
 import { documentsRouter } from './routes/documents.js'
