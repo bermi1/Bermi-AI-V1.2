@@ -1,0 +1,203 @@
+@import '@fontsource-variable/inter';
+@import 'highlight.js/styles/github.css' layer(hljs-light);
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Bermi AI color system — deep blue-purple on warm neutrals */
+  --primary: #3b2fbf;
+  --primary-hover: #2e2494;
+  --primary-soft: #edebfb;
+
+  --surface: #fafaf8;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1f0eb;
+
+  --ink: #1c1c1a;
+  --ink-muted: #5c5b56;
+  --ink-faint: #8d8c85;
+
+  --edge: #e6e5df;
+  --edge-strong: #d4d3cb;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --primary: #6a5df2;
+  --primary-hover: #8479f5;
+  --primary-soft: #2a2554;
+
+  --surface: #1c1c20;
+  --surface-raised: #26262c;
+  --surface-sunken: #161619;
+
+  --ink: #ececea;
+  --ink-muted: #a5a4a0;
+  --ink-faint: #6f6e6a;
+
+  --edge: #33333a;
+  --edge-strong: #45454e;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface text-ink font-sans antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+  line-height: 1.65;
+}
+
+/* ---------- Scrollbars ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--edge-strong);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- Markdown (assistant messages) ---------- */
+.prose-bermi {
+  @apply text-[15px] leading-[1.7];
+}
+.prose-bermi > * + * {
+  margin-top: 0.75em;
+}
+.prose-bermi h1,
+.prose-bermi h2,
+.prose-bermi h3,
+.prose-bermi h4 {
+  @apply font-semibold text-ink;
+  margin-top: 1.4em;
+}
+.prose-bermi h1 { font-size: 1.35em; }
+.prose-bermi h2 { font-size: 1.2em; }
+.prose-bermi h3 { font-size: 1.08em; }
+.prose-bermi a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-bermi ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.prose-bermi ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.prose-bermi li + li {
+  margin-top: 0.25em;
+}
+.prose-bermi blockquote {
+  border-left: 3px solid var(--edge-strong);
+  padding-left: 1em;
+  color: var(--ink-muted);
+}
+.prose-bermi code {
+  @apply text-[0.9em] rounded px-1.5 py-0.5;
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.prose-bermi pre {
+  @apply rounded-xl p-4 overflow-x-auto text-[13px] leading-relaxed;
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+}
+.prose-bermi pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.prose-bermi table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  display: block;
+  overflow-x: auto;
+}
+.prose-bermi th,
+.prose-bermi td {
+  border: 1px solid var(--edge);
+  padding: 0.45em 0.8em;
+  text-align: left;
+}
+.prose-bermi th {
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+.prose-bermi hr {
+  border: none;
+  border-top: 1px solid var(--edge);
+  margin: 1.5em 0;
+}
+
+/* Dark-mode code highlighting: invert the github theme's whites */
+[data-theme='dark'] .prose-bermi .hljs {
+  color: #d4d4d8;
+  background: transparent;
+}
+[data-theme='dark'] .prose-bermi .hljs-keyword,
+[data-theme='dark'] .prose-bermi .hljs-doctag,
+[data-theme='dark'] .prose-bermi .hljs-template-tag {
+  color: #b3a4f7;
+}
+[data-theme='dark'] .prose-bermi .hljs-string,
+[data-theme='dark'] .prose-bermi .hljs-attr {
+  color: #9ecbff;
+}
+[data-theme='dark'] .prose-bermi .hljs-title,
+[data-theme='dark'] .prose-bermi .hljs-name {
+  color: #7ee0a3;
+}
+[data-theme='dark'] .prose-bermi .hljs-comment {
+  color: #767680;
+}
+[data-theme='dark'] .prose-bermi .hljs-number,
+[data-theme='dark'] .prose-bermi .hljs-literal {
+  color: #f2b48a;
+}
+
+/* ---------- Small animations ---------- */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.25s ease-out;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.streaming-cursor::after {
+  content: '▍';
+  color: var(--primary);
+  animation: blink-cursor 1s infinite;
+  margin-left: 1px;
+}
