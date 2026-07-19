@@ -18,6 +18,7 @@ export interface ModelOption {
   id: string
   label: string
   description?: string
+  custom?: boolean
 }
 
 export interface InvoiceItem {
@@ -60,8 +61,41 @@ export interface DocumentVersion {
   created_at: string
 }
 
+export interface Profile {
+  name: string
+  role: string
+  preferences: string
+}
+
 export interface SettingsInfo {
   hasApiKey: boolean
   apiKeySource: 'env' | 'settings' | null
   apiKeyHint: string | null
+  storageBackend: 'sqlite' | 'supabase'
+  profile: Profile
+}
+
+export interface Brain {
+  id: 'company' | 'personal'
+  name: string
+  content: string
+  enabled: boolean
+  updated_at: string | null
+}
+
+export interface Connector {
+  id: string
+  label: string
+  description: string
+  status: 'connected' | 'available' | 'setup_required' | 'coming_soon'
+  account: string | null
+  connected_at: string | null
+}
+
+export interface GmailMessage {
+  id: string
+  subject: string
+  from: string
+  date: string
+  snippet: string
 }

@@ -1,11 +1,15 @@
 import type {
+  Brain,
+  Connector,
   Conversation,
   DocumentDetail,
   DocumentSummary,
   DocumentVersion,
+  GmailMessage,
   InvoiceData,
   Message,
   ModelOption,
+  Profile,
   SettingsInfo,
 } from './types'
 
@@ -58,6 +62,48 @@ export const saveApiKey = (apiKey: string) =>
 
 export const clearApiKey = () =>
   fetch('/api/settings/api-key', { method: 'DELETE' }).then((r) => json<SettingsInfo>(r))
+
+export const saveProfile = (profile: Profile) =>
+  fetch('/api/settings/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile),
+  }).then((r) => json<{ profile: Profile }>(r))
+
+export const addCustomModel = (id: string, label?: string) =>
+  fetch('/api/models/custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, label }),
+  }).then((r) => json<ModelOption[]>(r))
+
+export const removeCustomModel = (id: string) =>
+  fetch(`/api/models/custom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) =>
+    json<ModelOption[]>(r),
+  )
+
+// ---------- Brains ----------
+
+export const listBrains = () => fetch('/api/brains').then((r) => json<Brain[]>(r))
+
+export const saveBrain = (id: string, content: string, enabled: boolean) =>
+  fetch(`/api/brains/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, enabled }),
+  }).then((r) => json<Brain>(r))
+
+// ---------- Connectors ----------
+
+export const listConnectors = () => fetch('/api/connectors').then((r) => json<Connector[]>(r))
+
+export const disconnectConnector = (id: string) =>
+  fetch(`/api/connectors/${id}/disconnect`, { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+
+export const googleAuthUrl = () => '/api/connectors/google/auth'
+
+export const fetchGmailMessages = () =>
+  fetch('/api/connectors/google/gmail/messages').then((r) => json<GmailMessage[]>(r))
 
 // ---------- Chat streaming ----------
 
