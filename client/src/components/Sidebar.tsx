@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { MessageSquare, Plus, Search, Settings, Trash2, X } from 'lucide-react'
+import { BermiTile } from './Logo'
 import type { Conversation } from '../lib/types'
 
 interface SidebarProps {
@@ -69,9 +70,7 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">
-              B
-            </div>
+            <BermiTile size={26} className="rounded-lg" />
             <span className="text-[15px] font-semibold tracking-tight">Bermi AI</span>
           </div>
           <button

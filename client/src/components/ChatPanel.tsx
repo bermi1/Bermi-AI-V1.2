@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Message } from '../lib/types'
 import { Markdown } from './Markdown'
+import { BermiMark } from './Logo'
 
 interface ChatPanelProps {
   messages: Message[]
@@ -42,9 +43,7 @@ export function ChatPanel({ messages, streaming, error, userName }: ChatPanelPro
     return (
       <div className="flex flex-1 items-center justify-center px-6">
         <div className="max-w-lg text-center">
-          <div className="mb-4 text-3xl text-primary" aria-hidden>
-            ✳
-          </div>
+          <BermiMark size={44} className="mx-auto mb-5 text-primary" />
           <h1 className="font-serif text-3xl font-medium tracking-tight md:text-4xl">
             {greeting()}
             {userName ? `, ${userName.split(' ')[0]}` : ''}
@@ -74,8 +73,8 @@ export function ChatPanel({ messages, streaming, error, userName }: ChatPanelPro
             </div>
           ) : (
             <div key={m.id} className="mb-6 flex gap-3 animate-fade-up">
-              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
-                B
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
+                <BermiMark size={17} className="text-primary" />
               </div>
               <div className={`min-w-0 flex-1 ${showCursor ? 'streaming-cursor' : ''}`}>
                 {m.content ? (
@@ -94,8 +93,8 @@ export function ChatPanel({ messages, streaming, error, userName }: ChatPanelPro
         )}
         {streaming && last?.role === 'user' && (
           <div className="mb-6 flex gap-3">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
-              B
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
+              <BermiMark size={17} className="text-primary" />
             </div>
             <span className="streaming-cursor text-ink-faint">&nbsp;</span>
           </div>
