@@ -19,6 +19,10 @@ import { connectorsRouter } from './routes/connectors.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 
+// Behind reverse proxies (Railway, Render, nginx, Cloudflare) the original
+// protocol arrives in X-Forwarded-Proto; needed for correct cookie flags.
+app.set('trust proxy', 1)
+
 app.use(cors({ credentials: true, origin: true }))
 app.use(express.json({ limit: '2mb' }))
 

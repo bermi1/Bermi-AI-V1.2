@@ -52,8 +52,10 @@ function validateSignup(body) {
   return null
 }
 
-async function startAppSession(res, user) {
-  setSessionCookie(res, await createSessionFor(user.id))
+async function startAppSession(req, res, user) {
+  const token = await createSessionFor(user.id)
+  setSessionCookie(res, token, req)
+  return token
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +97,8 @@ async function supabaseSignup(req, res) {
 
   if (data.session || verified) {
     // Email confirmations are disabled on the project — sign straight in.
-    await startAppSession(res, row)
-    return res.status(201).json({ user: publicUser({ ...row, email_verified: true }) })
+    const token = await startAppSession(req, res, row)
+    return res.status(201).json({ user: publicUser({ ...row, email_verified: true }), token })
   }
   // Confirmation email sent by Supabase; the user signs in after clicking it.
   return res.status(201).json({ needsConfirmation: true, email })
@@ -133,8 +135,8 @@ async function supabaseLogin(req, res) {
     created_at: su.created_at ?? new Date().toISOString(),
   }
   await storage.upsertUser(row)
-  await startAppSession(res, row)
-  res.json({ user: publicUser(row) })
+  const token = await startAppSession(req, res, row)
+  res.json({ user: publicUser(row), token })
 }
 
 async function supabaseResend(req, res) {
@@ -199,8 +201,8 @@ async function localSignup(req, res) {
     }
   }
 
-  await startAppSession(res, user)
-  res.status(201).json({ user: publicUser(user) })
+  const token = await startAppSession(req, res, user)
+  res.status(201).json({ user: publicUser(user), token })
 }
 
 async function localLogin(req, res) {
@@ -210,8 +212,8 @@ async function localLogin(req, res) {
   if (!user || !(await verifyPassword(String(password ?? ''), user.password_hash))) {
     return res.status(401).json({ error: 'Incorrect email or password' })
   }
-  await startAppSession(res, user)
-  res.json({ user: publicUser(user) })
+  const token = await startAppSession(req, res, user)
+  res.json({ user: publicUser(user), token })
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +308,8 @@ authRouter.get('/auth/google/callback', async (req, res, next) => {
       })
     }
 
-    await startAppSession(res, user)
-    res.redirect('/')
+    const token = await startAppSession(req, res, user)
+    res.redirect(`/#bermi_token=${token}`)
   } catch (err) {
     next(err)
   }

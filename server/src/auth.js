@@ -31,11 +31,24 @@ export function parseCookies(req) {
   )
 }
 
-export function setSessionCookie(res, token) {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+function isHttps(req) {
+  return Boolean(
+    req?.secure || String(req?.headers['x-forwarded-proto'] || '').split(',')[0] === 'https',
+  )
+}
+
+/**
+ * Cookie flags follow the actual protocol, not NODE_ENV: `Secure` on plain
+ * HTTP makes browsers silently drop the cookie (the classic "signup succeeds
+ * but you are never logged in" failure). On HTTPS we use SameSite=None so
+ * embedded/proxied contexts work too.
+ */
+export function setSessionCookie(res, token, req) {
+  const secure = isHttps(req)
+  const attrs = secure ? 'SameSite=None; Secure' : 'SameSite=Lax'
   res.setHeader(
     'Set-Cookie',
-    `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure}`,
+    `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; ${attrs}; Max-Age=${SESSION_DAYS * 86400}`,
   )
 }
 
@@ -71,7 +84,15 @@ export function publicUser(user) {
 export async function attachUser(req, _res, next) {
   try {
     req.user = null
-    const token = parseCookies(req)[SESSION_COOKIE]
+    // Cookie first; Authorization: Bearer and ?token= are fallbacks for
+    // contexts where cookies are blocked (iframes, some mobile webviews).
+    const bearer = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7).trim()
+      : null
+    const token =
+      parseCookies(req)[SESSION_COOKIE] ||
+      bearer ||
+      (typeof req.query?.token === 'string' ? req.query.token : null)
     if (token) {
       const session = await storage.getSession(token)
       if (session && new Date(session.expires_at).getTime() > Date.now()) {

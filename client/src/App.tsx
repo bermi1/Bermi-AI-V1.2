@@ -28,18 +28,28 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [verificationRequired, setVerificationRequired] = useState(false)
 
-  const checkAuth = useCallback(() => {
-    return api
-      .authMe()
-      .then(({ user, verificationRequired }) => {
-        setUser(user)
-        setVerificationRequired(verificationRequired)
-      })
-      .catch(() => setUser(null))
-      .finally(() => setAuthChecked(true))
+  const checkAuth = useCallback(async (): Promise<boolean> => {
+    try {
+      const { user, verificationRequired } = await api.authMe()
+      setUser(user)
+      setVerificationRequired(verificationRequired)
+      return true
+    } catch {
+      setUser(null)
+      return false
+    } finally {
+      setAuthChecked(true)
+    }
   }, [])
 
   useEffect(() => {
+    // Google sign-in lands with the session token in the URL fragment so it
+    // works even where the cookie was blocked.
+    const match = window.location.hash.match(/bermi_token=([a-f0-9]+)/)
+    if (match) {
+      api.setSessionToken(match[1])
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
     checkAuth()
   }, [checkAuth])
 
@@ -56,7 +66,7 @@ export default function App() {
     )
   }
 
-  if (!user) return <AuthPage onAuthed={() => checkAuth()} />
+  if (!user) return <AuthPage onAuthed={checkAuth} />
 
   if (verificationRequired && !user.email_verified) {
     return <VerifyEmailPage user={user} onVerified={setUser} onSignOut={signOut} />

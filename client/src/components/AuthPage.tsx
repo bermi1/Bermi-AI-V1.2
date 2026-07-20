@@ -6,7 +6,7 @@ import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 
 interface AuthPageProps {
-  onAuthed: () => void
+  onAuthed: () => Promise<boolean>
 }
 
 type View = 'login' | 'signup' | 'confirm'
@@ -80,10 +80,18 @@ export function AuthPage({ onAuthed }: AuthPageProps) {
           setBusy(false)
           return
         }
-        onAuthed()
       } else {
         await api.login(email, password)
-        onAuthed()
+      }
+      // Never leave the button spinning: if the session did not stick,
+      // say so instead of hanging on "One moment…".
+      const ok = await onAuthed()
+      if (!ok) {
+        setError(
+          'Your account is ready, but the session could not be established in this browser. ' +
+            'Please try signing in again (and check that cookies are allowed).',
+        )
+        setBusy(false)
       }
     } catch (err) {
       if ((err as ApiError).code === 'unconfirmed') {

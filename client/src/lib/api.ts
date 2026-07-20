@@ -15,6 +15,29 @@ import type {
   SettingsInfo,
 } from './types'
 
+
+// ---------- Session token fallback ----------
+// The httpOnly cookie is the primary session carrier. Where cookies are
+// blocked (iframes, some webviews, http->https proxies), auth responses also
+// return the token; we keep it and send it as a Bearer header.
+
+const TOKEN_KEY = 'bermi-session-token'
+
+export const getSessionToken = () => localStorage.getItem(TOKEN_KEY)
+export const setSessionToken = (token: string | null) => {
+  if (token) localStorage.setItem(TOKEN_KEY, token)
+  else localStorage.removeItem(TOKEN_KEY)
+}
+
+function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const token = getSessionToken()
+  const headers = new Headers(init?.headers)
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  return fetch(url, { ...init, headers })
+}
+
 export class ApiError extends Error {
   code?: string
   email?: string
@@ -39,66 +62,78 @@ async function json<T>(res: Response): Promise<T> {
 // ---------- Auth ----------
 
 export const authMe = () =>
-  fetch('/api/auth/me').then((r) =>
+  apiFetch('/api/auth/me').then((r) =>
     json<{ user: AuthUser; verificationRequired: boolean }>(r),
   )
 
 export const verifyEmail = (code: string) =>
-  fetch('/api/auth/verify', {
+  apiFetch('/api/auth/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
   }).then((r) => json<{ user: AuthUser }>(r))
 
 export const resendVerification = (email?: string) =>
-  fetch('/api/auth/resend', {
+  apiFetch('/api/auth/resend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(email ? { email } : {}),
   }).then((r) => json<{ ok: true }>(r))
 
 export const signup = (name: string, email: string, password: string) =>
-  fetch('/api/auth/signup', {
+  apiFetch('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, email, password }),
-  }).then((r) =>
-    json<{ user?: AuthUser; needsConfirmation?: boolean; email?: string }>(r),
-  )
+  })
+    .then((r) =>
+      json<{ user?: AuthUser; needsConfirmation?: boolean; email?: string; token?: string }>(r),
+    )
+    .then((res) => {
+      if (res.token) setSessionToken(res.token)
+      return res
+    })
 
 export const login = (email: string, password: string) =>
-  fetch('/api/auth/login', {
+  apiFetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
-  }).then((r) => json<{ user: AuthUser }>(r))
+  })
+    .then((r) => json<{ user: AuthUser; token?: string }>(r))
+    .then((res) => {
+      if (res.token) setSessionToken(res.token)
+      return res
+    })
 
 export const logout = () =>
-  fetch('/api/auth/logout', { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+  apiFetch('/api/auth/logout', { method: 'POST' })
+    .then((r) => json<{ ok: true }>(r))
+    .finally(() => setSessionToken(null))
 
 // ---------- File extraction (chat uploads) ----------
 
 export const extractFile = (file: File): Promise<Attachment> => {
   const form = new FormData()
   form.append('file', file)
-  return fetch('/api/extract', { method: 'POST', body: form }).then((r) => json<Attachment>(r))
+  return apiFetch('/api/extract', { method: 'POST', body: form }).then((r) => json<Attachment>(r))
 }
 
 // ---------- Conversations ----------
 
 export const listConversations = () =>
-  fetch('/api/conversations').then((r) => json<Conversation[]>(r))
+  apiFetch('/api/conversations').then((r) => json<Conversation[]>(r))
 
 export const getMessages = (conversationId: string) =>
-  fetch(`/api/conversations/${conversationId}/messages`).then((r) => json<Message[]>(r))
+  apiFetch(`/api/conversations/${conversationId}/messages`).then((r) => json<Message[]>(r))
 
 export const deleteConversation = (conversationId: string) =>
-  fetch(`/api/conversations/${conversationId}`, { method: 'DELETE' }).then((r) =>
+  apiFetch(`/api/conversations/${conversationId}`, { method: 'DELETE' }).then((r) =>
     json<{ ok: true }>(r),
   )
 
 export const renameConversation = (conversationId: string, title: string) =>
-  fetch(`/api/conversations/${conversationId}`, {
+  apiFetch(`/api/conversations/${conversationId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -106,45 +141,45 @@ export const renameConversation = (conversationId: string, title: string) =>
 
 // ---------- Models & settings ----------
 
-export const listModels = () => fetch('/api/models').then((r) => json<ModelOption[]>(r))
+export const listModels = () => apiFetch('/api/models').then((r) => json<ModelOption[]>(r))
 
-export const getSettings = () => fetch('/api/settings').then((r) => json<SettingsInfo>(r))
+export const getSettings = () => apiFetch('/api/settings').then((r) => json<SettingsInfo>(r))
 
 export const saveApiKey = (apiKey: string) =>
-  fetch('/api/settings/api-key', {
+  apiFetch('/api/settings/api-key', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey }),
   }).then((r) => json<SettingsInfo>(r))
 
 export const clearApiKey = () =>
-  fetch('/api/settings/api-key', { method: 'DELETE' }).then((r) => json<SettingsInfo>(r))
+  apiFetch('/api/settings/api-key', { method: 'DELETE' }).then((r) => json<SettingsInfo>(r))
 
 export const saveProfile = (profile: Profile) =>
-  fetch('/api/settings/profile', {
+  apiFetch('/api/settings/profile', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(profile),
   }).then((r) => json<{ profile: Profile }>(r))
 
 export const addCustomModel = (id: string, label?: string) =>
-  fetch('/api/models/custom', {
+  apiFetch('/api/models/custom', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, label }),
   }).then((r) => json<ModelOption[]>(r))
 
 export const removeCustomModel = (id: string) =>
-  fetch(`/api/models/custom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) =>
+  apiFetch(`/api/models/custom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) =>
     json<ModelOption[]>(r),
   )
 
 // ---------- Brains ----------
 
-export const listBrains = () => fetch('/api/brains').then((r) => json<Brain[]>(r))
+export const listBrains = () => apiFetch('/api/brains').then((r) => json<Brain[]>(r))
 
 export const saveBrain = (id: string, content: string, enabled: boolean) =>
-  fetch(`/api/brains/${id}`, {
+  apiFetch(`/api/brains/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, enabled }),
@@ -152,25 +187,25 @@ export const saveBrain = (id: string, content: string, enabled: boolean) =>
 
 // ---------- Connectors ----------
 
-export const listConnectors = () => fetch('/api/connectors').then((r) => json<Connector[]>(r))
+export const listConnectors = () => apiFetch('/api/connectors').then((r) => json<Connector[]>(r))
 
 export const disconnectConnector = (id: string) =>
-  fetch(`/api/connectors/${id}/disconnect`, { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+  apiFetch(`/api/connectors/${id}/disconnect`, { method: 'POST' }).then((r) => json<{ ok: true }>(r))
 
 export const googleAuthUrl = () => '/api/connectors/google/auth'
 
 export const googleLoginUrl = () => '/api/auth/google'
 
 export const authProviders = () =>
-  fetch('/api/auth/providers').then((r) =>
+  apiFetch('/api/auth/providers').then((r) =>
     json<{ provider: 'internal' | 'supabase'; google: boolean }>(r),
   )
 
 export const resetVibeBrain = () =>
-  fetch('/api/brains/vibecoding/reset', { method: 'POST' }).then((r) => json<Brain>(r))
+  apiFetch('/api/brains/vibecoding/reset', { method: 'POST' }).then((r) => json<Brain>(r))
 
 export const fetchGmailMessages = () =>
-  fetch('/api/connectors/google/gmail/messages').then((r) => json<GmailMessage[]>(r))
+  apiFetch('/api/connectors/google/gmail/messages').then((r) => json<GmailMessage[]>(r))
 
 // ---------- Chat streaming ----------
 
@@ -193,7 +228,7 @@ export async function streamChat(
 ): Promise<void> {
   let full = ''
   try {
-    const res = await fetch('/api/chat', {
+    const res = await apiFetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -263,15 +298,15 @@ export async function streamChat(
 
 // ---------- Documents ----------
 
-export const listDocuments = () => fetch('/api/documents').then((r) => json<DocumentSummary[]>(r))
+export const listDocuments = () => apiFetch('/api/documents').then((r) => json<DocumentSummary[]>(r))
 
 export const getDocument = (id: string, version?: number) =>
-  fetch(`/api/documents/${id}${version ? `?version=${version}` : ''}`).then((r) =>
+  apiFetch(`/api/documents/${id}${version ? `?version=${version}` : ''}`).then((r) =>
     json<DocumentDetail>(r),
   )
 
 export const listDocumentVersions = (id: string) =>
-  fetch(`/api/documents/${id}/versions`).then((r) => json<DocumentVersion[]>(r))
+  apiFetch(`/api/documents/${id}/versions`).then((r) => json<DocumentVersion[]>(r))
 
 export const createInvoice = (input: {
   client_name: string
@@ -283,21 +318,27 @@ export const createInvoice = (input: {
   tax_rate: number
   instructions: string
 }) =>
-  fetch('/api/documents/invoice', {
+  apiFetch('/api/documents/invoice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   }).then((r) => json<DocumentDetail>(r))
 
 export const updateDocument = (id: string, data: InvoiceData, status?: 'draft' | 'final') =>
-  fetch(`/api/documents/${id}`, {
+  apiFetch(`/api/documents/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, status }),
   }).then((r) => json<DocumentDetail>(r))
 
 export const deleteDocument = (id: string) =>
-  fetch(`/api/documents/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+  apiFetch(`/api/documents/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
 
-export const documentPdfUrl = (id: string, version?: number) =>
-  `/api/documents/${id}/pdf${version ? `?version=${version}` : ''}`
+export const documentPdfUrl = (id: string, version?: number) => {
+  const params = new URLSearchParams()
+  if (version) params.set('version', String(version))
+  const token = getSessionToken()
+  if (token) params.set('token', token)
+  const qs = params.toString()
+  return `/api/documents/${id}/pdf${qs ? `?${qs}` : ''}`
+}
