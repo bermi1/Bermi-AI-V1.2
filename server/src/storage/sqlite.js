@@ -121,6 +121,17 @@ export class SqliteStorage {
       })
     return row
   }
+  async upsertUser(row) {
+    this.db
+      .prepare(
+        `INSERT INTO users (id, name, email, password_hash, email_verified, created_at)
+         VALUES (@id, @name, @email, @password_hash, @email_verified, @created_at)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email,
+           email_verified = excluded.email_verified`,
+      )
+      .run({ password_hash: null, ...row, email_verified: row.email_verified ? 1 : 0 })
+    return row
+  }
   async updateUser(id, patch) {
     const allowed = ['name', 'email_verified', 'verify_code', 'verify_expires', 'password_hash']
     const keys = Object.keys(patch).filter((k) => allowed.includes(k))

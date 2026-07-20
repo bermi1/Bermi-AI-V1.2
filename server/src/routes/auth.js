@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { randomInt, randomUUID } from 'node:crypto'
+import { createClient } from '@supabase/supabase-js'
 import { storage } from '../storage/index.js'
 import {
   clearSessionCookie,
@@ -16,9 +17,140 @@ export const authRouter = Router()
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const CODE_TTL_MS = 30 * 60 * 1000
 
+/**
+ * When the Supabase backend is active, Supabase Auth owns credentials and
+ * sends the confirmation emails itself — zero mail configuration needed.
+ * The local scrypt flow remains for SQLite/offline development.
+ */
+const SUPABASE_AUTH = storage.backend() === 'supabase'
+const supaAuth = SUPABASE_AUTH
+  ? createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_ANON_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    )
+  : null
+
+export const verificationRequired = () => (SUPABASE_AUTH ? false : emailEnabled())
+
 function baseUrl(req) {
   return process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`
 }
+
+function validateSignup(body) {
+  const { name, email, password } = body ?? {}
+  if (typeof name !== 'string' || !name.trim()) return 'Name is required'
+  if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) return 'A valid email is required'
+  if (typeof password !== 'string' || password.length < 8) {
+    return 'Password must be at least 8 characters'
+  }
+  return null
+}
+
+async function startAppSession(res, user) {
+  setSessionCookie(res, await createSessionFor(user.id))
+}
+
+// ---------------------------------------------------------------------------
+// Supabase Auth flow — confirmation email comes from Supabase directly.
+// ---------------------------------------------------------------------------
+
+async function supabaseSignup(req, res) {
+  const invalid = validateSignup(req.body)
+  if (invalid) return res.status(400).json({ error: invalid })
+  const name = req.body.name.trim()
+  const email = req.body.email.trim().toLowerCase()
+
+  const { data, error } = await supaAuth.auth.signUp({
+    email,
+    password: req.body.password,
+    options: { data: { name }, emailRedirectTo: baseUrl(req) },
+  })
+  if (error) {
+    const status = /already|registered/i.test(error.message) ? 409 : 400
+    return res.status(status).json({ error: error.message })
+  }
+
+  // Supabase returns identities: [] for repeated signups of an existing email.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return res.status(409).json({ error: 'An account with this email already exists — sign in instead' })
+  }
+
+  const verified = Boolean(data.user?.email_confirmed_at)
+  const row = {
+    id: data.user.id,
+    name,
+    email,
+    password_hash: null,
+    email_verified: verified,
+    created_at: new Date().toISOString(),
+  }
+  await storage.upsertUser(row)
+  await storage.setSetting(`u:${row.id}:profile_name`, name)
+
+  if (data.session || verified) {
+    // Email confirmations are disabled on the project — sign straight in.
+    await startAppSession(res, row)
+    return res.status(201).json({ user: publicUser({ ...row, email_verified: true }) })
+  }
+  // Confirmation email sent by Supabase; the user signs in after clicking it.
+  return res.status(201).json({ needsConfirmation: true, email })
+}
+
+async function supabaseLogin(req, res) {
+  const { email, password } = req.body ?? {}
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Email and password are required' })
+  }
+  const normalized = email.trim().toLowerCase()
+  const { data, error } = await supaAuth.auth.signInWithPassword({
+    email: normalized,
+    password,
+  })
+  if (error) {
+    if (/not confirmed/i.test(error.message)) {
+      return res.status(403).json({
+        error: 'Please confirm your email first — check your inbox for the Supabase link.',
+        code: 'unconfirmed',
+        email: normalized,
+      })
+    }
+    return res.status(401).json({ error: 'Incorrect email or password' })
+  }
+
+  const su = data.user
+  const row = {
+    id: su.id,
+    name: su.user_metadata?.name || normalized.split('@')[0],
+    email: normalized,
+    password_hash: null,
+    email_verified: true,
+    created_at: su.created_at ?? new Date().toISOString(),
+  }
+  await storage.upsertUser(row)
+  await startAppSession(res, row)
+  res.json({ user: publicUser(row) })
+}
+
+async function supabaseResend(req, res) {
+  const { email } = req.body ?? {}
+  if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email is required' })
+  }
+  const { error } = await supaAuth.auth.resend({
+    type: 'signup',
+    email: email.trim().toLowerCase(),
+    options: { emailRedirectTo: baseUrl(req) },
+  })
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ ok: true })
+}
+
+// ---------------------------------------------------------------------------
+// Local flow (SQLite / offline dev) — scrypt passwords, optional SMTP codes.
+// ---------------------------------------------------------------------------
 
 function newCode() {
   return String(randomInt(100000, 1000000))
@@ -36,67 +168,60 @@ async function issueVerification(req, user) {
   await sendMail({ to: user.email, ...mail })
 }
 
-authRouter.post('/auth/signup', async (req, res, next) => {
-  try {
-    const { name, email, password } = req.body ?? {}
-    if (typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'Name is required' })
-    }
-    if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
-      return res.status(400).json({ error: 'A valid email is required' })
-    }
-    if (typeof password !== 'string' || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' })
-    }
-    const normalized = email.trim().toLowerCase()
-    if (await storage.getUserByEmail(normalized)) {
-      return res.status(409).json({ error: 'An account with this email already exists' })
-    }
-
-    // Without an email transport configured, accounts activate immediately.
-    const needsVerification = emailEnabled()
-    const user = await storage.createUser({
-      id: randomUUID(),
-      name: name.trim(),
-      email: normalized,
-      password_hash: await hashPassword(password),
-      email_verified: !needsVerification,
-      created_at: new Date().toISOString(),
-    })
-    // Seed the profile so personalization works out of the box.
-    await storage.setSetting(`u:${user.id}:profile_name`, user.name)
-
-    if (needsVerification) {
-      try {
-        await issueVerification(req, user)
-      } catch (err) {
-        console.error('Verification email failed:', err.message)
-      }
-    }
-
-    setSessionCookie(res, await createSessionFor(user.id))
-    res.status(201).json({ user: publicUser(user) })
-  } catch (err) {
-    next(err)
+async function localSignup(req, res) {
+  const invalid = validateSignup(req.body)
+  if (invalid) return res.status(400).json({ error: invalid })
+  const name = req.body.name.trim()
+  const normalized = req.body.email.trim().toLowerCase()
+  if (await storage.getUserByEmail(normalized)) {
+    return res.status(409).json({ error: 'An account with this email already exists' })
   }
-})
 
-authRouter.post('/auth/login', async (req, res, next) => {
-  try {
-    const { email, password } = req.body ?? {}
-    const user =
-      typeof email === 'string'
-        ? await storage.getUserByEmail(email.trim().toLowerCase())
-        : null
-    if (!user || !(await verifyPassword(String(password ?? ''), user.password_hash))) {
-      return res.status(401).json({ error: 'Incorrect email or password' })
+  const needsVerification = emailEnabled()
+  const user = await storage.createUser({
+    id: randomUUID(),
+    name,
+    email: normalized,
+    password_hash: await hashPassword(req.body.password),
+    email_verified: !needsVerification,
+    created_at: new Date().toISOString(),
+  })
+  await storage.setSetting(`u:${user.id}:profile_name`, user.name)
+
+  if (needsVerification) {
+    try {
+      await issueVerification(req, user)
+    } catch (err) {
+      console.error('Verification email failed:', err.message)
     }
-    setSessionCookie(res, await createSessionFor(user.id))
-    res.json({ user: publicUser(user) })
-  } catch (err) {
-    next(err)
   }
-})
+
+  await startAppSession(res, user)
+  res.status(201).json({ user: publicUser(user) })
+}
+
+async function localLogin(req, res) {
+  const { email, password } = req.body ?? {}
+  const user =
+    typeof email === 'string' ? await storage.getUserByEmail(email.trim().toLowerCase()) : null
+  if (!user || !(await verifyPassword(String(password ?? ''), user.password_hash))) {
+    return res.status(401).json({ error: 'Incorrect email or password' })
+  }
+  await startAppSession(res, user)
+  res.json({ user: publicUser(user) })
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+authRouter.post('/auth/signup', (req, res, next) =>
+  (SUPABASE_AUTH ? supabaseSignup(req, res) : localSignup(req, res)).catch(next),
+)
+
+authRouter.post('/auth/login', (req, res, next) =>
+  (SUPABASE_AUTH ? supabaseLogin(req, res) : localLogin(req, res)).catch(next),
+)
 
 authRouter.post('/auth/logout', async (req, res, next) => {
   try {
@@ -110,10 +235,25 @@ authRouter.post('/auth/logout', async (req, res, next) => {
 
 authRouter.get('/auth/me', (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Not signed in' })
-  res.json({ user: publicUser(req.user), verificationRequired: emailEnabled() })
+  res.json({ user: publicUser(req.user), verificationRequired: verificationRequired() })
 })
 
-// ---- Email verification ----
+// Public resend: Supabase mode takes an email (pre-login); local mode uses
+// the signed-in session.
+authRouter.post('/auth/resend', async (req, res, next) => {
+  try {
+    if (SUPABASE_AUTH) return await supabaseResend(req, res)
+    if (!req.user) return res.status(401).json({ error: 'Not signed in' })
+    if (req.user.email_verified) return res.json({ ok: true, already: true })
+    if (!emailEnabled()) return res.status(400).json({ error: 'Email is not configured' })
+    await issueVerification(req, req.user)
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---- Local-mode code verification (unused in Supabase mode) ----
 
 async function verifyWithCode(user, code) {
   if (!user || user.email_verified) return Boolean(user)
@@ -145,7 +285,6 @@ authRouter.post('/auth/verify', async (req, res, next) => {
   }
 })
 
-// One-click link from the email; works without a session, redirects home.
 authRouter.get('/auth/verify-link', async (req, res, next) => {
   try {
     const { email, code } = req.query
@@ -155,18 +294,6 @@ authRouter.get('/auth/verify-link', async (req, res, next) => {
         : null
     const ok = await verifyWithCode(user, code)
     res.redirect(ok ? '/?verified=1' : '/?verified=0')
-  } catch (err) {
-    next(err)
-  }
-})
-
-authRouter.post('/auth/resend', async (req, res, next) => {
-  try {
-    if (!req.user) return res.status(401).json({ error: 'Not signed in' })
-    if (req.user.email_verified) return res.json({ ok: true, already: true })
-    if (!emailEnabled()) return res.status(400).json({ error: 'Email is not configured' })
-    await issueVerification(req, req.user)
-    res.json({ ok: true })
   } catch (err) {
     next(err)
   }

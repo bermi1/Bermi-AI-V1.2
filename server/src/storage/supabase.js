@@ -38,6 +38,10 @@ export class SupabaseStorage {
     await this.#one(this.sb.from(T.users).insert(row))
     return row
   }
+  async upsertUser(row) {
+    await this.#one(this.sb.from(T.users).upsert(row))
+    return row
+  }
   async updateUser(id, patch) {
     const allowed = ['name', 'email_verified', 'verify_code', 'verify_expires', 'password_hash']
     const clean = Object.fromEntries(

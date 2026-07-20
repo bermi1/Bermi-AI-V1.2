@@ -15,16 +15,23 @@ import type {
   SettingsInfo,
 } from './types'
 
+export class ApiError extends Error {
+  code?: string
+  email?: string
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    let detail = res.statusText
+    const err = new ApiError(res.statusText)
     try {
       const body = await res.json()
-      detail = body.error || detail
+      err.message = body.error || err.message
+      err.code = body.code
+      err.email = body.email
     } catch {
       /* not json */
     }
-    throw new Error(detail)
+    throw err
   }
   return res.json() as Promise<T>
 }
@@ -43,15 +50,21 @@ export const verifyEmail = (code: string) =>
     body: JSON.stringify({ code }),
   }).then((r) => json<{ user: AuthUser }>(r))
 
-export const resendVerification = () =>
-  fetch('/api/auth/resend', { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+export const resendVerification = (email?: string) =>
+  fetch('/api/auth/resend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(email ? { email } : {}),
+  }).then((r) => json<{ ok: true }>(r))
 
 export const signup = (name: string, email: string, password: string) =>
   fetch('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, email, password }),
-  }).then((r) => json<{ user: AuthUser }>(r))
+  }).then((r) =>
+    json<{ user?: AuthUser; needsConfirmation?: boolean; email?: string }>(r),
+  )
 
 export const login = (email: string, password: string) =>
   fetch('/api/auth/login', {

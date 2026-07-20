@@ -10,10 +10,11 @@ mode, fully responsive from 375px up.
 - **Accounts & auth** — Claude-style signup/login pages, scrypt-hashed
   passwords, httpOnly cookie sessions; conversations and documents are
   scoped per user
-- **Registration emails** — signup sends a branded verification email
-  (official Bermi mark, 6-digit code + one-click link, 30-min expiry) via
-  Resend or any SMTP provider; without email config, accounts activate
-  instantly
+- **Registration emails from Supabase** — with the Supabase backend active,
+  Supabase Auth owns credentials and sends its own confirmation emails
+  (no SMTP setup needed); users click the link, then sign in. On the
+  SQLite fallback, a local scrypt flow is used (optional branded code
+  emails via Resend/SMTP, instant activation with no email config)
 - **Managed AI** — the server's OpenRouter key powers every account; users
   never bring or see an API key
 - **Streaming chat** — tokens render as they arrive over SSE, with full
@@ -105,6 +106,15 @@ npm start                   # Express serves API + built client on :3001
 | OAuth redirect base | `PUBLIC_URL` env var (defaults to the request host) |
 | Chromium binary for PDF export | `CHROME_PATH` env var |
 | Server port | `PORT` (default 3001) |
+
+### Supabase Auth email setup
+
+Confirmation emails are sent by Supabase automatically. One thing to set once
+in the Supabase Dashboard → Authentication → URL Configuration: make **Site
+URL** your app's address (e.g. `https://yourapp.com` or
+`http://localhost:3001`) so the email's confirmation link lands back on
+Bermi. Supabase's built-in mailer has modest rate limits; for production
+volume, plug your own SMTP into Supabase → Project Settings → Auth.
 
 ### Google connector setup
 
