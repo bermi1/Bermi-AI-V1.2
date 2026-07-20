@@ -2,7 +2,7 @@
   "name": "bermi-ai",
   "version": "1.2.0",
   "private": true,
-  "description": "Bermi AI — Claude-style chat interface with document generation, powered by OpenRouter",
+  "description": "Bermi AI \u2014 Claude-style chat interface with document generation, powered by OpenRouter",
   "workspaces": [
     "client",
     "server"
@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
