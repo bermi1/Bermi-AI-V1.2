@@ -29,13 +29,33 @@ export const setSessionToken = (token: string | null) => {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
-function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+async function apiFetch(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = 20_000,
+): Promise<Response> {
   const token = getSessionToken()
   const headers = new Headers(init?.headers)
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  return fetch(url, { ...init, headers })
+  // Never let a request hang forever: callers that pass their own signal
+  // (chat streaming) manage cancellation themselves; everything else times
+  // out with an actionable error instead of leaving the UI spinning.
+  const signal = init?.signal ?? AbortSignal.timeout(timeoutMs)
+  try {
+    return await fetch(url, { ...init, headers, signal })
+  } catch (err) {
+    if (!init?.signal && ((err as Error).name === 'TimeoutError' || (err as Error).name === 'AbortError')) {
+      throw new ApiError(
+        'The server did not respond. Check that the Bermi backend is running and reachable, then try again.',
+      )
+    }
+    if ((err as Error).message === 'Failed to fetch') {
+      throw new ApiError('Could not reach the server — check your connection and that the backend is running.')
+    }
+    throw err
+  }
 }
 
 export class ApiError extends Error {
@@ -116,8 +136,13 @@ export const logout = () =>
 export const extractFile = (file: File): Promise<Attachment> => {
   const form = new FormData()
   form.append('file', file)
-  return apiFetch('/api/extract', { method: 'POST', body: form }).then((r) => json<Attachment>(r))
+  return apiFetch('/api/extract', { method: 'POST', body: form }, 60_000).then((r) =>
+    json<Attachment>(r),
+  )
 }
+
+export const health = () =>
+  apiFetch('/api/health', undefined, 6_000).then((r) => json<{ ok: boolean }>(r))
 
 // ---------- Conversations ----------
 

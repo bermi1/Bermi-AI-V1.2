@@ -20,7 +20,15 @@ const T = {
  */
 export class SupabaseStorage {
   constructor(url, key) {
-    this.sb = createClient(url, key, { auth: { persistSession: false } })
+    this.sb = createClient(url, key, {
+      auth: { persistSession: false },
+      // A hanging network path must fail fast, not stall every request
+      // (a stalled auth lookup is how login buttons hang forever).
+      global: {
+        fetch: (input, init) =>
+          fetch(input, { ...init, signal: AbortSignal.timeout(8000) }),
+      },
+    })
   }
 
   backend() {

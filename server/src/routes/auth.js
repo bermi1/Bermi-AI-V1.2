@@ -32,7 +32,13 @@ const supaAuth = SUPABASE_AUTH
       process.env.SUPABASE_KEY ||
         process.env.SUPABASE_SERVICE_ROLE_KEY ||
         process.env.SUPABASE_ANON_KEY,
-      { auth: { persistSession: false, autoRefreshToken: false } },
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: {
+          fetch: (input, init) =>
+            fetch(input, { ...init, signal: AbortSignal.timeout(10_000) }),
+        },
+      },
     )
   : null
 

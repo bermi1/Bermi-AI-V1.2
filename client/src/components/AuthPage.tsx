@@ -44,8 +44,15 @@ export function AuthPage({ onAuthed }: AuthPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [resent, setResent] = useState(false)
   const [googleReady, setGoogleReady] = useState<boolean | null>(null)
+  const [backendDown, setBackendDown] = useState(false)
 
   useEffect(() => {
+    // Instant diagnosis: if the backend is unreachable, say so up front
+    // instead of letting the submit button discover it.
+    api
+      .health()
+      .then(() => setBackendDown(false))
+      .catch(() => setBackendDown(true))
     api
       .authProviders()
       .then((p) => setGoogleReady(p.google))
@@ -179,6 +186,12 @@ export function AuthPage({ onAuthed }: AuthPageProps) {
           </p>
         </div>
 
+        {backendDown && (
+          <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+            The Bermi server is not responding. Start the backend (npm start) or check your
+            connection, then reload this page.
+          </p>
+        )}
         <a
           href={api.googleLoginUrl()}
           onClick={(e) => {
