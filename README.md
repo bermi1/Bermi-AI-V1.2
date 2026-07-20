@@ -10,6 +10,10 @@ mode, fully responsive from 375px up.
 - **Accounts & auth** — Claude-style signup/login pages, scrypt-hashed
   passwords, httpOnly cookie sessions; conversations and documents are
   scoped per user
+- **Registration emails** — signup sends a branded verification email
+  (official Bermi mark, 6-digit code + one-click link, 30-min expiry) via
+  Resend or any SMTP provider; without email config, accounts activate
+  instantly
 - **Managed AI** — the server's OpenRouter key powers every account; users
   never bring or see an API key
 - **Streaming chat** — tokens render as they arrive over SSE, with full
@@ -97,6 +101,7 @@ npm start                   # Express serves API + built client on :3001
 | Model used for invoice drafting | `DRAFT_MODEL` env var (default: `anthropic/claude-haiku-4.5`) |
 | Supabase database | `SUPABASE_URL` + `SUPABASE_KEY` env vars |
 | Google connector | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars |
+| Registration emails | `RESEND_API_KEY` **or** `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`, plus `EMAIL_FROM` |
 | OAuth redirect base | `PUBLIC_URL` env var (defaults to the request host) |
 | Chromium binary for PDF export | `CHROME_PATH` env var |
 | Server port | `PORT` (default 3001) |

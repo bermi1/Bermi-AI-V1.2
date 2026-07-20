@@ -38,6 +38,16 @@ export class SupabaseStorage {
     await this.#one(this.sb.from(T.users).insert(row))
     return row
   }
+  async updateUser(id, patch) {
+    const allowed = ['name', 'email_verified', 'verify_code', 'verify_expires', 'password_hash']
+    const clean = Object.fromEntries(
+      Object.entries(patch).filter(([k]) => allowed.includes(k)),
+    )
+    if (Object.keys(clean).length > 0) {
+      await this.#one(this.sb.from(T.users).update(clean).eq('id', id))
+    }
+    return this.getUserById(id)
+  }
   async getUserByEmail(email) {
     const rows = await this.#one(this.sb.from(T.users).select('*').eq('email', email).limit(1))
     return rows[0] ?? null

@@ -56,7 +56,12 @@ export async function createSessionFor(userId) {
 }
 
 export function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email }
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    email_verified: Boolean(user.email_verified),
+  }
 }
 
 /**
@@ -87,6 +92,19 @@ export async function attachUser(req, _res, next) {
 export function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Not signed in' })
   next()
+}
+
+/**
+ * Gate for routes that need a verified email. Only enforced while an email
+ * transport is configured, so removing email config never locks users out.
+ */
+export function requireVerified(emailEnabled) {
+  return (req, res, next) => {
+    if (emailEnabled() && !req.user.email_verified) {
+      return res.status(403).json({ error: 'Email not verified', code: 'unverified' })
+    }
+    next()
+  }
 }
 
 export { randomUUID }

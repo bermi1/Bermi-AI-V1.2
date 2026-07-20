@@ -71,6 +71,7 @@ export interface AuthUser {
   id: string
   name: string
   email: string
+  email_verified: boolean
 }
 
 export interface SettingsInfo {

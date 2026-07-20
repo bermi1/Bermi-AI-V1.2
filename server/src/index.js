@@ -4,7 +4,8 @@ import cors from 'cors'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { attachUser, requireAuth } from './auth.js'
+import { attachUser, requireAuth, requireVerified } from './auth.js'
+import { emailEnabled } from './mailer.js'
 import { authRouter } from './routes/auth.js'
 import { chatRouter } from './routes/chat.js'
 import { conversationsRouter } from './routes/conversations.js'
@@ -28,6 +29,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 app.use('/api', attachUser)
 app.use('/api', authRouter)
 app.use('/api', requireAuth)
+app.use('/api', requireVerified(emailEnabled))
 
 app.use('/api', chatRouter)
 app.use('/api', conversationsRouter)

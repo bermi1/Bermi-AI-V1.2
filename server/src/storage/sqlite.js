@@ -73,6 +73,9 @@ export class SqliteStorage {
         name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
+        email_verified INTEGER NOT NULL DEFAULT 0,
+        verify_code TEXT,
+        verify_expires TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS sessions (
@@ -82,10 +85,17 @@ export class SqliteStorage {
         expires_at TEXT NOT NULL
       );
     `)
-    // Older databases predate per-user scoping.
-    for (const table of ['conversations', 'documents']) {
+    // Older databases predate per-user scoping / email verification.
+    const migrations = [
+      'ALTER TABLE conversations ADD COLUMN user_id TEXT',
+      'ALTER TABLE documents ADD COLUMN user_id TEXT',
+      'ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE users ADD COLUMN verify_code TEXT',
+      'ALTER TABLE users ADD COLUMN verify_expires TEXT',
+    ]
+    for (const sql of migrations) {
       try {
-        this.db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`)
+        this.db.exec(sql)
       } catch {
         /* column already exists */
       }
@@ -100,10 +110,26 @@ export class SqliteStorage {
   async createUser(row) {
     this.db
       .prepare(
-        'INSERT INTO users (id, name, email, password_hash, created_at) VALUES (@id, @name, @email, @password_hash, @created_at)',
+        `INSERT INTO users (id, name, email, password_hash, email_verified, verify_code, verify_expires, created_at)
+         VALUES (@id, @name, @email, @password_hash, @email_verified, @verify_code, @verify_expires, @created_at)`,
       )
-      .run(row)
+      .run({
+        verify_code: null,
+        verify_expires: null,
+        ...row,
+        email_verified: row.email_verified ? 1 : 0,
+      })
     return row
+  }
+  async updateUser(id, patch) {
+    const allowed = ['name', 'email_verified', 'verify_code', 'verify_expires', 'password_hash']
+    const keys = Object.keys(patch).filter((k) => allowed.includes(k))
+    if (keys.length === 0) return this.getUserById(id)
+    const sets = keys.map((k) => `${k} = @${k}`).join(', ')
+    const values = { ...patch, id }
+    if ('email_verified' in values) values.email_verified = values.email_verified ? 1 : 0
+    this.db.prepare(`UPDATE users SET ${sets} WHERE id = @id`).run(values)
+    return this.getUserById(id)
   }
   async getUserByEmail(email) {
     return this.db.prepare('SELECT * FROM users WHERE email = ?').get(email) ?? null

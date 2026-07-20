@@ -9,6 +9,7 @@ import { InvoiceForm } from './components/InvoiceForm'
 import { DocumentEditor } from './components/DocumentEditor'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
+import { VerifyEmailPage } from './components/VerifyEmailPage'
 import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
 import type {
@@ -25,13 +26,25 @@ const isDesktop = () => window.matchMedia('(min-width: 768px)').matches
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [verificationRequired, setVerificationRequired] = useState(false)
 
-  useEffect(() => {
-    api
+  const checkAuth = useCallback(() => {
+    return api
       .authMe()
-      .then(({ user }) => setUser(user))
+      .then(({ user, verificationRequired }) => {
+        setUser(user)
+        setVerificationRequired(verificationRequired)
+      })
       .catch(() => setUser(null))
       .finally(() => setAuthChecked(true))
+  }, [])
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+
+  const signOut = useCallback(() => {
+    api.logout().finally(() => setUser(null))
   }, [])
 
   if (!authChecked) {
@@ -43,7 +56,11 @@ export default function App() {
     )
   }
 
-  if (!user) return <AuthPage onAuthed={setUser} />
+  if (!user) return <AuthPage onAuthed={() => checkAuth()} />
+
+  if (verificationRequired && !user.email_verified) {
+    return <VerifyEmailPage user={user} onVerified={setUser} onSignOut={signOut} />
+  }
 
   return <Workspace user={user} onSignedOut={() => setUser(null)} />
 }

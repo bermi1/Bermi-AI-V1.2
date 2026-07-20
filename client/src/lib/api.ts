@@ -31,7 +31,20 @@ async function json<T>(res: Response): Promise<T> {
 
 // ---------- Auth ----------
 
-export const authMe = () => fetch('/api/auth/me').then((r) => json<{ user: AuthUser }>(r))
+export const authMe = () =>
+  fetch('/api/auth/me').then((r) =>
+    json<{ user: AuthUser; verificationRequired: boolean }>(r),
+  )
+
+export const verifyEmail = (code: string) =>
+  fetch('/api/auth/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  }).then((r) => json<{ user: AuthUser }>(r))
+
+export const resendVerification = () =>
+  fetch('/api/auth/resend', { method: 'POST' }).then((r) => json<{ ok: true }>(r))
 
 export const signup = (name: string, email: string, password: string) =>
   fetch('/api/auth/signup', {
