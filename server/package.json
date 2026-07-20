@@ -9,6 +9,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "@supabase/supabase-js": "^2.110.7",
     "better-sqlite3": "^11.5.0",
     "cors": "^2.8.5",

@@ -22,18 +22,30 @@ function findChrome() {
 
 let browserPromise = null
 
+async function launchBrowser() {
+  // On serverless (Vercel/AWS) there is no system Chromium; use the
+  // lambda-packaged build from @sparticuz/chromium instead.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const { default: chromium } = await import('@sparticuz/chromium')
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    })
+  }
+  return puppeteer.launch({
+    executablePath: findChrome(),
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  })
+}
+
 async function getBrowser() {
   if (!browserPromise) {
-    browserPromise = puppeteer
-      .launch({
-        executablePath: findChrome(),
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      })
-      .catch((err) => {
-        browserPromise = null
-        throw err
-      })
+    browserPromise = launchBrowser().catch((err) => {
+      browserPromise = null
+      throw err
+    })
   }
   return browserPromise
 }

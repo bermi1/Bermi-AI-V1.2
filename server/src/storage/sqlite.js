@@ -11,7 +11,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
  */
 export class SqliteStorage {
   constructor() {
-    const dataDir = join(__dirname, '..', '..', 'data')
+    // Serverless filesystems are read-only outside /tmp (and ephemeral —
+    // Supabase should be the backend there; this is a non-crashing fallback).
+    const dataDir = process.env.VERCEL
+      ? '/tmp/bermi-data'
+      : join(__dirname, '..', '..', 'data')
     mkdirSync(dataDir, { recursive: true })
     this.db = new Database(join(dataDir, 'bermi.db'))
     this.db.pragma('journal_mode = WAL')

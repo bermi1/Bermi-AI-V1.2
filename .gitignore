@@ -6,3 +6,4 @@ server/data/
 *.log
 .DS_Store
 *.tsbuildinfo
+server/src/runtime-config.js
