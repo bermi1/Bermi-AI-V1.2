@@ -68,16 +68,68 @@ export class SqliteStorage {
         tokens TEXT,
         connected_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL
+      );
     `)
+    // Older databases predate per-user scoping.
+    for (const table of ['conversations', 'documents']) {
+      try {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`)
+      } catch {
+        /* column already exists */
+      }
+    }
   }
 
   backend() {
     return 'sqlite'
   }
 
+  // --- users & sessions ---
+  async createUser(row) {
+    this.db
+      .prepare(
+        'INSERT INTO users (id, name, email, password_hash, created_at) VALUES (@id, @name, @email, @password_hash, @created_at)',
+      )
+      .run(row)
+    return row
+  }
+  async getUserByEmail(email) {
+    return this.db.prepare('SELECT * FROM users WHERE email = ?').get(email) ?? null
+  }
+  async getUserById(id) {
+    return this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) ?? null
+  }
+  async createSession(row) {
+    this.db
+      .prepare(
+        'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (@token, @user_id, @created_at, @expires_at)',
+      )
+      .run(row)
+  }
+  async getSession(token) {
+    return this.db.prepare('SELECT * FROM sessions WHERE token = ?').get(token) ?? null
+  }
+  async deleteSession(token) {
+    this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token)
+  }
+
   // --- conversations ---
-  async listConversations() {
-    return this.db.prepare('SELECT * FROM conversations ORDER BY updated_at DESC').all()
+  async listConversations(userId) {
+    return this.db
+      .prepare('SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC')
+      .all(userId)
   }
   async getConversation(id) {
     return this.db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) ?? null
@@ -85,7 +137,7 @@ export class SqliteStorage {
   async createConversation(row) {
     this.db
       .prepare(
-        'INSERT INTO conversations (id, title, model, created_at, updated_at) VALUES (@id, @title, @model, @created_at, @updated_at)',
+        'INSERT INTO conversations (id, user_id, title, model, created_at, updated_at) VALUES (@id, @user_id, @title, @model, @created_at, @updated_at)',
       )
       .run(row)
     return row
@@ -119,8 +171,10 @@ export class SqliteStorage {
   }
 
   // --- documents ---
-  async listDocuments() {
-    return this.db.prepare('SELECT * FROM documents ORDER BY updated_at DESC').all()
+  async listDocuments(userId) {
+    return this.db
+      .prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY updated_at DESC')
+      .all(userId)
   }
   async getDocument(id) {
     return this.db.prepare('SELECT * FROM documents WHERE id = ?').get(id) ?? null
@@ -132,7 +186,7 @@ export class SqliteStorage {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          'INSERT INTO documents (id, type, title, status, current_version, created_at, updated_at) VALUES (@id, @type, @title, @status, 1, @created_at, @updated_at)',
+          'INSERT INTO documents (id, user_id, type, title, status, current_version, created_at, updated_at) VALUES (@id, @user_id, @type, @title, @status, 1, @created_at, @updated_at)',
         )
         .run(row)
       this.db

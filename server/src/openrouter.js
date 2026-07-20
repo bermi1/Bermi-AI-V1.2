@@ -7,11 +7,13 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
  * server-side settings store, and only a masked hint is ever sent to clients.
  */
 export async function resolveApiKey() {
-  const stored = await storage.getSetting('openrouter_api_key')
-  if (stored) return { key: stored, source: 'settings' }
+  // Managed key model: the platform's env key powers all users. A key stored
+  // via the legacy settings path still works as a fallback.
   if (process.env.OPENROUTER_API_KEY) {
     return { key: process.env.OPENROUTER_API_KEY, source: 'env' }
   }
+  const stored = await storage.getSetting('openrouter_api_key')
+  if (stored) return { key: stored, source: 'settings' }
   return { key: null, source: null }
 }
 

@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 
 // Bermi tables are prefixed so they coexist with anything else in the project.
 const T = {
+  users: 'bermi_users',
+  sessions: 'bermi_sessions',
   conversations: 'bermi_conversations',
   messages: 'bermi_messages',
   documents: 'bermi_documents',
@@ -31,10 +33,38 @@ export class SupabaseStorage {
     return data
   }
 
+  // --- users & sessions ---
+  async createUser(row) {
+    await this.#one(this.sb.from(T.users).insert(row))
+    return row
+  }
+  async getUserByEmail(email) {
+    const rows = await this.#one(this.sb.from(T.users).select('*').eq('email', email).limit(1))
+    return rows[0] ?? null
+  }
+  async getUserById(id) {
+    const rows = await this.#one(this.sb.from(T.users).select('*').eq('id', id).limit(1))
+    return rows[0] ?? null
+  }
+  async createSession(row) {
+    await this.#one(this.sb.from(T.sessions).insert(row))
+  }
+  async getSession(token) {
+    const rows = await this.#one(this.sb.from(T.sessions).select('*').eq('token', token).limit(1))
+    return rows[0] ?? null
+  }
+  async deleteSession(token) {
+    await this.#one(this.sb.from(T.sessions).delete().eq('token', token))
+  }
+
   // --- conversations ---
-  async listConversations() {
+  async listConversations(userId) {
     return this.#one(
-      this.sb.from(T.conversations).select('*').order('updated_at', { ascending: false }),
+      this.sb
+        .from(T.conversations)
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false }),
     )
   }
   async getConversation(id) {
@@ -70,9 +100,13 @@ export class SupabaseStorage {
   }
 
   // --- documents ---
-  async listDocuments() {
+  async listDocuments(userId) {
     return this.#one(
-      this.sb.from(T.documents).select('*').order('updated_at', { ascending: false }),
+      this.sb
+        .from(T.documents)
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false }),
     )
   }
   async getDocument(id) {

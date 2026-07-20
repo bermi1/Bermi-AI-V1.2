@@ -14,13 +14,13 @@ const BASE_PROMPT =
  * and personal brains are persistent knowledge stores the user curates; they
  * ride along on every request since the LLM API is stateless.
  */
-async function buildSystemPrompt() {
+async function buildSystemPrompt(userId) {
   const parts = [BASE_PROMPT]
 
   const [name, role, prefs] = await Promise.all([
-    storage.getSetting('profile_name'),
-    storage.getSetting('profile_role'),
-    storage.getSetting('profile_preferences'),
+    storage.getSetting(`u:${userId}:profile_name`),
+    storage.getSetting(`u:${userId}:profile_role`),
+    storage.getSetting(`u:${userId}:profile_preferences`),
   ])
   const personal = []
   if (name) personal.push(`The user's name is ${name}.`)
@@ -61,12 +61,15 @@ chatRouter.post('/chat', async (req, res, next) => {
     let conversation
     if (conversationId) {
       conversation = await storage.getConversation(conversationId)
-      if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+      if (!conversation || conversation.user_id !== req.user.id) {
+        return res.status(404).json({ error: 'Conversation not found' })
+      }
       await storage.updateConversation(conversation.id, { model, updated_at: now })
     } else {
       const title = message.trim().slice(0, 60) + (message.trim().length > 60 ? '…' : '')
       conversation = await storage.createConversation({
         id: randomUUID(),
+        user_id: req.user.id,
         title,
         model,
         created_at: now,
@@ -83,7 +86,7 @@ chatRouter.post('/chat', async (req, res, next) => {
     })
 
     const [systemPrompt, history] = await Promise.all([
-      buildSystemPrompt(),
+      buildSystemPrompt(req.user.id),
       storage.listMessages(conversation.id),
     ])
 

@@ -21,9 +21,9 @@ function docSummary(row) {
   }
 }
 
-async function loadDocument(id, version) {
+async function loadDocument(id, userId, version) {
   const doc = await storage.getDocument(id)
-  if (!doc) return null
+  if (!doc || doc.user_id !== userId) return null
   const v = version ?? doc.current_version
   const versionRow = await storage.getDocumentVersion(id, v)
   if (!versionRow) return null
@@ -96,9 +96,9 @@ async function draftInvoiceContent(input, base) {
   }
 }
 
-documentsRouter.get('/documents', async (_req, res, next) => {
+documentsRouter.get('/documents', async (req, res, next) => {
   try {
-    res.json((await storage.listDocuments()).map(docSummary))
+    res.json((await storage.listDocuments(req.user.id)).map(docSummary))
   } catch (err) {
     next(err)
   }
@@ -146,6 +146,7 @@ documentsRouter.post('/documents/invoice', async (req, res, next) => {
     await storage.createDocument(
       {
         id,
+        user_id: req.user.id,
         type: 'invoice',
         title: `${data.invoice_number} — ${data.client_name}`,
         status: 'draft',
@@ -155,7 +156,7 @@ documentsRouter.post('/documents/invoice', async (req, res, next) => {
       data,
     )
 
-    res.status(201).json(await loadDocument(id))
+    res.status(201).json(await loadDocument(id, req.user.id))
   } catch (err) {
     next(err)
   }
@@ -164,7 +165,7 @@ documentsRouter.post('/documents/invoice', async (req, res, next) => {
 documentsRouter.get('/documents/:id', async (req, res, next) => {
   try {
     const version = req.query.version ? Number(req.query.version) : undefined
-    const doc = await loadDocument(req.params.id, version)
+    const doc = await loadDocument(req.params.id, req.user.id, version)
     if (!doc) return res.status(404).json({ error: 'Document not found' })
     res.json(doc)
   } catch (err) {
@@ -174,8 +175,11 @@ documentsRouter.get('/documents/:id', async (req, res, next) => {
 
 documentsRouter.get('/documents/:id/versions', async (req, res, next) => {
   try {
+    const doc = await storage.getDocument(req.params.id)
+    if (!doc || doc.user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Document not found' })
+    }
     const rows = await storage.listDocumentVersions(req.params.id)
-    if (rows.length === 0) return res.status(404).json({ error: 'Document not found' })
     res.json(rows)
   } catch (err) {
     next(err)
@@ -187,7 +191,9 @@ documentsRouter.put('/documents/:id', async (req, res, next) => {
   try {
     const { data, status } = req.body ?? {}
     const doc = await storage.getDocument(req.params.id)
-    if (!doc) return res.status(404).json({ error: 'Document not found' })
+    if (!doc || doc.user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Document not found' })
+    }
     if (!data || typeof data !== 'object') {
       return res.status(400).json({ error: 'data is required' })
     }
@@ -203,7 +209,7 @@ documentsRouter.put('/documents/:id', async (req, res, next) => {
       updated_at: now,
     })
 
-    res.json(await loadDocument(doc.id))
+    res.json(await loadDocument(doc.id, req.user.id))
   } catch (err) {
     next(err)
   }
@@ -212,7 +218,9 @@ documentsRouter.put('/documents/:id', async (req, res, next) => {
 documentsRouter.delete('/documents/:id', async (req, res, next) => {
   try {
     const existing = await storage.getDocument(req.params.id)
-    if (!existing) return res.status(404).json({ error: 'Document not found' })
+    if (!existing || existing.user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Document not found' })
+    }
     await storage.deleteDocument(req.params.id)
     res.json({ ok: true })
   } catch (err) {
@@ -223,7 +231,7 @@ documentsRouter.delete('/documents/:id', async (req, res, next) => {
 documentsRouter.get('/documents/:id/pdf', async (req, res, next) => {
   try {
     const version = req.query.version ? Number(req.query.version) : undefined
-    const doc = await loadDocument(req.params.id, version)
+    const doc = await loadDocument(req.params.id, req.user.id, version)
     if (!doc) return res.status(404).json({ error: 'Document not found' })
     const pdf = await htmlToPdf(renderInvoiceHtml(doc.data))
     res.setHeader('Content-Type', 'application/pdf')
@@ -240,7 +248,7 @@ documentsRouter.get('/documents/:id/pdf', async (req, res, next) => {
 documentsRouter.get('/documents/:id/html', async (req, res, next) => {
   try {
     const version = req.query.version ? Number(req.query.version) : undefined
-    const doc = await loadDocument(req.params.id, version)
+    const doc = await loadDocument(req.params.id, req.user.id, version)
     if (!doc) return res.status(404).json({ error: 'Document not found' })
     res.setHeader('Content-Type', 'text/html')
     res.send(renderInvoiceHtml(doc.data))
