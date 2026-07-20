@@ -88,7 +88,7 @@ export interface Attachment {
 }
 
 export interface Brain {
-  id: 'company' | 'personal'
+  id: 'company' | 'personal' | 'vibecoding'
   name: string
   content: string
   enabled: boolean

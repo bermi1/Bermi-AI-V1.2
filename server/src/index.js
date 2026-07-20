@@ -13,7 +13,7 @@ import { documentsRouter } from './routes/documents.js'
 import { extractRouter } from './routes/extract.js'
 import { modelsRouter } from './routes/models.js'
 import { settingsRouter } from './routes/settings.js'
-import { brainsRouter } from './routes/brains.js'
+import { brainsRouter, seedBrains } from './routes/brains.js'
 import { connectorsRouter } from './routes/connectors.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -52,6 +52,8 @@ if (existsSync(clientDist)) {
   app.use(express.static(clientDist))
   app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(join(clientDist, 'index.html')))
 }
+
+await seedBrains()
 
 const port = Number(process.env.PORT) || 3001
 app.listen(port, () => {

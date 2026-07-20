@@ -7,9 +7,14 @@ mode, fully responsive from 375px up.
 
 ## Features
 
-- **Accounts & auth** — Claude-style signup/login pages, scrypt-hashed
-  passwords, httpOnly cookie sessions; conversations and documents are
-  scoped per user
+- **Accounts & auth** — Claude-style signup/login pages ("Continue with
+  Google" + email/password), scrypt-hashed passwords, httpOnly cookie
+  sessions; conversations and documents are scoped per user. Internal auth
+  is the default so signup always works; `AUTH_PROVIDER=supabase` delegates
+  to Supabase Auth
+- **Google sign-in** — one-click login/signup with a Google account
+  (set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; same credentials as the
+  Gmail connector)
 - **Registration emails from Supabase** — with the Supabase backend active,
   Supabase Auth owns credentials and sends its own confirmation emails
   (no SMTP setup needed); users click the link, then sign in. On the
@@ -27,8 +32,12 @@ mode, fully responsive from 375px up.
   (`server/config/models.json`)
 - **Full-page dashboard** — stat tiles, searchable document grid, brain
   cards, connected apps with a recent-Gmail widget, and recent conversations
-- **Company & Personal Brains** — two persistent knowledge stores, editable
-  from the Dashboard, injected into every conversation while enabled
+- **Three brains** — Company, Personal, and a pre-loaded **Vibe Coding
+  Instructor** brain (curriculum, prompting techniques, tool guidance,
+  teaching plan) injected into every conversation while enabled
+- **Feed the knowledge base from files** — upload .txt/.md/.csv/.json/.docx/
+  .pdf inside any brain editor; text is extracted and appended to that
+  brain's knowledge
 - **Profile personalization** — name, work context, and response preferences
   (Claude-style) ride along with every chat
 - **Connectors** — Google OAuth built in (Gmail/Calendar/Drive read scopes,

@@ -159,6 +159,16 @@ export const disconnectConnector = (id: string) =>
 
 export const googleAuthUrl = () => '/api/connectors/google/auth'
 
+export const googleLoginUrl = () => '/api/auth/google'
+
+export const authProviders = () =>
+  fetch('/api/auth/providers').then((r) =>
+    json<{ provider: 'internal' | 'supabase'; google: boolean }>(r),
+  )
+
+export const resetVibeBrain = () =>
+  fetch('/api/brains/vibecoding/reset', { method: 'POST' }).then((r) => json<Brain>(r))
+
 export const fetchGmailMessages = () =>
   fetch('/api/connectors/google/gmail/messages').then((r) => json<GmailMessage[]>(r))
 

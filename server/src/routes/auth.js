@@ -18,11 +18,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const CODE_TTL_MS = 30 * 60 * 1000
 
 /**
- * When the Supabase backend is active, Supabase Auth owns credentials and
- * sends the confirmation emails itself — zero mail configuration needed.
- * The local scrypt flow remains for SQLite/offline development.
+ * Auth provider selection. Internal auth (scrypt against the active storage
+ * backend — including the Supabase database) is the default because it can
+ * never be blocked by mail delivery or dashboard configuration: signup always
+ * succeeds. Set AUTH_PROVIDER=supabase to delegate credentials + confirmation
+ * emails to Supabase Auth instead.
  */
-const SUPABASE_AUTH = storage.backend() === 'supabase'
+const SUPABASE_AUTH =
+  process.env.AUTH_PROVIDER === 'supabase' && storage.backend() === 'supabase'
 const supaAuth = SUPABASE_AUTH
   ? createClient(
       process.env.SUPABASE_URL,
@@ -210,6 +213,105 @@ async function localLogin(req, res) {
   await startAppSession(res, user)
   res.json({ user: publicUser(user) })
 }
+
+// ---------------------------------------------------------------------------
+// Google sign-in (OAuth 2.0 code flow, server-side)
+// ---------------------------------------------------------------------------
+
+function googleCreds() {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  return clientId && clientSecret ? { clientId, clientSecret } : null
+}
+
+authRouter.get('/auth/providers', (_req, res) => {
+  res.json({
+    provider: SUPABASE_AUTH ? 'supabase' : 'internal',
+    google: Boolean(googleCreds()),
+  })
+})
+
+authRouter.get('/auth/google', (req, res) => {
+  const creds = googleCreds()
+  if (!creds) return res.redirect('/?auth_error=google_not_configured')
+  const state = randomUUID()
+  res.setHeader(
+    'Set-Cookie',
+    `bermi_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+  )
+  const params = new URLSearchParams({
+    client_id: creds.clientId,
+    redirect_uri: `${baseUrl(req)}/api/auth/google/callback`,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    prompt: 'select_account',
+  })
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`)
+})
+
+authRouter.get('/auth/google/callback', async (req, res, next) => {
+  try {
+    const creds = googleCreds()
+    const { code, state, error } = req.query
+    const cookieState = (req.headers.cookie || '')
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith('bermi_oauth_state='))
+      ?.split('=')[1]
+    if (error || !code || !creds || !state || state !== cookieState) {
+      return res.redirect('/?auth_error=google')
+    }
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        redirect_uri: `${baseUrl(req)}/api/auth/google/callback`,
+        grant_type: 'authorization_code',
+      }),
+    })
+    if (!tokenRes.ok) return res.redirect('/?auth_error=google')
+    const tokens = await tokenRes.json()
+
+    const infoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    })
+    if (!infoRes.ok) return res.redirect('/?auth_error=google')
+    const info = await infoRes.json()
+    const email = String(info.email || '').toLowerCase()
+    if (!email) return res.redirect('/?auth_error=google')
+
+    let user = await storage.getUserByEmail(email)
+    if (!user) {
+      user = {
+        id: randomUUID(),
+        name: info.name || email.split('@')[0],
+        email,
+        password_hash: null,
+        email_verified: true,
+        created_at: new Date().toISOString(),
+      }
+      await storage.upsertUser(user)
+      await storage.setSetting(`u:${user.id}:profile_name`, user.name)
+    } else if (!user.email_verified) {
+      // Google verified this address; unblock any pending local verification.
+      await storage.updateUser(user.id, {
+        email_verified: true,
+        verify_code: null,
+        verify_expires: null,
+      })
+    }
+
+    await startAppSession(res, user)
+    res.redirect('/')
+  } catch (err) {
+    next(err)
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Routes

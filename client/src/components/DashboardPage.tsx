@@ -5,6 +5,7 @@ import {
   Download,
   FileCheck2,
   FileText,
+  GraduationCap,
   Inbox,
   MessageSquare,
   Plug,
@@ -96,7 +97,12 @@ export function DashboardPage({
   const stats = [
     { label: 'Documents', value: documents.length, sub: 'all time', icon: FileText },
     { label: 'Finalized', value: finals, sub: `${drafts} in draft`, icon: FileCheck2 },
-    { label: 'Active brains', value: activeBrains, sub: 'of 2 available', icon: BrainIcon },
+    {
+      label: 'Active brains',
+      value: activeBrains,
+      sub: `of ${brains.length} available`,
+      icon: BrainIcon,
+    },
     { label: 'Connected apps', value: connectedApps, sub: `${connectors.length} available`, icon: Plug },
   ]
 
@@ -246,7 +252,12 @@ export function DashboardPage({
             <h2 className="mb-3.5 text-[17px] font-semibold tracking-tight">Brains</h2>
             <div className="space-y-3">
               {brains.map((brain) => {
-                const Icon = brain.id === 'company' ? Building2 : User
+                const Icon =
+                  brain.id === 'company'
+                    ? Building2
+                    : brain.id === 'vibecoding'
+                      ? GraduationCap
+                      : User
                 const active = brain.enabled && brain.content.trim()
                 return (
                   <article

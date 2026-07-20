@@ -23,7 +23,8 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
     const { originalname, mimetype, buffer } = req.file
 
     let text
-    if (mimetype === 'application/pdf' || originalname.toLowerCase().endsWith('.pdf')) {
+    const lower = originalname.toLowerCase()
+    if (mimetype === 'application/pdf' || lower.endsWith('.pdf')) {
       const { PDFParse } = await import('pdf-parse')
       const parser = new PDFParse({ data: new Uint8Array(buffer) })
       try {
@@ -31,11 +32,17 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
       } finally {
         await parser.destroy()
       }
+    } else if (
+      lower.endsWith('.docx') ||
+      mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      const { default: mammoth } = await import('mammoth')
+      text = (await mammoth.extractRawText({ buffer })).value
     } else if (TEXT_TYPES.test(mimetype) || /\.(txt|md|markdown|csv|json|xml|ya?ml|log)$/i.test(originalname)) {
       text = buffer.toString('utf8')
     } else {
       return res.status(415).json({
-        error: `Unsupported file type (${mimetype}). Upload text files (.txt, .md, .csv, .json) or PDFs.`,
+        error: `Unsupported file type (${mimetype}). Upload text files (.txt, .md, .csv, .json), Word documents (.docx), or PDFs.`,
       })
     }
 

@@ -31,8 +31,11 @@ async function buildSystemPrompt(userId) {
   const brains = await storage.listBrains()
   for (const brain of brains) {
     if (brain.enabled && brain.content?.trim()) {
+      // Cap each brain's contribution so an oversized knowledge base cannot
+      // blow up the request; stored content can be much larger.
+      const content = brain.content.trim().slice(0, 20_000)
       parts.push(
-        `# ${brain.name} (persistent knowledge — treat as reliable context)\n${brain.content.trim()}`,
+        `# ${brain.name} (persistent knowledge — treat as reliable context)\n${content}`,
       )
     }
   }

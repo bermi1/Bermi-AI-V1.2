@@ -206,7 +206,7 @@ function ProfileTab({
             value={profile.role}
             disabled={!loaded}
             onChange={(e) => setProfile({ ...profile, role: e.target.value })}
-            placeholder="e.g. Founder at Basil Link — media, events & real estate"
+            placeholder="e.g. Founder, developer, student — what you do"
           />
         </div>
         <div>
@@ -218,7 +218,7 @@ function ProfileTab({
             value={profile.preferences}
             disabled={!loaded}
             onChange={(e) => setProfile({ ...profile, preferences: e.target.value })}
-            placeholder={'e.g. Be concise. Use British English. Default currency is TZS.'}
+            placeholder={'e.g. Be concise. Explain step by step. Prefer simple language.'}
           />
         </div>
         <div className="flex justify-end">
