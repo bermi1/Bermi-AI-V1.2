@@ -1,20 +1,27 @@
 # Bermi AI
 
-A Claude-style AI chat interface with a docked document dashboard, powered by
-[OpenRouter](https://openrouter.ai). Deep blue-purple identity (`#3B2FBF`),
-light + dark mode, fully responsive from 375px up.
+A Claude-style AI workspace powered by [OpenRouter](https://openrouter.ai):
+streaming chat, a full-page dashboard, versioned document generation, company
+and personal AI brains, and connectors. Installable as a PWA, light + dark
+mode, fully responsive from 375px up.
 
 ## Features
 
+- **Accounts & auth** — Claude-style signup/login pages, scrypt-hashed
+  passwords, httpOnly cookie sessions; conversations and documents are
+  scoped per user
+- **Managed AI** — the server's OpenRouter key powers every account; users
+  never bring or see an API key
 - **Streaming chat** — tokens render as they arrive over SSE, with full
   markdown (GFM tables, syntax-highlighted code blocks, lists)
+- **File uploads in chat** — attach .txt/.md/.csv/.json or PDF; the server
+  extracts the text and Bermi carries it as conversation context
 - **Collapsible sidebar** — new chat, conversation search, recents grouped by
   date, profile row that opens Settings
 - **Model selector** — pick from a configurable list of OpenRouter models
   (`server/config/models.json`)
-- **Dashboard** — a docked side panel (bottom sheet on mobile) with stats and
-  three tabs: versioned document cards, Brains, and connected Apps — not a
-  chat thread
+- **Full-page dashboard** — stat tiles, searchable document grid, brain
+  cards, connected apps with a recent-Gmail widget, and recent conversations
 - **Company & Personal Brains** — two persistent knowledge stores, editable
   from the Dashboard, injected into every conversation while enabled
 - **Profile personalization** — name, work context, and response preferences
@@ -50,6 +57,13 @@ request.
 
 PDF export renders the invoice HTML template with `puppeteer-core` against a
 system Chromium (`CHROME_PATH` to override the binary location).
+
+## Brand & PWA
+
+The official Bermi "b + sparkle" mark lives in `client/public/favicon.svg`
+and as a React component in `client/src/components/Logo.tsx`. The app ships
+a web manifest, service worker, and 192/512 icons — it installs to the home
+screen on iOS/Android and desktop.
 
 ## Getting started
 
