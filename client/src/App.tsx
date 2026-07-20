@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LayoutGrid, Menu, SquarePen } from 'lucide-react'
+import { LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
-import { DashboardPanel } from './components/DashboardPanel'
+import { DashboardPage } from './components/DashboardPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { InvoiceForm } from './components/InvoiceForm'
 import { DocumentEditor } from './components/DocumentEditor'
 import { BrainEditor } from './components/BrainEditor'
+import { AuthPage } from './components/AuthPage'
+import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
 import type {
+  AuthUser,
   Brain,
   Conversation,
   DocumentSummary,
@@ -20,6 +23,33 @@ import type {
 const isDesktop = () => window.matchMedia('(min-width: 768px)').matches
 
 export default function App() {
+  const [authChecked, setAuthChecked] = useState(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
+
+  useEffect(() => {
+    api
+      .authMe()
+      .then(({ user }) => setUser(user))
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  if (!authChecked) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-surface">
+        <BermiMark size={48} className="text-primary" />
+        <Loader2 size={18} className="animate-spin text-ink-faint" />
+      </div>
+    )
+  }
+
+  if (!user) return <AuthPage onAuthed={setUser} />
+
+  return <Workspace user={user} onSignedOut={() => setUser(null)} />
+}
+
+function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
+  const [view, setView] = useState<'chat' | 'dashboard'>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -29,10 +59,9 @@ export default function App() {
   )
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [brains, setBrains] = useState<Brain[]>([])
-  const [userName, setUserName] = useState('')
+  const [userName, setUserName] = useState(user.name)
 
   const [sidebarOpen, setSidebarOpen] = useState(isDesktop)
-  const [dashboardOpen, setDashboardOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'profile' | 'connectors'>('profile')
   const [invoiceFormOpen, setInvoiceFormOpen] = useState(false)
@@ -76,7 +105,7 @@ export default function App() {
     refreshModels()
     api
       .getSettings()
-      .then((s) => setUserName(s.profile.name))
+      .then((s) => setUserName(s.profile.name || user.name))
       .catch(() => {})
 
     // Returning from a connector OAuth flow: land on the relevant settings tab.
@@ -86,7 +115,7 @@ export default function App() {
       setSettingsOpen(true)
       window.history.replaceState(null, '', window.location.pathname)
     }
-  }, [refreshConversations, refreshDocuments, refreshBrains, refreshModels])
+  }, [refreshConversations, refreshDocuments, refreshBrains, refreshModels, user.name])
 
   useEffect(() => {
     if (selectedModel) localStorage.setItem('bermi-model', selectedModel)
@@ -94,6 +123,7 @@ export default function App() {
 
   const selectConversation = useCallback((id: string) => {
     abortRef.current?.abort()
+    setView('chat')
     setActiveId(id)
     setChatError(null)
     setMessages([])
@@ -103,6 +133,7 @@ export default function App() {
 
   const newChat = useCallback(() => {
     abortRef.current?.abort()
+    setView('chat')
     setActiveId(null)
     setMessages([])
     setChatError(null)
@@ -200,13 +231,17 @@ export default function App() {
     setSettingsOpen(true)
   }, [])
 
+  const signOut = useCallback(() => {
+    api.logout().finally(onSignedOut)
+  }, [onSignedOut])
+
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         conversations={conversations}
-        activeId={activeId}
+        activeId={view === 'chat' ? activeId : null}
         onSelect={selectConversation}
         onNewChat={newChat}
         onDelete={deleteConversation}
@@ -216,7 +251,7 @@ export default function App() {
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-edge px-3 py-2.5 md:px-4">
-          <div className="flex items-center gap-1">
+          <div className="flex min-w-0 items-center gap-1">
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               className="rounded-lg p-2 text-ink-muted hover:bg-surface-sunken"
@@ -232,56 +267,78 @@ export default function App() {
               <SquarePen size={18} />
             </button>
             <span className="ml-1 truncate text-sm font-medium text-ink-muted">
-              {conversations.find((c) => c.id === activeId)?.title ?? 'New chat'}
+              {view === 'dashboard'
+                ? 'Dashboard'
+                : (conversations.find((c) => c.id === activeId)?.title ?? 'New chat')}
             </span>
           </div>
-          <button
-            onClick={() => setDashboardOpen((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
-              dashboardOpen
-                ? 'bg-primary-soft text-primary'
-                : 'text-ink-muted hover:bg-surface-sunken'
-            }`}
-            aria-label="Toggle dashboard"
-          >
-            <LayoutGrid size={15} />
-            <span className="hidden sm:inline">Dashboard</span>
-            {documents.length > 0 && (
-              <span className="rounded-full bg-primary px-1.5 text-[10.5px] font-semibold text-white">
-                {documents.length}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setView('chat')}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+                view === 'chat'
+                  ? 'bg-primary-soft text-primary'
+                  : 'text-ink-muted hover:bg-surface-sunken'
+              }`}
+              aria-label="Chat view"
+            >
+              <MessageSquare size={15} />
+              <span className="hidden sm:inline">Chat</span>
+            </button>
+            <button
+              onClick={() => setView('dashboard')}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+                view === 'dashboard'
+                  ? 'bg-primary-soft text-primary'
+                  : 'text-ink-muted hover:bg-surface-sunken'
+              }`}
+              aria-label="Dashboard view"
+            >
+              <LayoutGrid size={15} />
+              <span className="hidden sm:inline">Dashboard</span>
+              {documents.length > 0 && (
+                <span className="rounded-full bg-primary px-1.5 text-[10.5px] font-semibold text-white">
+                  {documents.length}
+                </span>
+              )}
+            </button>
+          </div>
         </header>
 
-        <ChatPanel
-          messages={messages}
-          streaming={streaming}
-          error={chatError}
-          userName={userName}
-        />
-
-        <InputBar
-          models={models}
-          selectedModel={selectedModel}
-          onSelectModel={setSelectedModel}
-          onSend={send}
-          onStop={stop}
-          streaming={streaming}
-        />
+        {view === 'chat' ? (
+          <>
+            <ChatPanel
+              messages={messages}
+              streaming={streaming}
+              error={chatError}
+              userName={userName}
+            />
+            <InputBar
+              models={models}
+              selectedModel={selectedModel}
+              onSelectModel={setSelectedModel}
+              onSend={send}
+              onStop={stop}
+              streaming={streaming}
+            />
+          </>
+        ) : (
+          <DashboardPage
+            userName={userName}
+            documents={documents}
+            brains={brains}
+            conversations={conversations}
+            onNewInvoice={() => setInvoiceFormOpen(true)}
+            onOpenDocument={setOpenDocId}
+            onDeleteDocument={deleteDocument}
+            onEditBrain={setEditingBrain}
+            onRefreshBrains={refreshBrains}
+            onOpenConversation={selectConversation}
+            onNewChat={newChat}
+            onOpenConnectors={() => openSettings('connectors')}
+          />
+        )}
       </main>
-
-      <DashboardPanel
-        open={dashboardOpen}
-        onClose={() => setDashboardOpen(false)}
-        documents={documents}
-        onNewInvoice={() => setInvoiceFormOpen(true)}
-        onOpenDocument={setOpenDocId}
-        onDeleteDocument={deleteDocument}
-        brains={brains}
-        onEditBrain={setEditingBrain}
-        onRefreshBrains={refreshBrains}
-      />
 
       {settingsOpen && (
         <SettingsDialog
@@ -291,7 +348,8 @@ export default function App() {
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
           onModelsChanged={refreshModels}
-          onProfileSaved={(p) => setUserName(p.name)}
+          onProfileSaved={(p) => setUserName(p.name || user.name)}
+          onSignOut={signOut}
         />
       )}
 
@@ -301,7 +359,7 @@ export default function App() {
           onCreated={(doc) => {
             setInvoiceFormOpen(false)
             refreshDocuments()
-            setDashboardOpen(true)
+            setView('dashboard')
             setOpenDocId(doc.id)
           }}
         />

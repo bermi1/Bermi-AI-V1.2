@@ -1,4 +1,6 @@
 import type {
+  Attachment,
+  AuthUser,
   Brain,
   Connector,
   Conversation,
@@ -25,6 +27,35 @@ async function json<T>(res: Response): Promise<T> {
     throw new Error(detail)
   }
   return res.json() as Promise<T>
+}
+
+// ---------- Auth ----------
+
+export const authMe = () => fetch('/api/auth/me').then((r) => json<{ user: AuthUser }>(r))
+
+export const signup = (name: string, email: string, password: string) =>
+  fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  }).then((r) => json<{ user: AuthUser }>(r))
+
+export const login = (email: string, password: string) =>
+  fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  }).then((r) => json<{ user: AuthUser }>(r))
+
+export const logout = () =>
+  fetch('/api/auth/logout', { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+
+// ---------- File extraction (chat uploads) ----------
+
+export const extractFile = (file: File): Promise<Attachment> => {
+  const form = new FormData()
+  form.append('file', file)
+  return fetch('/api/extract', { method: 'POST', body: form }).then((r) => json<Attachment>(r))
 }
 
 // ---------- Conversations ----------

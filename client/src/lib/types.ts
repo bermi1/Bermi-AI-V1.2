@@ -67,12 +67,23 @@ export interface Profile {
   preferences: string
 }
 
+export interface AuthUser {
+  id: string
+  name: string
+  email: string
+}
+
 export interface SettingsInfo {
-  hasApiKey: boolean
-  apiKeySource: 'env' | 'settings' | null
-  apiKeyHint: string | null
+  aiReady: boolean
   storageBackend: 'sqlite' | 'supabase'
+  account: { name: string; email: string }
   profile: Profile
+}
+
+export interface Attachment {
+  name: string
+  text: string
+  truncated: boolean
 }
 
 export interface Brain {

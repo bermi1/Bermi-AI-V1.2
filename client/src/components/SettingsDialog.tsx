@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import {
   Check,
   Database,
-  KeyRound,
+  LogOut,
   Monitor,
   Moon,
   Palette,
   Plug,
   Plus,
+  Sparkles,
   Sun,
   Trash2,
   User,
@@ -29,6 +30,7 @@ interface SettingsDialogProps {
   onSelectModel: (id: string) => void
   onModelsChanged: () => void
   onProfileSaved: (profile: Profile) => void
+  onSignOut: () => void
 }
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
@@ -47,6 +49,7 @@ export function SettingsDialog({
   onSelectModel,
   onModelsChanged,
   onProfileSaved,
+  onSignOut,
 }: SettingsDialogProps) {
   const [tab, setTab] = useState<Tab>(initialTab)
 
@@ -106,7 +109,9 @@ export function SettingsDialog({
           >
             <X size={18} />
           </button>
-          {tab === 'profile' && <ProfileTab onProfileSaved={onProfileSaved} />}
+          {tab === 'profile' && (
+            <ProfileTab onProfileSaved={onProfileSaved} onSignOut={onSignOut} />
+          )}
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'models' && (
             <ModelsTab
@@ -135,8 +140,15 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
 
 // ---------------- Profile ----------------
 
-function ProfileTab({ onProfileSaved }: { onProfileSaved: (p: Profile) => void }) {
+function ProfileTab({
+  onProfileSaved,
+  onSignOut,
+}: {
+  onProfileSaved: (p: Profile) => void
+  onSignOut: () => void
+}) {
   const [profile, setProfile] = useState<Profile>({ name: '', role: '', preferences: '' })
+  const [account, setAccount] = useState<{ name: string; email: string } | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -146,6 +158,7 @@ function ProfileTab({ onProfileSaved }: { onProfileSaved: (p: Profile) => void }
       .getSettings()
       .then((s) => {
         setProfile(s.profile)
+        setAccount(s.account)
         setLoaded(true)
       })
       .catch(() => setLoaded(true))
@@ -212,6 +225,22 @@ function ProfileTab({ onProfileSaved }: { onProfileSaved: (p: Profile) => void }
           <button onClick={save} disabled={saving || !loaded} className={primaryBtnCls}>
             {saved ? <Check size={16} /> : saving ? 'Saving…' : 'Save profile'}
           </button>
+        </div>
+
+        <div className="mt-2 border-t border-edge pt-4">
+          <div className="flex items-center justify-between rounded-xl border border-edge bg-surface px-4 py-3">
+            <div>
+              <div className="text-sm font-medium">{account?.name ?? '—'}</div>
+              <div className="text-xs text-ink-faint">{account?.email ?? ''}</div>
+            </div>
+            <button
+              onClick={onSignOut}
+              className="flex items-center gap-1.5 rounded-lg border border-edge px-3 py-1.5 text-[12.5px] font-medium text-ink-muted transition-colors hover:border-red-300 hover:text-red-500"
+            >
+              <LogOut size={13} />
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -459,87 +488,39 @@ function ConnectorsTab() {
 
 function DataTab() {
   const [info, setInfo] = useState<SettingsInfo | null>(null)
-  const [keyInput, setKeyInput] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api.getSettings().then(setInfo).catch(() => {})
   }, [])
 
-  const submitKey = async () => {
-    if (!keyInput.trim()) return
-    setSaving(true)
-    setError(null)
-    try {
-      const next = await api.saveApiKey(keyInput.trim())
-      setInfo((cur) => (cur ? { ...cur, ...next } : cur))
-      setKeyInput('')
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1800)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <div>
-      <SectionTitle
-        title="API & Data"
-        subtitle="Where Bermi's intelligence and memory live."
-      />
+      <SectionTitle title="API & Data" subtitle="Where Bermi's intelligence and memory live." />
 
       <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">
-        OpenRouter API key
+        AI access
       </h4>
-      <p className="mb-2.5 text-[13px] text-ink-muted">
-        Stored server-side only — never sent to the browser. An{' '}
-        <code className="rounded bg-surface-sunken px-1 py-0.5 text-xs">OPENROUTER_API_KEY</code>{' '}
-        environment variable works too.
-      </p>
-      {info?.hasApiKey && (
-        <div className="mb-2.5 flex items-center justify-between rounded-xl border border-edge bg-surface px-3.5 py-2.5">
-          <div className="flex items-center gap-2 text-sm">
-            <KeyRound size={14} className="text-primary" />
-            <span>
-              Key configured{' '}
-              <span className="text-ink-faint">
-                ({info.apiKeyHint}, via {info.apiKeySource === 'env' ? 'environment' : 'settings'})
-              </span>
-            </span>
+      <div className="flex items-center justify-between rounded-xl border border-edge bg-surface px-3.5 py-3">
+        <div className="flex items-center gap-2.5 text-sm">
+          <Sparkles size={15} className="text-primary" />
+          <div>
+            <div className="font-medium">Managed by Bermi</div>
+            <div className="text-xs text-ink-faint">
+              AI is included with your account — no API key needed. All requests run through
+              Bermi's secure server.
+            </div>
           </div>
-          {info.apiKeySource === 'settings' && (
-            <button
-              onClick={() => api.clearApiKey().then((n) => setInfo((c) => (c ? { ...c, ...n } : c)))}
-              className="rounded-lg p-1.5 text-ink-faint hover:text-red-500"
-              aria-label="Remove stored key"
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
         </div>
-      )}
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={keyInput}
-          onChange={(e) => setKeyInput(e.target.value)}
-          placeholder="sk-or-v1-…"
-          className={inputCls}
-          autoComplete="off"
-        />
-        <button
-          onClick={submitKey}
-          disabled={saving || !keyInput.trim()}
-          className={primaryBtnCls + ' shrink-0'}
+        <span
+          className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide ${
+            info?.aiReady
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
+          }`}
         >
-          {saved ? <Check size={16} /> : 'Save'}
-        </button>
+          {info?.aiReady ? 'Active' : 'Pending'}
+        </span>
       </div>
-      {error && <p className="mt-2 text-[13px] text-red-500">{error}</p>}
 
       <h4 className="mb-2 mt-7 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">
         Database
@@ -553,8 +534,8 @@ function DataTab() {
             </div>
             <div className="text-xs text-ink-faint">
               {info?.storageBackend === 'supabase'
-                ? 'Conversations, documents, and brains sync to your Supabase project.'
-                : 'Set SUPABASE_URL and SUPABASE_KEY in the server .env to sync to Supabase.'}
+                ? 'Your conversations, documents, and brains sync to the cloud.'
+                : 'Data is stored on this server. Cloud sync activates when Supabase is reachable.'}
             </div>
           </div>
         </div>
@@ -568,6 +549,11 @@ function DataTab() {
           {info?.storageBackend === 'supabase' ? 'Cloud' : 'Local'}
         </span>
       </div>
+
+      <p className="mt-6 text-xs leading-relaxed text-ink-faint">
+        Every generated document is versioned — nothing is ever silently overwritten. Your
+        brains and profile stay private to your workspace.
+      </p>
     </div>
   )
 }
