@@ -206,6 +206,13 @@ export class SupabaseStorage {
   async deleteSetting(key) {
     await this.#one(this.sb.from(T.settings).delete().eq('key', key))
   }
+  async deleteSettingsByPrefix(prefix) {
+    await this.#one(this.sb.from(T.settings).delete().like('key', `${prefix}%`))
+  }
+  async deleteUser(id) {
+    await this.#one(this.sb.from(T.sessions).delete().eq('user_id', id))
+    await this.#one(this.sb.from(T.users).delete().eq('id', id))
+  }
 
   // --- brains (per user) ---
   async listBrains(userId) {

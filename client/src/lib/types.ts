@@ -126,3 +126,45 @@ export interface GmailMessage {
   date: string
   snippet: string
 }
+
+export interface Trait {
+  trait: string
+  note: string
+}
+
+export interface InsightsReport {
+  period: 'day' | 'week'
+  generated_at: string
+  conversations: number
+  user_turns: number
+  assistant_turns: number
+  productivity_pct: number
+  dependency_pct: number
+  prompt_quality_pct: number
+  prompt_tips: string[]
+  skills: string[]
+  positive_traits: Trait[]
+  negative_traits: Trait[]
+  adaptation: string
+  summary: string
+}
+
+export interface NicheQuestion {
+  id: string
+  q: string
+}
+
+export interface NicheReport {
+  niche: string
+  tagline: string
+  why_you: string
+  audience: string
+  positioning: string
+  content_pillars: string[]
+  first_moves: string[]
+  skills_to_build: string[]
+  monetization: string[]
+  self_improvement: string[]
+  ninety_day_goal: string
+  generated_at?: string
+}

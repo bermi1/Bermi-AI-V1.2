@@ -287,6 +287,13 @@ export class SqliteStorage {
   async deleteSetting(key) {
     this.db.prepare('DELETE FROM settings WHERE key = ?').run(key)
   }
+  async deleteSettingsByPrefix(prefix) {
+    this.db.prepare('DELETE FROM settings WHERE key LIKE ?').run(prefix + '%')
+  }
+  async deleteUser(id) {
+    this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
+    this.db.prepare('DELETE FROM users WHERE id = ?').run(id)
+  }
 
   // --- brains (per user) ---
   async listBrains(userId) {

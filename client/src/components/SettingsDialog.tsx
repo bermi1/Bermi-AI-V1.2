@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Check,
   Database,
+  Download,
   LogOut,
   Monitor,
   Moon,
@@ -548,6 +549,65 @@ function DataTab() {
         >
           {info?.storageBackend === 'supabase' ? 'Cloud' : 'Local'}
         </span>
+      </div>
+
+      <h4 className="mb-2 mt-7 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">
+        Your data — you're in control
+      </h4>
+      <p className="mb-3 text-[13px] text-ink-muted">
+        Everything you create belongs to you. Download a full copy any time, or erase it.
+        Bermi keeps a local cache in this browser so your workspace feels like an installed app.
+      </p>
+      <div className="space-y-2">
+        <a
+          href={api.dataExportUrl()}
+          className="flex items-center justify-between rounded-xl border border-edge bg-surface px-3.5 py-3 transition-colors hover:bg-surface-sunken"
+        >
+          <div className="flex items-center gap-2.5 text-sm">
+            <Download size={15} className="text-primary" />
+            <div>
+              <div className="font-medium">Export my data</div>
+              <div className="text-xs text-ink-faint">
+                All conversations, documents, and knowledge bases as JSON
+              </div>
+            </div>
+          </div>
+          <span className="text-[12px] font-medium text-primary">Download</span>
+        </a>
+        <button
+          onClick={async () => {
+            if (!confirm('Delete all your conversations, documents, and knowledge bases? This cannot be undone.')) return
+            await api.wipeData()
+            location.reload()
+          }}
+          className="flex w-full items-center justify-between rounded-xl border border-edge bg-surface px-3.5 py-3 text-left transition-colors hover:bg-surface-sunken"
+        >
+          <div className="flex items-center gap-2.5 text-sm">
+            <Trash2 size={15} className="text-amber-500" />
+            <div>
+              <div className="font-medium">Clear my content</div>
+              <div className="text-xs text-ink-faint">Erase content but keep your account</div>
+            </div>
+          </div>
+          <span className="text-[12px] font-medium text-amber-600">Clear</span>
+        </button>
+        <button
+          onClick={async () => {
+            if (!confirm('Permanently delete your account and ALL data? This cannot be undone.')) return
+            await api.deleteAccount()
+            location.reload()
+          }}
+          className="flex w-full items-center justify-between rounded-xl border border-red-200 bg-surface px-3.5 py-3 text-left transition-colors hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
+        >
+          <div className="flex items-center gap-2.5 text-sm">
+            <Trash2 size={15} className="text-red-500" />
+            <div>
+              <div className="font-medium text-red-600 dark:text-red-400">Delete my account</div>
+              <div className="text-xs text-ink-faint">Remove everything, permanently</div>
+            </div>
+          </div>
+          <span className="text-[12px] font-medium text-red-600">Delete</span>
+        </button>
       </div>
 
       <p className="mt-6 text-xs leading-relaxed text-ink-faint">

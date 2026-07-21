@@ -9,8 +9,11 @@ import type {
   DocumentVersion,
   GmailMessage,
   InvoiceData,
+  InsightsReport,
   Message,
   ModelOption,
+  NicheQuestion,
+  NicheReport,
   Profile,
   SettingsInfo,
   StudioDoc,
@@ -261,6 +264,48 @@ export const studioDownloadUrl = (id: string, format: StudioFormat, version?: nu
   if (token) params.set('token', token)
   return `/api/studio/${id}/download?${params.toString()}`
 }
+
+// ---------- Insights ----------
+
+export const getInsights = (period: 'day' | 'week') =>
+  apiFetch(`/api/insights?period=${period}`).then((r) => json<{ report: InsightsReport | null }>(r))
+
+export const refreshInsights = (period: 'day' | 'week') =>
+  apiFetch('/api/insights/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ period }),
+  }).then((r) => json<{ report: InsightsReport }>(r))
+
+// ---------- Niche discovery ----------
+
+export const getNicheQuestions = () =>
+  apiFetch('/api/niche/questions').then((r) => json<{ questions: NicheQuestion[] }>(r))
+
+export const getNiche = () =>
+  apiFetch('/api/niche').then((r) => json<{ report: NicheReport | null }>(r))
+
+export const discoverNiche = (answers: Record<string, string>) =>
+  apiFetch('/api/niche/discover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers }),
+  }).then((r) => json<{ report: NicheReport }>(r))
+
+// ---------- Data control ----------
+
+export const dataExportUrl = () => {
+  const token = getSessionToken()
+  return `/api/data/export${token ? `?token=${token}` : ''}`
+}
+
+export const wipeData = () =>
+  apiFetch('/api/data/wipe', { method: 'POST' }).then((r) => json<{ ok: true }>(r))
+
+export const deleteAccount = () =>
+  apiFetch('/api/data/delete-account', { method: 'POST' })
+    .then((r) => json<{ ok: true }>(r))
+    .finally(() => setSessionToken(null))
 
 // ---------- Connectors ----------
 

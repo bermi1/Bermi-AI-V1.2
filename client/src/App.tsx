@@ -9,6 +9,7 @@ import { InvoiceForm } from './components/InvoiceForm'
 import { DocumentEditor } from './components/DocumentEditor'
 import { StudioModal } from './components/StudioModal'
 import { StudioViewer } from './components/StudioViewer'
+import { NicheModal } from './components/NicheModal'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
@@ -99,14 +100,37 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [openStudioId, setOpenStudioId] = useState<string | null>(null)
   const [editingBrain, setEditingBrain] = useState<Brain | null>(null)
   const [newBrainOpen, setNewBrainOpen] = useState(false)
+  const [nicheOpen, setNicheOpen] = useState(false)
 
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Local-first cache: mirror the conversation list into this browser so the
+  // workspace loads instantly and survives offline — the user's data lives
+  // with them, like an installed app.
+  const cacheKey = `bermi-cache-conversations-${user.id}`
   const refreshConversations = useCallback(
-    () => api.listConversations().then(setConversations).catch(() => {}),
-    [],
+    () =>
+      api
+        .listConversations()
+        .then((list) => {
+          setConversations(list)
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(list))
+          } catch {
+            /* quota — ignore */
+          }
+        })
+        .catch(() => {
+          try {
+            const cached = localStorage.getItem(cacheKey)
+            if (cached) setConversations(JSON.parse(cached))
+          } catch {
+            /* ignore */
+          }
+        }),
+    [cacheKey],
   )
   const refreshDocuments = useCallback(
     () => api.listDocuments().then(setDocuments).catch(() => {}),
@@ -383,6 +407,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             onNewChat={newChat}
             onOpenConnectors={() => openSettings('connectors')}
             onOpenProfile={() => openSettings('profile')}
+            onOpenNiche={() => setNicheOpen(true)}
           />
         )}
       </main>
@@ -448,6 +473,8 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
           onSaved={refreshBrains}
         />
       )}
+
+      {nicheOpen && <NicheModal onClose={() => setNicheOpen(false)} onSaved={refreshBrains} />}
     </div>
   )
 }

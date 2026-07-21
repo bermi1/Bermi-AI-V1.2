@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Brain as BrainIcon,
   Building2,
+  Compass,
   Download,
   FileText,
   GraduationCap,
@@ -27,6 +28,7 @@ import type {
 } from '../lib/types'
 import * as api from '../lib/api'
 import { documentPdfUrl, studioDownloadUrl } from '../lib/api'
+import { InsightsPanel } from './InsightsPanel'
 
 interface DashboardPageProps {
   userName: string
@@ -44,6 +46,7 @@ interface DashboardPageProps {
   onNewChat: () => void
   onOpenConnectors: () => void
   onOpenProfile: () => void
+  onOpenNiche: () => void
 }
 
 function timeAgo(iso: string): string {
@@ -74,6 +77,7 @@ export function DashboardPage({
   onNewChat,
   onOpenConnectors,
   onOpenProfile,
+  onOpenNiche,
 }: DashboardPageProps) {
   const [query, setQuery] = useState('')
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -207,6 +211,29 @@ export function DashboardPage({
             </div>
           )}
         </section>
+
+        {/* Interaction health (Insights) */}
+        <InsightsPanel />
+
+        {/* Niche discovery */}
+        <button
+          onClick={onOpenNiche}
+          className="mb-8 flex w-full items-center gap-4 rounded-2xl border border-edge bg-gradient-to-br from-primary-soft/60 to-surface-raised p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+            <Compass size={22} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-semibold tracking-tight">Discover your niche</h2>
+            <p className="text-[13px] text-ink-muted">
+              A guided discovery that finds your focus, audience, content pillars, and a 90-day
+              growth plan — saved so Bermi coaches you toward it.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-white">
+            Start
+          </span>
+        </button>
 
         {/* Documents */}
         <section className="mb-10">
