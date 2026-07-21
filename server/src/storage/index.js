@@ -22,7 +22,7 @@ async function pickStorage() {
       await Promise.race([
         supabase.getSetting('__startup_probe__'),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('probe timeout')), 6000),
+          setTimeout(() => reject(new Error('probe timeout')), 12000),
         ),
       ])
       console.log('Storage backend: Supabase (%s)', new URL(url).hostname)
