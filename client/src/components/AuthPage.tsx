@@ -111,6 +111,22 @@ export function AuthPage({ onAuthed }: AuthPageProps) {
     }
   }
 
+  const continueAsGuest = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.guestLogin()
+      const ok = await onAuthed()
+      if (!ok) {
+        setError('Could not start a guest session. Please try again.')
+        setBusy(false)
+      }
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
   const resend = async () => {
     setError(null)
     try {
@@ -302,7 +318,25 @@ export function AuthPage({ onAuthed }: AuthPageProps) {
           )}
         </p>
 
-        <p className="mt-10 text-center text-xs leading-relaxed text-ink-faint">
+        <div className="mt-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-edge" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+            or
+          </span>
+          <div className="h-px flex-1 bg-edge" />
+        </div>
+        <button
+          onClick={continueAsGuest}
+          disabled={busy}
+          className="mt-4 w-full rounded-xl border border-edge bg-surface-raised px-4 py-2.5 text-[14px] font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
+        >
+          Try it without signing up
+        </button>
+        <p className="mt-2 text-center text-[12px] text-ink-faint">
+          Free guest access for one day — no account needed.
+        </p>
+
+        <p className="mt-8 text-center text-xs leading-relaxed text-ink-faint">
           AI access is included — powered by Bermi's managed models.
           <br />
           By continuing you agree to use Bermi responsibly.

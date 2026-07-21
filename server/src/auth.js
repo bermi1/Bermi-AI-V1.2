@@ -56,14 +56,14 @@ export function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
 }
 
-export async function createSessionFor(userId) {
+export async function createSessionFor(userId, days = SESSION_DAYS) {
   const token = randomBytes(32).toString('hex')
   const now = new Date()
   await storage.createSession({
     token,
     user_id: userId,
     created_at: now.toISOString(),
-    expires_at: new Date(now.getTime() + SESSION_DAYS * 86400_000).toISOString(),
+    expires_at: new Date(now.getTime() + days * 86400_000).toISOString(),
   })
   return token
 }
@@ -74,6 +74,7 @@ export function publicUser(user) {
     name: user.name,
     email: user.email,
     email_verified: Boolean(user.email_verified),
+    is_guest: Boolean(user.is_guest) || String(user.email || '').endsWith('@guest.bermi.ai'),
   }
 }
 

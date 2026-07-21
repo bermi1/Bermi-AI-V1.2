@@ -131,6 +131,14 @@ export const logout = () =>
     .then((r) => json<{ ok: true }>(r))
     .finally(() => setSessionToken(null))
 
+export const guestLogin = () =>
+  apiFetch('/api/auth/guest', { method: 'POST' })
+    .then((r) => json<{ user: AuthUser; token?: string }>(r))
+    .then((res) => {
+      if (res.token) setSessionToken(res.token)
+      return res
+    })
+
 // ---------- File extraction (chat uploads) ----------
 
 export const extractFile = (file: File): Promise<Attachment> => {

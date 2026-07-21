@@ -72,6 +72,7 @@ export interface AuthUser {
   name: string
   email: string
   email_verified: boolean
+  is_guest?: boolean
 }
 
 export interface SettingsInfo {

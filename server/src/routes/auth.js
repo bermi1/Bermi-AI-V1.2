@@ -223,6 +223,32 @@ async function localLogin(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// Guest access — try Bermi for one day without registering.
+// ---------------------------------------------------------------------------
+
+authRouter.post('/auth/guest', async (req, res, next) => {
+  try {
+    const id = randomUUID()
+    const user = {
+      id,
+      name: 'Guest',
+      email: `guest_${id.slice(0, 8)}@guest.bermi.ai`,
+      password_hash: null,
+      email_verified: true,
+      created_at: new Date().toISOString(),
+    }
+    await storage.upsertUser(user)
+    await storage.setSetting(`u:${id}:profile_name`, 'Guest')
+    // Guest sessions last one day, then simply expire.
+    const token = await createSessionFor(id, 1)
+    setSessionCookie(res, token, req)
+    res.status(201).json({ user: publicUser({ ...user, is_guest: true }), token })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Google sign-in (OAuth 2.0 code flow, server-side)
 // ---------------------------------------------------------------------------
 

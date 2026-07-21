@@ -76,7 +76,7 @@ export class SqliteStorage {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
+        password_hash TEXT,
         email_verified INTEGER NOT NULL DEFAULT 0,
         verify_code TEXT,
         verify_expires TEXT,
