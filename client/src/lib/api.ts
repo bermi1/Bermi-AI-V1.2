@@ -13,6 +13,8 @@ import type {
   ModelOption,
   Profile,
   SettingsInfo,
+  StudioDoc,
+  StudioFormat,
 } from './types'
 
 
@@ -211,12 +213,54 @@ export const removeCustomModel = (id: string) =>
 
 export const listBrains = () => apiFetch('/api/brains').then((r) => json<Brain[]>(r))
 
-export const saveBrain = (id: string, content: string, enabled: boolean) =>
+export const saveBrain = (id: string, content: string, enabled: boolean, name?: string) =>
   apiFetch(`/api/brains/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, enabled }),
+    body: JSON.stringify({ content, enabled, name }),
   }).then((r) => json<Brain>(r))
+
+export const createBrain = (name: string, content = '') =>
+  apiFetch('/api/brains', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  }).then((r) => json<Brain>(r))
+
+export const deleteBrain = (id: string) =>
+  apiFetch(`/api/brains/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
+// ---------- Document Studio ----------
+
+export const generateStudioDoc = (input: {
+  title: string
+  prompt: string
+  kind: string
+  format: StudioFormat
+}) =>
+  apiFetch('/api/studio/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((r) => json<StudioDoc>(r))
+
+export const getStudioDoc = (id: string) =>
+  apiFetch(`/api/studio/${id}`).then((r) => json<StudioDoc>(r))
+
+export const updateStudioDoc = (id: string, patch: { markdown?: string; title?: string }) =>
+  apiFetch(`/api/studio/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<StudioDoc>(r))
+
+export const studioDownloadUrl = (id: string, format: StudioFormat, version?: number) => {
+  const params = new URLSearchParams({ format })
+  if (version) params.set('version', String(version))
+  const token = getSessionToken()
+  if (token) params.set('token', token)
+  return `/api/studio/${id}/download?${params.toString()}`
+}
 
 // ---------- Connectors ----------
 

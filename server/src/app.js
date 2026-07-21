@@ -12,7 +12,8 @@ import { documentsRouter } from './routes/documents.js'
 import { extractRouter } from './routes/extract.js'
 import { modelsRouter } from './routes/models.js'
 import { settingsRouter } from './routes/settings.js'
-import { brainsRouter, seedBrains } from './routes/brains.js'
+import { brainsRouter } from './routes/brains.js'
+import { studioRouter } from './routes/studio.js'
 import { connectorsRouter } from './routes/connectors.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -41,6 +42,7 @@ app.use('/api', extractRouter)
 app.use('/api', modelsRouter)
 app.use('/api', settingsRouter)
 app.use('/api', brainsRouter)
+app.use('/api', studioRouter)
 app.use('/api', connectorsRouter)
 
 // Async route errors land here instead of crashing the process.
@@ -57,7 +59,7 @@ if (!process.env.VERCEL && existsSync(clientDist)) {
   app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(join(clientDist, 'index.html')))
 }
 
-// Pre-loaded knowledge (Vibe Coding Instructor) — idempotent.
-await seedBrains()
+// Built-in brains (incl. the Vibe Coding Instructor) are provisioned per user
+// on first access — see routes/brains.js.
 
 export default app

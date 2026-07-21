@@ -59,11 +59,13 @@ export class SqliteStorage {
         value TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS brains (
-        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        id TEXT NOT NULL,
         name TEXT NOT NULL,
         content TEXT NOT NULL DEFAULT '',
         enabled INTEGER NOT NULL DEFAULT 1,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, id)
       );
       CREATE TABLE IF NOT EXISTS connectors (
         provider TEXT PRIMARY KEY,
@@ -286,21 +288,28 @@ export class SqliteStorage {
     this.db.prepare('DELETE FROM settings WHERE key = ?').run(key)
   }
 
-  // --- brains ---
-  async listBrains() {
+  // --- brains (per user) ---
+  async listBrains(userId) {
     return this.db
-      .prepare('SELECT id, name, content, enabled, updated_at FROM brains ORDER BY id')
-      .all()
+      .prepare(
+        'SELECT id, name, content, enabled, updated_at FROM brains WHERE user_id = ? ORDER BY rowid',
+      )
+      .all(userId)
       .map((b) => ({ ...b, enabled: Boolean(b.enabled) }))
   }
-  async upsertBrain({ id, name, content, enabled, updated_at }) {
+  async upsertBrain(userId, { id, name, content, enabled, updated_at }) {
     this.db
       .prepare(
-        `INSERT INTO brains (id, name, content, enabled, updated_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, content = excluded.content,
+        `INSERT INTO brains (user_id, id, name, content, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, id) DO UPDATE SET name = excluded.name, content = excluded.content,
            enabled = excluded.enabled, updated_at = excluded.updated_at`,
       )
-      .run(id, name, content, enabled ? 1 : 0, updated_at)
+      .run(userId, id, name, content, enabled ? 1 : 0, updated_at)
+  }
+  async deleteBrain(userId, id) {
+    return (
+      this.db.prepare('DELETE FROM brains WHERE user_id = ? AND id = ?').run(userId, id).changes > 0
+    )
   }
 
   // --- connectors ---

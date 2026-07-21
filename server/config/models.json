@@ -1,32 +1,42 @@
 [
   {
-    "id": "anthropic/claude-sonnet-4.5",
-    "label": "Claude Sonnet 4.5",
-    "description": "Strong all-round model, great at writing and code"
+    "id": "bermi-core",
+    "label": "Bermi Core",
+    "description": "Balanced assistant for everyday work — writing, analysis, Q&A",
+    "models": [
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "google/gemini-2.0-flash-exp:free",
+      "meta-llama/llama-3.3-70b-instruct"
+    ]
   },
   {
-    "id": "anthropic/claude-haiku-4.5",
-    "label": "Claude Haiku 4.5",
-    "description": "Fast and inexpensive"
+    "id": "bermi-coder",
+    "label": "Bermi Coder",
+    "description": "Tuned for code and vibe coding — builds, debugs, explains",
+    "models": [
+      "qwen/qwen-2.5-coder-32b-instruct:free",
+      "deepseek/deepseek-chat-v3-0324:free",
+      "qwen/qwen-2.5-coder-32b-instruct"
+    ]
   },
   {
-    "id": "openai/gpt-4o",
-    "label": "GPT-4o",
-    "description": "OpenAI flagship multimodal model"
+    "id": "bermi-fast",
+    "label": "Bermi Fast",
+    "description": "Quick replies with long context for everyday chat",
+    "models": [
+      "google/gemini-2.0-flash-exp:free",
+      "meta-llama/llama-3.2-3b-instruct:free",
+      "google/gemini-flash-1.5-8b"
+    ]
   },
   {
-    "id": "openai/gpt-4o-mini",
-    "label": "GPT-4o mini",
-    "description": "Small, fast OpenAI model"
-  },
-  {
-    "id": "google/gemini-2.5-flash",
-    "label": "Gemini 2.5 Flash",
-    "description": "Fast Google model with long context"
-  },
-  {
-    "id": "meta-llama/llama-3.3-70b-instruct",
-    "label": "Llama 3.3 70B",
-    "description": "Open-weights generalist"
+    "id": "bermi-reason",
+    "label": "Bermi Reason",
+    "description": "Deeper step-by-step reasoning for hard problems",
+    "models": [
+      "deepseek/deepseek-r1:free",
+      "deepseek/deepseek-r1-0528:free",
+      "deepseek/deepseek-chat-v3-0324:free"
+    ]
   }
 ]

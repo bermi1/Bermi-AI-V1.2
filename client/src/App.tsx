@@ -7,6 +7,8 @@ import { DashboardPage } from './components/DashboardPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { InvoiceForm } from './components/InvoiceForm'
 import { DocumentEditor } from './components/DocumentEditor'
+import { StudioModal } from './components/StudioModal'
+import { StudioViewer } from './components/StudioViewer'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
@@ -92,8 +94,11 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'profile' | 'connectors'>('profile')
   const [invoiceFormOpen, setInvoiceFormOpen] = useState(false)
+  const [studioOpen, setStudioOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  const [openStudioId, setOpenStudioId] = useState<string | null>(null)
   const [editingBrain, setEditingBrain] = useState<Brain | null>(null)
+  const [newBrainOpen, setNewBrainOpen] = useState(false)
 
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
@@ -364,13 +369,20 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             brains={brains}
             conversations={conversations}
             onNewInvoice={() => setInvoiceFormOpen(true)}
-            onOpenDocument={setOpenDocId}
+            onNewStudio={() => setStudioOpen(true)}
+            onOpenDocument={(id) => {
+              const doc = documents.find((d) => d.id === id)
+              if (doc?.type === 'studio') setOpenStudioId(id)
+              else setOpenDocId(id)
+            }}
             onDeleteDocument={deleteDocument}
             onEditBrain={setEditingBrain}
+            onNewBrain={() => setNewBrainOpen(true)}
             onRefreshBrains={refreshBrains}
             onOpenConversation={selectConversation}
             onNewChat={newChat}
             onOpenConnectors={() => openSettings('connectors')}
+            onOpenProfile={() => openSettings('profile')}
           />
         )}
       </main>
@@ -408,10 +420,31 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         />
       )}
 
-      {editingBrain && (
+      {studioOpen && (
+        <StudioModal
+          onClose={() => setStudioOpen(false)}
+          onSaved={() => {
+            refreshDocuments()
+            setView('dashboard')
+          }}
+        />
+      )}
+
+      {openStudioId && (
+        <StudioViewer
+          documentId={openStudioId}
+          onClose={() => setOpenStudioId(null)}
+          onSaved={refreshDocuments}
+        />
+      )}
+
+      {(editingBrain || newBrainOpen) && (
         <BrainEditor
           brain={editingBrain}
-          onClose={() => setEditingBrain(null)}
+          onClose={() => {
+            setEditingBrain(null)
+            setNewBrainOpen(false)
+          }}
           onSaved={refreshBrains}
         />
       )}

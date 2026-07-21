@@ -1,4 +1,5 @@
 import { storage } from './storage/index.js'
+import { resolveModelChain } from './models.js'
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
@@ -62,18 +63,24 @@ export async function streamCompletion({ model, messages, signal }) {
     err.status = 401
     throw err
   }
-  const res = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: headers(key),
-    body: JSON.stringify({ model, messages, stream: true }),
-    signal,
-  })
-  if (!res.ok) {
-    const err = new Error(await errorDetail(res))
-    err.status = res.status
-    throw err
+  // A Bermi model resolves to a free-first fallback chain; try each until one
+  // is available (free models are frequently rate-limited or rotated).
+  const chain = await resolveModelChain(model)
+  let lastErr
+  for (const realModel of chain) {
+    const res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: headers(key),
+      body: JSON.stringify({ model: realModel, messages, stream: true }),
+      signal,
+    })
+    if (res.ok) return res
+    lastErr = new Error(await errorDetail(res))
+    lastErr.status = res.status
+    // 400/404 = model unavailable, 429 = rate limited → try the next.
+    if (![400, 404, 429, 502, 503].includes(res.status)) break
   }
-  return res
+  throw lastErr ?? new Error('No model available')
 }
 
 /**
@@ -84,16 +91,22 @@ export async function streamCompletion({ model, messages, signal }) {
 export async function complete({ model, messages, maxTokens = 1024 }) {
   const { key } = await resolveApiKey()
   if (!key) return null
-  const res = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: headers(key),
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
-  })
-  if (!res.ok) {
-    throw new Error(await errorDetail(res))
+  const chain = await resolveModelChain(model)
+  let lastErr
+  for (const realModel of chain) {
+    const res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: headers(key),
+      body: JSON.stringify({ model: realModel, messages, max_tokens: maxTokens }),
+    })
+    if (res.ok) {
+      const body = await res.json()
+      return body.choices?.[0]?.message?.content ?? null
+    }
+    lastErr = new Error(await errorDetail(res))
+    if (![400, 404, 429, 502, 503].includes(res.status)) break
   }
-  const body = await res.json()
-  return body.choices?.[0]?.message?.content ?? null
+  throw lastErr ?? new Error('No model available')
 }
 
 /** Live model listing from OpenRouter, used to augment the configured list. */

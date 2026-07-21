@@ -207,12 +207,18 @@ export class SupabaseStorage {
     await this.#one(this.sb.from(T.settings).delete().eq('key', key))
   }
 
-  // --- brains ---
-  async listBrains() {
-    return this.#one(this.sb.from(T.brains).select('*').order('id'))
+  // --- brains (per user) ---
+  async listBrains(userId) {
+    return this.#one(
+      this.sb.from(T.brains).select('id, name, content, enabled, updated_at').eq('user_id', userId),
+    )
   }
-  async upsertBrain(brain) {
-    await this.#one(this.sb.from(T.brains).upsert(brain))
+  async upsertBrain(userId, brain) {
+    await this.#one(this.sb.from(T.brains).upsert({ user_id: userId, ...brain }))
+  }
+  async deleteBrain(userId, id) {
+    await this.#one(this.sb.from(T.brains).delete().eq('user_id', userId).eq('id', id))
+    return true
   }
 
   // --- connectors ---

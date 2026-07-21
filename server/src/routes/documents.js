@@ -7,7 +7,7 @@ import { htmlToPdf } from '../pdf.js'
 
 export const documentsRouter = Router()
 
-const DRAFT_MODEL = process.env.DRAFT_MODEL || 'anthropic/claude-haiku-4.5'
+const DRAFT_MODEL = process.env.DRAFT_MODEL || 'bermi-core'
 
 function docSummary(row) {
   return {

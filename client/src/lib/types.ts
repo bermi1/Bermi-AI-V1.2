@@ -44,7 +44,7 @@ export interface InvoiceData {
 
 export interface DocumentSummary {
   id: string
-  type: 'invoice'
+  type: 'invoice' | 'studio'
   title: string
   status: 'draft' | 'final'
   version: number
@@ -89,11 +89,25 @@ export interface Attachment {
 }
 
 export interface Brain {
-  id: 'company' | 'personal' | 'vibecoding'
+  id: string
   name: string
   content: string
   enabled: boolean
   updated_at: string | null
+  builtin?: boolean
+}
+
+export type StudioFormat = 'pdf' | 'docx' | 'pptx'
+
+export interface StudioDoc {
+  id: string
+  type: 'studio'
+  title: string
+  status: string
+  version: number
+  created_at: string
+  updated_at: string
+  data: { title: string; kind: string; format: StudioFormat; markdown: string }
 }
 
 export interface Connector {

@@ -1,22 +1,22 @@
 import { useRef, useState } from 'react'
-import { Building2, GraduationCap, Loader2, RotateCcw, Upload, User } from 'lucide-react'
-import { Modal, ghostBtnCls, inputCls, primaryBtnCls } from './Modal'
-import { extractFile, resetVibeBrain, saveBrain } from '../lib/api'
+import { Brain as BrainIcon, Building2, GraduationCap, Loader2, RotateCcw, Trash2, Upload, User } from 'lucide-react'
+import { Modal, ghostBtnCls, inputCls, labelCls, primaryBtnCls } from './Modal'
+import { createBrain, deleteBrain, extractFile, resetVibeBrain, saveBrain } from '../lib/api'
 import type { Brain } from '../lib/types'
 
 interface BrainEditorProps {
-  brain: Brain
+  brain: Brain | null // null = create a new knowledge base
   onClose: () => void
   onSaved: () => void
 }
 
-const ICONS: Record<Brain['id'], typeof Building2> = {
+const ICONS: Record<string, typeof Building2> = {
   company: Building2,
   personal: User,
   vibecoding: GraduationCap,
 }
 
-const PLACEHOLDERS: Record<Brain['id'], string> = {
+const PLACEHOLDERS: Record<string, string> = {
   company:
     'Everything Bermi should know about your company:\n\n' +
     '• Company name, what you do, who your clients are\n' +
@@ -38,20 +38,46 @@ const PLACEHOLDERS: Record<Brain['id'], string> = {
 const ACCEPT = '.txt,.md,.markdown,.csv,.json,.xml,.yml,.yaml,.log,.pdf,.docx'
 
 export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
-  const [content, setContent] = useState(brain.content)
-  const [enabled, setEnabled] = useState(brain.enabled)
+  const isNew = brain === null
+  const [name, setName] = useState(brain?.name ?? '')
+  const [content, setContent] = useState(brain?.content ?? '')
+  const [enabled, setEnabled] = useState(brain?.enabled ?? true)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const Icon = ICONS[brain.id] ?? Building2
+  const builtin = brain?.builtin
+  const Icon = isNew ? BrainIcon : ICONS[brain.id] ?? BrainIcon
 
   const save = async () => {
+    if (isNew && !name.trim()) {
+      setError('Give your knowledge base a name')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      await saveBrain(brain.id, content, enabled)
+      if (isNew) {
+        const created = await createBrain(name.trim(), content)
+        // Persist the enabled flag if the user toggled it off before saving.
+        if (!enabled) await saveBrain(created.id, content, false, name.trim())
+      } else {
+        await saveBrain(brain.id, content, enabled, builtin ? undefined : name.trim() || brain.name)
+      }
+      onSaved()
+      onClose()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    if (isNew || builtin) return
+    setBusy(true)
+    try {
+      await deleteBrain(brain.id)
       onSaved()
       onClose()
     } catch (e) {
@@ -95,12 +121,23 @@ export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
 
   return (
     <Modal
-      title={brain.name}
+      title={isNew ? 'New knowledge base' : brain.name}
       subtitle="Persistent knowledge, injected into every conversation while enabled"
       onClose={onClose}
       wide
     >
       <div className="space-y-4">
+        {(isNew || !builtin) && (
+          <div>
+            <label className={labelCls}>Name</label>
+            <input
+              className={inputCls}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Product knowledge, Legal notes, Client history"
+            />
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-xl border border-edge bg-surface px-3.5 py-2.5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary">
@@ -114,7 +151,7 @@ export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
             onClick={() => setEnabled((v) => !v)}
             role="switch"
             aria-checked={enabled}
-            aria-label={`Toggle ${brain.name}`}
+            aria-label={`Toggle ${brain?.name ?? 'knowledge base'}`}
             className={`relative h-5 w-9 rounded-full transition-colors ${
               enabled ? 'bg-primary' : 'bg-edge-strong'
             }`}
@@ -151,7 +188,7 @@ export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
           <span className="text-[11.5px] text-ink-faint">
             .txt, .md, .csv, .json, .docx, .pdf — text is extracted and appended below
           </span>
-          {brain.id === 'vibecoding' && (
+          {brain?.id === 'vibecoding' && (
             <button
               onClick={restoreDefault}
               disabled={busy}
@@ -167,7 +204,7 @@ export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder={PLACEHOLDERS[brain.id]}
+          placeholder={isNew ? 'Paste or type anything Bermi should know, or add files above.' : PLACEHOLDERS[brain.id] ?? 'Add knowledge here, or upload files above.'}
           className={inputCls + ' min-h-[300px] resize-y font-mono text-[13px] leading-relaxed'}
         />
 
@@ -176,6 +213,16 @@ export function BrainEditor({ brain, onClose, onSaved }: BrainEditorProps) {
             {content.trim() ? `${content.trim().split(/\s+/).length} words` : 'Empty'}
           </span>
           <div className="flex gap-2">
+            {!isNew && !builtin && (
+              <button
+                onClick={remove}
+                disabled={busy}
+                className={ghostBtnCls + ' flex items-center gap-1.5 text-red-500'}
+              >
+                <Trash2 size={13} />
+                Delete
+              </button>
+            )}
             <button onClick={onClose} className={ghostBtnCls} disabled={busy}>
               Cancel
             </button>

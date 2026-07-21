@@ -28,7 +28,7 @@ async function buildSystemPrompt(userId) {
   if (prefs) personal.push(`Preferences for how you should respond: ${prefs}`)
   if (personal.length) parts.push(`# About the user\n${personal.join('\n')}`)
 
-  const brains = await storage.listBrains()
+  const brains = await storage.listBrains(userId)
   for (const brain of brains) {
     if (brain.enabled && brain.content?.trim()) {
       // Cap each brain's contribution so an oversized knowledge base cannot
