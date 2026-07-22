@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
 import { streamCompletion } from '../openrouter.js'
+import { STUDY_PROMPT, awardStudy } from '../study.js'
 
 export const chatRouter = Router()
 
@@ -14,8 +15,8 @@ const BASE_PROMPT =
  * and personal brains are persistent knowledge stores the user curates; they
  * ride along on every request since the LLM API is stateless.
  */
-async function buildSystemPrompt(userId) {
-  const parts = [BASE_PROMPT]
+async function buildSystemPrompt(userId, study = false) {
+  const parts = [study ? STUDY_PROMPT : BASE_PROMPT]
 
   const [name, role, prefs] = await Promise.all([
     storage.getSetting(`u:${userId}:profile_name`),
@@ -52,7 +53,7 @@ function sse(res, payload) {
  */
 chatRouter.post('/chat', async (req, res, next) => {
   try {
-    const { conversationId, message, model, web = false } = req.body ?? {}
+    const { conversationId, message, model, web = false, study = false } = req.body ?? {}
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required' })
     }
@@ -89,7 +90,7 @@ chatRouter.post('/chat', async (req, res, next) => {
     })
 
     const [systemPrompt, history] = await Promise.all([
-      buildSystemPrompt(req.user.id),
+      buildSystemPrompt(req.user.id, study),
       storage.listMessages(conversation.id),
     ])
 
@@ -110,9 +111,11 @@ chatRouter.post('/chat', async (req, res, next) => {
     // Show the "triangulating" work Bermi does before answering — a visible
     // think/search/synthesize loop. With web search on, the steps are real
     // phases of the grounded request.
-    const steps = web
-      ? ['Understanding your request', 'Searching the web', 'Reading sources', 'Synthesizing an answer']
-      : ['Understanding your request', 'Reasoning through it', 'Composing an answer']
+    const steps = study
+      ? ['Assessing what you know', 'Planning the lesson', 'Preparing your next step']
+      : web
+        ? ['Understanding your request', 'Searching the web', 'Reading sources', 'Synthesizing an answer']
+        : ['Understanding your request', 'Reasoning through it', 'Composing an answer']
     for (const label of steps) sse(res, { type: 'status', label })
 
     let assistantText = ''
@@ -196,6 +199,16 @@ chatRouter.post('/chat', async (req, res, next) => {
         created_at: doneAt,
       })
       await storage.updateConversation(conversation.id, { updated_at: doneAt })
+
+      // Gamify study sessions: award XP, update streaks/badges, and tell the UI.
+      if (study) {
+        try {
+          const result = await awardStudy(req.user.id, conversation.title)
+          sse(res, { type: 'study', ...result })
+        } catch {
+          /* non-fatal */
+        }
+      }
     }
 
     res.write('data: [DONE]\n\n')

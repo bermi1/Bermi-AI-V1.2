@@ -13,8 +13,10 @@ import { NicheModal } from './components/NicheModal'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
+import { StudyHud, StudyToast } from './components/StudyHud'
 import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
+import type { StudyAwardEvent } from './lib/api'
 import type {
   AuthUser,
   Brain,
@@ -22,6 +24,7 @@ import type {
   DocumentSummary,
   Message,
   ModelOption,
+  StudyStats,
 } from './lib/types'
 
 const isDesktop = () => window.matchMedia('(min-width: 768px)').matches
@@ -103,6 +106,9 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [nicheOpen, setNicheOpen] = useState(false)
 
   const [chatStatus, setChatStatus] = useState<string | null>(null)
+  const [study, setStudy] = useState(() => localStorage.getItem('bermi-study') === '1')
+  const [studyStats, setStudyStats] = useState<StudyStats | null>(null)
+  const [studyToast, setStudyToast] = useState<StudyAwardEvent | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -178,6 +184,11 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
     if (selectedModel) localStorage.setItem('bermi-model', selectedModel)
   }, [selectedModel])
 
+  useEffect(() => {
+    localStorage.setItem('bermi-study', study ? '1' : '0')
+    if (study && !studyStats) api.getStudyStats().then(setStudyStats).catch(() => {})
+  }, [study, studyStats])
+
   const selectConversation = useCallback((id: string) => {
     abortRef.current?.abort()
     setView('chat')
@@ -211,7 +222,8 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   )
 
   const send = useCallback(
-    (text: string, web = false) => {
+    (text: string, opts: { web?: boolean; study?: boolean } = {}) => {
+      const { web = false, study: studyReq = false } = opts
       setChatError(null)
       setChatStatus(null)
       const now = new Date().toISOString()
@@ -235,13 +247,18 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
       abortRef.current = abort
 
       api.streamChat(
-        { conversationId: activeId, message: text, model: selectedModel, web },
+        { conversationId: activeId, message: text, model: selectedModel, web, study: studyReq },
         {
           onConversation: (conversation) => {
             setActiveId(conversation.id)
             refreshConversations()
           },
           onStatus: (label) => setChatStatus(label),
+          onStudy: (award) => {
+            setStudyStats(award.stats)
+            setStudyToast(award)
+            setTimeout(() => setStudyToast(null), 4000)
+          },
           onToken: (token) => {
             setChatStatus(null)
             setMessages((prev) => {
@@ -391,6 +408,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
 
         {view === 'chat' ? (
           <>
+            {study && studyStats && <StudyHud stats={studyStats} />}
             <ChatPanel
               messages={messages}
               streaming={streaming}
@@ -405,6 +423,8 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               onSend={send}
               onStop={stop}
               streaming={streaming}
+              study={study}
+              onToggleStudy={setStudy}
             />
           </>
         ) : (
@@ -429,6 +449,11 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             onOpenConnectors={() => openSettings('connectors')}
             onOpenProfile={() => openSettings('profile')}
             onOpenNiche={() => setNicheOpen(true)}
+            onStartStudy={() => {
+              setStudy(true)
+              setView('chat')
+              if (!activeId) newChat()
+            }}
           />
         )}
       </main>
@@ -496,6 +521,15 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
       )}
 
       {nicheOpen && <NicheModal onClose={() => setNicheOpen(false)} onSaved={refreshBrains} />}
+
+      {studyToast && (
+        <StudyToast
+          gained={studyToast.gained}
+          leveledUp={studyToast.leveledUp}
+          level={studyToast.stats.level}
+          badges={studyToast.newBadges}
+        />
+      )}
     </div>
   )
 }

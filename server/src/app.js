@@ -15,6 +15,7 @@ import { settingsRouter } from './routes/settings.js'
 import { brainsRouter } from './routes/brains.js'
 import { studioRouter } from './routes/studio.js'
 import { insightsRouter } from './routes/insights.js'
+import { studyStatsRouter } from './routes/study.js'
 import { nicheRouter } from './routes/niche.js'
 import { dataRouter } from './routes/data.js'
 import { connectorsRouter } from './routes/connectors.js'
@@ -47,6 +48,7 @@ app.use('/api', settingsRouter)
 app.use('/api', brainsRouter)
 app.use('/api', studioRouter)
 app.use('/api', insightsRouter)
+app.use('/api', studyStatsRouter)
 app.use('/api', nicheRouter)
 app.use('/api', dataRouter)
 app.use('/api', connectorsRouter)

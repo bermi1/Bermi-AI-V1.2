@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, FileText, Globe, Loader2, Paperclip, Square, X } from 'lucide-react'
+import {
+  ArrowUp,
+  ChevronDown,
+  FileText,
+  Globe,
+  GraduationCap,
+  Loader2,
+  Paperclip,
+  Square,
+  X,
+} from 'lucide-react'
 import type { Attachment, ModelOption } from '../lib/types'
 import { extractFile } from '../lib/api'
 
@@ -7,9 +17,11 @@ interface InputBarProps {
   models: ModelOption[]
   selectedModel: string
   onSelectModel: (id: string) => void
-  onSend: (text: string, web: boolean) => void
+  onSend: (text: string, opts: { web: boolean; study: boolean }) => void
   onStop: () => void
   streaming: boolean
+  study: boolean
+  onToggleStudy: (v: boolean) => void
 }
 
 const ACCEPT = '.txt,.md,.markdown,.csv,.json,.xml,.yml,.yaml,.log,.pdf,text/plain,application/pdf'
@@ -30,6 +42,8 @@ export function InputBar({
   onSend,
   onStop,
   streaming,
+  study,
+  onToggleStudy,
 }: InputBarProps) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -76,7 +90,10 @@ export function InputBar({
   const submit = () => {
     const trimmed = text.trim()
     if ((!trimmed && attachments.length === 0) || streaming || uploading) return
-    onSend(composeMessage(trimmed || 'Please review the attached file.', attachments), web)
+    onSend(composeMessage(trimmed || 'Please review the attached file.', attachments), {
+      web,
+      study,
+    })
     setText('')
     setAttachments([])
   }
@@ -84,7 +101,17 @@ export function InputBar({
   return (
     <div className="sticky bottom-0 bg-gradient-to-t from-surface via-surface to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 md:px-6 md:pb-6">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="rounded-2xl border border-edge bg-surface-raised shadow-[0_2px_16px_rgba(0,0,0,0.06)] focus-within:border-primary/40">
+        {study && (
+          <div className="mb-2 flex items-center justify-center gap-2 rounded-xl bg-primary-soft px-3 py-1.5 text-[12.5px] font-medium text-primary">
+            <GraduationCap size={14} />
+            Study Mode on — Bermi will teach you step by step and you'll earn XP.
+          </div>
+        )}
+        <div
+          className={`rounded-2xl border bg-surface-raised shadow-[0_2px_16px_rgba(0,0,0,0.06)] focus-within:border-primary/40 ${
+            study ? 'border-primary/50' : 'border-edge'
+          }`}
+        >
           {(attachments.length > 0 || uploading || uploadError) && (
             <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
               {attachments.map((a, i) => (
@@ -162,6 +189,19 @@ export function InputBar({
               >
                 <Globe size={16} />
                 <span className="hidden sm:inline">Search</span>
+              </button>
+              <button
+                onClick={() => onToggleStudy(!study)}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+                  study
+                    ? 'bg-primary text-white'
+                    : 'text-ink-faint hover:bg-surface-sunken hover:text-ink-muted'
+                }`}
+                title="Study Mode — learn step by step and earn XP"
+                aria-pressed={study}
+              >
+                <GraduationCap size={16} />
+                <span className="hidden sm:inline">Study</span>
               </button>
               <div className="relative" ref={pickerRef}>
                 <button

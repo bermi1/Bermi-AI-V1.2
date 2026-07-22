@@ -29,6 +29,7 @@ import type {
 import * as api from '../lib/api'
 import { documentPdfUrl, studioDownloadUrl } from '../lib/api'
 import { InsightsPanel } from './InsightsPanel'
+import { StudyPanel } from './StudyPanel'
 
 interface DashboardPageProps {
   userName: string
@@ -47,6 +48,7 @@ interface DashboardPageProps {
   onOpenConnectors: () => void
   onOpenProfile: () => void
   onOpenNiche: () => void
+  onStartStudy: () => void
 }
 
 function timeAgo(iso: string): string {
@@ -78,6 +80,7 @@ export function DashboardPage({
   onOpenConnectors,
   onOpenProfile,
   onOpenNiche,
+  onStartStudy,
 }: DashboardPageProps) {
   const [query, setQuery] = useState('')
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -211,6 +214,9 @@ export function DashboardPage({
             </div>
           )}
         </section>
+
+        {/* Study Mode */}
+        <StudyPanel onStartStudy={onStartStudy} />
 
         {/* Interaction health (Insights) */}
         <InsightsPanel />

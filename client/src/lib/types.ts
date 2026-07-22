@@ -154,6 +154,26 @@ export interface NicheQuestion {
   q: string
 }
 
+export interface StudyStats {
+  xp: number
+  level: number
+  streak: number
+  sessions: number
+  topic_count: number
+  xp_into_level: number
+  xp_for_level: number
+  badges: string[]
+  badges_detailed?: { id: string; label: string }[]
+  topic_list?: { topic: string; count: number }[]
+}
+
+export interface StudyAward {
+  stats: StudyStats
+  gained: number
+  leveledUp: boolean
+  newBadges: { id: string; label: string }[]
+}
+
 export interface NicheReport {
   niche: string
   tagline: string

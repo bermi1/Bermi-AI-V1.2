@@ -18,6 +18,7 @@ import type {
   SettingsInfo,
   StudioDoc,
   StudioFormat,
+  StudyStats,
 } from './types'
 
 
@@ -277,6 +278,11 @@ export const refreshInsights = (period: 'day' | 'week') =>
     body: JSON.stringify({ period }),
   }).then((r) => json<{ report: InsightsReport }>(r))
 
+// ---------- Study mode ----------
+
+export const getStudyStats = () =>
+  apiFetch('/api/study/stats').then((r) => json<StudyStats>(r))
+
 // ---------- Niche discovery ----------
 
 export const getNicheQuestions = () =>
@@ -336,11 +342,19 @@ export interface Citation {
   title: string
 }
 
+export interface StudyAwardEvent {
+  stats: import('./types').StudyStats
+  gained: number
+  leveledUp: boolean
+  newBadges: { id: string; label: string }[]
+}
+
 export interface ChatStreamCallbacks {
   onConversation: (conversation: Conversation) => void
   onToken: (token: string) => void
   onStatus?: (label: string | null) => void
   onCitations?: (items: Citation[]) => void
+  onStudy?: (award: StudyAwardEvent) => void
   onDone: (fullText: string) => void
   onError: (message: string) => void
 }
@@ -351,7 +365,13 @@ export interface ChatStreamCallbacks {
  * API itself is stateless).
  */
 export async function streamChat(
-  params: { conversationId: string | null; message: string; model: string; web?: boolean },
+  params: {
+    conversationId: string | null
+    message: string
+    model: string
+    web?: boolean
+    study?: boolean
+  },
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -400,6 +420,10 @@ export async function streamChat(
           error?: string
           label?: string | null
           items?: Citation[]
+          stats?: StudyAwardEvent['stats']
+          gained?: number
+          leveledUp?: boolean
+          newBadges?: { id: string; label: string }[]
         }
         try {
           parsed = JSON.parse(payload)
@@ -412,6 +436,13 @@ export async function streamChat(
           callbacks.onStatus?.(parsed.label ?? null)
         } else if (parsed.type === 'citations' && parsed.items) {
           callbacks.onCitations?.(parsed.items)
+        } else if (parsed.type === 'study' && parsed.stats) {
+          callbacks.onStudy?.({
+            stats: parsed.stats,
+            gained: parsed.gained ?? 0,
+            leveledUp: Boolean(parsed.leveledUp),
+            newBadges: parsed.newBadges ?? [],
+          })
         } else if (parsed.type === 'token' && parsed.token != null) {
           full += parsed.token
           callbacks.onToken(parsed.token)
