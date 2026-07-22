@@ -11,6 +11,11 @@ const T = {
   settings: 'bermi_settings',
   brains: 'bermi_brains',
   connectors: 'bermi_connectors',
+  institutions: 'bermi_institutions',
+  courses: 'bermi_courses',
+  lessons: 'bermi_lessons',
+  enrollments: 'bermi_enrollments',
+  certificates: 'bermi_certificates',
 }
 
 /**
@@ -244,5 +249,101 @@ export class SupabaseStorage {
   async deleteConnector(provider) {
     await this.#one(this.sb.from(T.connectors).delete().eq('provider', provider))
     return true
+  }
+
+  // --- LMS (Bermi Learn) ---
+  async #first(q) {
+    const rows = await this.#one(q.limit(1))
+    return rows[0] ?? null
+  }
+  async createInstitution(r) {
+    await this.#one(this.sb.from(T.institutions).insert(r))
+    return this.getInstitution(r.id)
+  }
+  getInstitution(id) {
+    return this.#first(this.sb.from(T.institutions).select('*').eq('id', id))
+  }
+  getInstitutionBySlug(slug) {
+    return this.#first(this.sb.from(T.institutions).select('*').eq('slug', slug))
+  }
+  listInstitutionsByOwner(ownerId) {
+    return this.#one(this.sb.from(T.institutions).select('*').eq('owner_id', ownerId).order('created_at', { ascending: false }))
+  }
+  listPublishedInstitutions() {
+    return this.#one(this.sb.from(T.institutions).select('*').eq('published', true).order('created_at', { ascending: false }))
+  }
+  async updateInstitution(id, patch) {
+    await this.#one(this.sb.from(T.institutions).update(patch).eq('id', id))
+    return this.getInstitution(id)
+  }
+
+  async createCourse(r) {
+    await this.#one(this.sb.from(T.courses).insert(r))
+    return this.getCourse(r.id)
+  }
+  getCourse(id) {
+    return this.#first(this.sb.from(T.courses).select('*').eq('id', id))
+  }
+  listCoursesByInstitution(institutionId) {
+    return this.#one(this.sb.from(T.courses).select('*').eq('institution_id', institutionId).order('created_at', { ascending: false }))
+  }
+  listPublishedCourses() {
+    return this.#one(this.sb.from(T.courses).select('*').eq('published', true).order('updated_at', { ascending: false }))
+  }
+  async updateCourse(id, patch) {
+    await this.#one(this.sb.from(T.courses).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id))
+    return this.getCourse(id)
+  }
+  async deleteCourse(id) {
+    await this.#one(this.sb.from(T.lessons).delete().eq('course_id', id))
+    await this.#one(this.sb.from(T.enrollments).delete().eq('course_id', id))
+    await this.#one(this.sb.from(T.courses).delete().eq('id', id))
+    return true
+  }
+
+  async createLesson(r) {
+    await this.#one(this.sb.from(T.lessons).insert(r))
+    return this.getLesson(r.id)
+  }
+  getLesson(id) {
+    return this.#first(this.sb.from(T.lessons).select('*').eq('id', id))
+  }
+  listLessons(courseId) {
+    return this.#one(this.sb.from(T.lessons).select('*').eq('course_id', courseId).order('ordinal', { ascending: true }))
+  }
+  async updateLesson(id, patch) {
+    await this.#one(this.sb.from(T.lessons).update(patch).eq('id', id))
+    return this.getLesson(id)
+  }
+  async deleteLesson(id) {
+    await this.#one(this.sb.from(T.lessons).delete().eq('id', id))
+    return true
+  }
+
+  async createEnrollment(r) {
+    await this.#one(this.sb.from(T.enrollments).insert(r))
+    return this.getEnrollment(r.course_id, r.user_id)
+  }
+  getEnrollment(courseId, userId) {
+    return this.#first(this.sb.from(T.enrollments).select('*').eq('course_id', courseId).eq('user_id', userId))
+  }
+  listEnrollmentsByUser(userId) {
+    return this.#one(this.sb.from(T.enrollments).select('*').eq('user_id', userId).order('enrolled_at', { ascending: false }))
+  }
+  listEnrollmentsByCourse(courseId) {
+    return this.#one(this.sb.from(T.enrollments).select('*').eq('course_id', courseId).order('enrolled_at', { ascending: false }))
+  }
+  async updateEnrollment(id, patch) {
+    await this.#one(this.sb.from(T.enrollments).update(patch).eq('id', id))
+    const rows = await this.#one(this.sb.from(T.enrollments).select('*').eq('id', id).limit(1))
+    return rows[0] ?? null
+  }
+
+  async createCertificate(r) {
+    await this.#one(this.sb.from(T.certificates).upsert(r))
+    return this.getCertificate(r.code)
+  }
+  getCertificate(code) {
+    return this.#first(this.sb.from(T.certificates).select('*').eq('code', code))
   }
 }

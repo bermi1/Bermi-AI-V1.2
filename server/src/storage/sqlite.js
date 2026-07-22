@@ -90,6 +90,34 @@ export class SqliteStorage {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         expires_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS institutions (
+        id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE, about TEXT DEFAULT '', logo_url TEXT, website TEXT,
+        published INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS courses (
+        id TEXT PRIMARY KEY, institution_id TEXT NOT NULL, title TEXT NOT NULL, slug TEXT NOT NULL,
+        summary TEXT DEFAULT '', description TEXT DEFAULT '', cover_emoji TEXT DEFAULT '📘',
+        level TEXT DEFAULT 'All levels', published INTEGER NOT NULL DEFAULT 0,
+        enrollment TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS lessons (
+        id TEXT PRIMARY KEY, course_id TEXT NOT NULL, ordinal INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL, content TEXT DEFAULT '', material TEXT DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS enrollments (
+        id TEXT PRIMARY KEY, course_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'enrolled', progress TEXT NOT NULL DEFAULT '{}', score REAL,
+        enrolled_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT,
+        UNIQUE (course_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS certificates (
+        code TEXT PRIMARY KEY, course_id TEXT NOT NULL, user_id TEXT NOT NULL,
+        learner_name TEXT NOT NULL, course_title TEXT NOT NULL, institution_name TEXT NOT NULL,
+        score REAL, issued_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `)
     // Older databases predate per-user scoping / email verification.
     const migrations = [
@@ -340,5 +368,146 @@ export class SqliteStorage {
   }
   async deleteConnector(provider) {
     return this.db.prepare('DELETE FROM connectors WHERE provider = ?').run(provider).changes > 0
+  }
+
+  // --- LMS (Bermi Learn) ---
+  #toBool(row, keys) {
+    if (!row) return row
+    for (const k of keys) if (k in row) row[k] = Boolean(row[k])
+    return row
+  }
+  async createInstitution(r) {
+    this.db.prepare(
+      `INSERT INTO institutions (id, owner_id, name, slug, about, logo_url, website, published, created_at)
+       VALUES (@id,@owner_id,@name,@slug,@about,@logo_url,@website,@published,@created_at)`,
+    ).run({ about: '', logo_url: null, website: null, published: 1, ...r, published: r.published ? 1 : 0 })
+    return this.getInstitution(r.id)
+  }
+  async getInstitution(id) {
+    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE id = ?').get(id), ['published'])
+  }
+  async getInstitutionBySlug(slug) {
+    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE slug = ?').get(slug), ['published'])
+  }
+  async listInstitutionsByOwner(ownerId) {
+    return this.db.prepare('SELECT * FROM institutions WHERE owner_id = ? ORDER BY created_at DESC').all(ownerId)
+  }
+  async listPublishedInstitutions() {
+    return this.db.prepare('SELECT * FROM institutions WHERE published = 1 ORDER BY created_at DESC').all()
+  }
+  async updateInstitution(id, patch) {
+    const cur = await this.getInstitution(id); if (!cur) return null
+    const m = {
+      id,
+      name: patch.name ?? cur.name,
+      about: patch.about ?? cur.about,
+      logo_url: patch.logo_url ?? cur.logo_url,
+      website: patch.website ?? cur.website,
+      published: (patch.published ?? cur.published) ? 1 : 0,
+    }
+    this.db.prepare('UPDATE institutions SET name=@name, about=@about, logo_url=@logo_url, website=@website, published=@published WHERE id=@id').run(m)
+    return this.getInstitution(id)
+  }
+
+  async createCourse(r) {
+    this.db.prepare(
+      `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, published, enrollment, created_at, updated_at)
+       VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@published,@enrollment,@created_at,@updated_at)`,
+    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', enrollment: 'open', ...r, published: r.published ? 1 : 0 })
+    return this.getCourse(r.id)
+  }
+  async getCourse(id) {
+    return this.#toBool(this.db.prepare('SELECT * FROM courses WHERE id = ?').get(id), ['published'])
+  }
+  async listCoursesByInstitution(institutionId) {
+    return this.db.prepare('SELECT * FROM courses WHERE institution_id = ? ORDER BY created_at DESC').all(institutionId).map((c) => this.#toBool(c, ['published']))
+  }
+  async listPublishedCourses() {
+    return this.db.prepare('SELECT * FROM courses WHERE published = 1 ORDER BY updated_at DESC').all().map((c) => this.#toBool(c, ['published']))
+  }
+  async updateCourse(id, patch) {
+    const cur = await this.getCourse(id); if (!cur) return null
+    const m = {
+      id,
+      title: patch.title ?? cur.title,
+      summary: patch.summary ?? cur.summary,
+      description: patch.description ?? cur.description,
+      cover_emoji: patch.cover_emoji ?? cur.cover_emoji,
+      level: patch.level ?? cur.level,
+      published: (patch.published ?? cur.published) ? 1 : 0,
+      enrollment: patch.enrollment ?? cur.enrollment,
+      updated_at: new Date().toISOString(),
+    }
+    this.db.prepare('UPDATE courses SET title=@title, summary=@summary, description=@description, cover_emoji=@cover_emoji, level=@level, published=@published, enrollment=@enrollment, updated_at=@updated_at WHERE id=@id').run(m)
+    return this.getCourse(id)
+  }
+  async deleteCourse(id) {
+    this.db.prepare('DELETE FROM lessons WHERE course_id = ?').run(id)
+    this.db.prepare('DELETE FROM enrollments WHERE course_id = ?').run(id)
+    return this.db.prepare('DELETE FROM courses WHERE id = ?').run(id).changes > 0
+  }
+
+  async createLesson(r) {
+    this.db.prepare('INSERT INTO lessons (id, course_id, ordinal, title, content, material, created_at) VALUES (@id,@course_id,@ordinal,@title,@content,@material,@created_at)')
+      .run({ ordinal: 0, content: '', material: '', ...r })
+    return this.getLesson(r.id)
+  }
+  async getLesson(id) {
+    return this.db.prepare('SELECT * FROM lessons WHERE id = ?').get(id) ?? null
+  }
+  async listLessons(courseId) {
+    return this.db.prepare('SELECT * FROM lessons WHERE course_id = ? ORDER BY ordinal, created_at').all(courseId)
+  }
+  async updateLesson(id, patch) {
+    const cur = await this.getLesson(id); if (!cur) return null
+    const m = {
+      id,
+      title: patch.title ?? cur.title,
+      content: patch.content ?? cur.content,
+      material: patch.material ?? cur.material,
+      ordinal: patch.ordinal ?? cur.ordinal,
+    }
+    this.db.prepare('UPDATE lessons SET title=@title, content=@content, material=@material, ordinal=@ordinal WHERE id=@id').run(m)
+    return this.getLesson(id)
+  }
+  async deleteLesson(id) {
+    return this.db.prepare('DELETE FROM lessons WHERE id = ?').run(id).changes > 0
+  }
+
+  async createEnrollment(r) {
+    this.db.prepare('INSERT INTO enrollments (id, course_id, user_id, status, progress, score, enrolled_at) VALUES (@id,@course_id,@user_id,@status,@progress,@score,@enrolled_at)')
+      .run({ status: 'enrolled', progress: '{}', score: null, ...r, progress: JSON.stringify(r.progress ?? {}) })
+    return this.getEnrollment(r.course_id, r.user_id)
+  }
+  async getEnrollment(courseId, userId) {
+    const row = this.db.prepare('SELECT * FROM enrollments WHERE course_id = ? AND user_id = ?').get(courseId, userId)
+    return row ? { ...row, progress: JSON.parse(row.progress || '{}') } : null
+  }
+  async listEnrollmentsByUser(userId) {
+    return this.db.prepare('SELECT * FROM enrollments WHERE user_id = ? ORDER BY enrolled_at DESC').all(userId).map((r) => ({ ...r, progress: JSON.parse(r.progress || '{}') }))
+  }
+  async listEnrollmentsByCourse(courseId) {
+    return this.db.prepare('SELECT * FROM enrollments WHERE course_id = ? ORDER BY enrolled_at DESC').all(courseId).map((r) => ({ ...r, progress: JSON.parse(r.progress || '{}') }))
+  }
+  async updateEnrollment(id, patch) {
+    const row = this.db.prepare('SELECT * FROM enrollments WHERE id = ?').get(id); if (!row) return null
+    const m = {
+      id,
+      status: patch.status ?? row.status,
+      progress: JSON.stringify(patch.progress ?? JSON.parse(row.progress || '{}')),
+      score: patch.score ?? row.score ?? null,
+      completed_at: patch.completed_at ?? row.completed_at ?? null,
+    }
+    this.db.prepare('UPDATE enrollments SET status=@status, progress=@progress, score=@score, completed_at=@completed_at WHERE id=@id').run(m)
+    const out = this.db.prepare('SELECT * FROM enrollments WHERE id = ?').get(id)
+    return { ...out, progress: JSON.parse(out.progress || '{}') }
+  }
+
+  async createCertificate(r) {
+    this.db.prepare('INSERT OR REPLACE INTO certificates (code, course_id, user_id, learner_name, course_title, institution_name, score, issued_at) VALUES (@code,@course_id,@user_id,@learner_name,@course_title,@institution_name,@score,@issued_at)').run(r)
+    return this.getCertificate(r.code)
+  }
+  async getCertificate(code) {
+    return this.db.prepare('SELECT * FROM certificates WHERE code = ?').get(code) ?? null
   }
 }
