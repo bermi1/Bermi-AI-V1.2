@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
+import { GraduationCap, LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
@@ -13,6 +13,7 @@ import { NicheModal } from './components/NicheModal'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
+import { LearnPortal } from './learn/LearnPortal'
 import { StudyHud, StudyToast } from './components/StudyHud'
 import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
@@ -78,10 +79,42 @@ export default function App() {
     return <VerifyEmailPage user={user} onVerified={setUser} onSignOut={signOut} />
   }
 
-  return <Workspace user={user} onSignedOut={() => setUser(null)} />
+  return <Router user={user} onSignedOut={() => setUser(null)} />
 }
 
-function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
+// The Learn portal is a separate destination under /learn with its own landing
+// page and navigation; everything else is the chat workspace. We watch the
+// pathname so entering/leaving the portal swaps the whole shell.
+function Router({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
+  const [path, setPath] = useState(window.location.pathname)
+
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const go = useCallback((to: string) => {
+    window.history.pushState(null, '', to)
+    setPath(to)
+    window.scrollTo(0, 0)
+  }, [])
+
+  if (path.startsWith('/learn')) {
+    return <LearnPortal user={user} onExit={() => go('/')} />
+  }
+  return <Workspace user={user} onSignedOut={onSignedOut} onOpenLearn={() => go('/learn')} />
+}
+
+function Workspace({
+  user,
+  onSignedOut,
+  onOpenLearn,
+}: {
+  user: AuthUser
+  onSignedOut: () => void
+  onOpenLearn: () => void
+}) {
   const [view, setView] = useState<'chat' | 'dashboard'>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -405,6 +438,14 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
                   {documents.length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={onOpenLearn}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
+              aria-label="Bermi Learn portal"
+            >
+              <GraduationCap size={15} />
+              <span className="hidden sm:inline">Learn</span>
             </button>
           </div>
         </header>

@@ -2,19 +2,26 @@ import type {
   Attachment,
   AuthUser,
   Brain,
+  Certificate,
   Connector,
   Conversation,
+  Course,
   DocumentDetail,
   DocumentSummary,
   DocumentVersion,
+  Enrollment,
   GmailMessage,
+  Institution,
+  InstitutionAnalytics,
   InvoiceData,
   InsightsReport,
+  Lesson,
   Message,
   ModelOption,
   NicheQuestion,
   NicheReport,
   Profile,
+  QuizQuestion,
   SettingsInfo,
   StudioDoc,
   StudioFormat,
@@ -508,3 +515,169 @@ export const documentPdfUrl = (id: string, version?: number) => {
   const qs = params.toString()
   return `/api/documents/${id}/pdf${qs ? `?${qs}` : ''}`
 }
+
+// ---------- Bermi Learn (LMS) ----------
+
+// Public catalog + course browsing
+export const learnCatalog = () =>
+  apiFetch('/api/learn/catalog').then((r) =>
+    json<{ institutions: Institution[]; courses: Course[] }>(r),
+  )
+
+export const learnInstitutionBySlug = (slug: string) =>
+  apiFetch(`/api/learn/institutions/${slug}`).then((r) =>
+    json<{ institution: Institution; courses: Course[] }>(r),
+  )
+
+export const learnCourse = (id: string) =>
+  apiFetch(`/api/learn/courses/${id}`).then((r) =>
+    json<{
+      course: Course
+      institution: { name: string; slug: string; about: string } | null
+      lessons: Lesson[]
+      enrollment: Enrollment | null
+    }>(r),
+  )
+
+// Learner
+export const learnMyEnrollments = () =>
+  apiFetch('/api/learn/my/enrollments').then((r) => json<Enrollment[]>(r))
+
+export const learnEnroll = (courseId: string) =>
+  apiFetch(`/api/learn/courses/${courseId}/enroll`, { method: 'POST' }).then((r) =>
+    json<Enrollment>(r),
+  )
+
+export const learnLessonStudy = (lessonId: string) =>
+  apiFetch(`/api/learn/lessons/${lessonId}/study`).then((r) =>
+    json<{ lesson: Lesson; enrollment: Enrollment }>(r),
+  )
+
+export const learnLessonQuiz = (lessonId: string) =>
+  apiFetch(`/api/learn/lessons/${lessonId}/quiz`, undefined, 45_000).then((r) =>
+    json<{ questions: QuizQuestion[]; key: number[] }>(r),
+  )
+
+export const learnCompleteLesson = (lessonId: string, score?: number) =>
+  apiFetch(`/api/learn/lessons/${lessonId}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(score != null ? { score } : {}),
+  }).then((r) => json<{ enrollment: Enrollment; certificate: Certificate | null }>(r))
+
+export const learnCertificate = (code: string) =>
+  apiFetch(`/api/learn/certificates/${code}`).then((r) => json<Certificate>(r))
+
+export const learnCertificatePdfUrl = (code: string) => {
+  const token = getSessionToken()
+  return `/api/learn/certificates/${code}/pdf${token ? `?token=${token}` : ''}`
+}
+
+// Institution management (owner)
+export const learnMyInstitutions = () =>
+  apiFetch('/api/learn/my/institutions').then((r) => json<Institution[]>(r))
+
+export const learnCreateInstitution = (input: {
+  name: string
+  about?: string
+  website?: string
+}) =>
+  apiFetch('/api/learn/institutions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((r) => json<Institution>(r))
+
+export const learnUpdateInstitution = (
+  id: string,
+  patch: Partial<{ name: string; about: string; website: string; published: boolean }>,
+) =>
+  apiFetch(`/api/learn/institutions/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<Institution>(r))
+
+export const learnInstitutionCourses = (institutionId: string) =>
+  apiFetch(`/api/learn/institutions/${institutionId}/courses`).then((r) => json<Course[]>(r))
+
+export const learnCreateCourse = (
+  institutionId: string,
+  input: {
+    title: string
+    summary?: string
+    description?: string
+    cover_emoji?: string
+    level?: string
+  },
+) =>
+  apiFetch(`/api/learn/institutions/${institutionId}/courses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((r) => json<Course>(r))
+
+export const learnUpdateCourse = (
+  id: string,
+  patch: Partial<{
+    title: string
+    summary: string
+    description: string
+    cover_emoji: string
+    level: string
+    published: boolean
+    enrollment: 'open' | 'approval'
+  }>,
+) =>
+  apiFetch(`/api/learn/courses/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<Course>(r))
+
+export const learnDeleteCourse = (id: string) =>
+  apiFetch(`/api/learn/courses/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
+// Lessons (owner)
+export const learnManageLessons = (courseId: string) =>
+  apiFetch(`/api/learn/courses/${courseId}/lessons/manage`).then((r) => json<Lesson[]>(r))
+
+export const learnCreateLesson = (
+  courseId: string,
+  input: { title: string; content?: string; material?: string },
+) =>
+  apiFetch(`/api/learn/courses/${courseId}/lessons`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((r) => json<Lesson>(r))
+
+export const learnUpdateLesson = (
+  id: string,
+  patch: Partial<{ title: string; content: string; material: string; ordinal: number }>,
+) =>
+  apiFetch(`/api/learn/lessons/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<Lesson>(r))
+
+export const learnDeleteLesson = (id: string) =>
+  apiFetch(`/api/learn/lessons/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
+export const learnAiDraftLesson = (id: string, material?: string) =>
+  apiFetch(
+    `/api/learn/lessons/${id}/ai-draft`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(material != null ? { material } : {}),
+    },
+    90_000,
+  ).then((r) => json<Lesson>(r))
+
+// Analytics
+export const learnInstitutionAnalytics = (institutionId: string) =>
+  apiFetch(`/api/learn/institutions/${institutionId}/analytics`).then((r) =>
+    json<InstitutionAnalytics>(r),
+  )

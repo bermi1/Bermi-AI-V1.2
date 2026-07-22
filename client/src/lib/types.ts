@@ -174,6 +174,81 @@ export interface StudyAward {
   newBadges: { id: string; label: string }[]
 }
 
+// ---------- Bermi Learn (LMS) ----------
+
+export interface Institution {
+  id: string
+  owner_id?: string
+  name: string
+  slug: string
+  about: string
+  website?: string
+  published: boolean
+  created_at: string
+}
+
+export interface Course {
+  id: string
+  institution_id: string
+  title: string
+  slug: string
+  summary: string
+  description: string
+  cover_emoji: string
+  level: string
+  published: boolean
+  enrollment: 'open' | 'approval'
+  institution?: { name: string; slug: string } | null
+}
+
+export interface Lesson {
+  id: string
+  course_id: string
+  ordinal: number
+  title: string
+  content: string
+  material?: string
+}
+
+export interface Enrollment {
+  id: string
+  course_id: string
+  user_id: string
+  status: 'applied' | 'enrolled' | 'completed'
+  progress: Record<string, { done: boolean; score?: number }>
+  score: number | null
+  course?: Course
+}
+
+export interface Certificate {
+  code: string
+  learner_name: string
+  course_title: string
+  institution_name: string
+  score: number | null
+  issued_at: string
+}
+
+export interface QuizQuestion {
+  q: string
+  options: string[]
+}
+
+export interface InstitutionAnalytics {
+  courses: number
+  enrollments: number
+  completions: number
+  completion_rate: number
+  per_course: {
+    id: string
+    title: string
+    published: boolean
+    enrollments: number
+    completions: number
+    avg_score: number | null
+  }[]
+}
+
 export interface NicheReport {
   niche: string
   tagline: string
