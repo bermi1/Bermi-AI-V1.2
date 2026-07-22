@@ -1,10 +1,37 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
-import { streamCompletion } from '../openrouter.js'
+import { streamCompletion, complete } from '../openrouter.js'
 import { STUDY_PROMPT, awardStudy } from '../study.js'
 
 export const chatRouter = Router()
+
+/**
+ * Plans the web research: asks the model for a few focused search queries so
+ * the UI can show a real "Google-style" search loop (plan → search → read).
+ */
+async function planSearches(model, message) {
+  try {
+    const raw = await complete({
+      model,
+      maxTokens: 200,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You plan web research. Given the user message, output ONLY a JSON array of 2-3 concise ' +
+            'search engine queries (strings) that would answer it. No prose.',
+        },
+        { role: 'user', content: message.slice(0, 800) },
+      ],
+    })
+    if (!raw) return []
+    const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''))
+    return Array.isArray(parsed) ? parsed.slice(0, 3).map(String) : []
+  } catch {
+    return []
+  }
+}
 
 const BASE_PROMPT =
   'You are Bermi AI, a helpful, precise assistant. Format responses in Markdown. ' +
@@ -108,15 +135,25 @@ chatRouter.post('/chat', async (req, res, next) => {
       if (!res.writableEnded) abort.abort()
     })
 
-    // Show the "triangulating" work Bermi does before answering — a visible
-    // think/search/synthesize loop. With web search on, the steps are real
-    // phases of the grounded request.
-    const steps = study
-      ? ['Assessing what you know', 'Planning the lesson', 'Preparing your next step']
-      : web
-        ? ['Understanding your request', 'Searching the web', 'Reading sources', 'Synthesizing an answer']
-        : ['Understanding your request', 'Reasoning through it', 'Composing an answer']
-    for (const label of steps) sse(res, { type: 'status', label })
+    // Show the work Bermi does before answering. For web search this is a real
+    // agentic loop: plan queries → search each → read sources → synthesize.
+    if (web) {
+      sse(res, { type: 'status', label: 'Planning research' })
+      const queries = await planSearches(model, message)
+      if (queries.length) {
+        for (const q of queries) sse(res, { type: 'status', label: `Searching the web: “${q}”` })
+      } else {
+        sse(res, { type: 'status', label: 'Searching the web' })
+      }
+      sse(res, { type: 'status', label: 'Reading sources' })
+      sse(res, { type: 'status', label: 'Synthesizing an answer' })
+    } else if (study) {
+      for (const label of ['Assessing what you know', 'Planning the lesson', 'Preparing your next step'])
+        sse(res, { type: 'status', label })
+    } else {
+      for (const label of ['Understanding your request', 'Reasoning through it', 'Composing an answer'])
+        sse(res, { type: 'status', label })
+    }
 
     let assistantText = ''
     const citations = []

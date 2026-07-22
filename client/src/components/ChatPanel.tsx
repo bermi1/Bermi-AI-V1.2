@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import type { Message } from '../lib/types'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
@@ -7,7 +7,7 @@ import { BermiMark } from './Logo'
 interface ChatPanelProps {
   messages: Message[]
   streaming: boolean
-  status: string | null
+  steps: string[]
   error: string | null
   userName?: string
 }
@@ -20,7 +20,7 @@ function greeting(): string {
   return 'Good evening'
 }
 
-export function ChatPanel({ messages, streaming, status, error, userName }: ChatPanelProps) {
+export function ChatPanel({ messages, streaming, steps, error, userName }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -81,8 +81,8 @@ export function ChatPanel({ messages, streaming, status, error, userName }: Chat
               <div className={`min-w-0 flex-1 ${showCursor && m.content ? 'streaming-cursor' : ''}`}>
                 {m.content ? (
                   <Markdown>{m.content}</Markdown>
-                ) : showCursor && status ? (
-                  <ThinkingLoop label={status} />
+                ) : showCursor && steps.length ? (
+                  <ThinkingLoop steps={steps} />
                 ) : (
                   showCursor && <span className="streaming-cursor text-ink-faint">&nbsp;</span>
                 )}
@@ -100,8 +100,8 @@ export function ChatPanel({ messages, streaming, status, error, userName }: Chat
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
               <BermiMark size={17} className="text-primary" />
             </div>
-            {status ? (
-              <ThinkingLoop label={status} />
+            {steps.length ? (
+              <ThinkingLoop steps={steps} />
             ) : (
               <span className="streaming-cursor text-ink-faint">&nbsp;</span>
             )}
@@ -113,16 +113,23 @@ export function ChatPanel({ messages, streaming, status, error, userName }: Chat
   )
 }
 
-/** The visible "triangulating" work — searching, reading, synthesizing. */
-function ThinkingLoop({ label }: { label: string }) {
+/** The visible research loop — each step shown, done ones checked, last one live. */
+function ThinkingLoop({ steps }: { steps: string[] }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-edge bg-surface-sunken px-3 py-2 text-[13px] text-ink-muted animate-fade-up">
-      <Loader2 size={14} className="animate-spin text-primary" />
-      <span className="relative overflow-hidden">
-        <span className="bg-gradient-to-r from-ink-muted via-ink to-ink-muted bg-[length:200%_100%] bg-clip-text text-transparent">
-          {label}…
-        </span>
-      </span>
+    <div className="space-y-1.5 rounded-xl border border-edge bg-surface-sunken px-3.5 py-3 animate-fade-up">
+      {steps.map((label, i) => {
+        const isLast = i === steps.length - 1
+        return (
+          <div key={label} className="flex items-center gap-2 text-[13px]">
+            {isLast ? (
+              <Loader2 size={13} className="shrink-0 animate-spin text-primary" />
+            ) : (
+              <Check size={13} className="shrink-0 text-emerald-500" />
+            )}
+            <span className={isLast ? 'font-medium text-ink' : 'text-ink-faint'}>{label}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

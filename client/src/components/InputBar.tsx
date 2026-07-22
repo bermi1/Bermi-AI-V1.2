@@ -50,7 +50,8 @@ export function InputBar({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [web, setWeb] = useState(false)
+  // Web search is on by default — it's always there for current info.
+  const [web, setWeb] = useState(() => localStorage.getItem('bermi-web') !== '0')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -178,13 +179,18 @@ export function InputBar({
                 <Paperclip size={17} />
               </button>
               <button
-                onClick={() => setWeb((v) => !v)}
+                onClick={() =>
+                  setWeb((v) => {
+                    localStorage.setItem('bermi-web', v ? '0' : '1')
+                    return !v
+                  })
+                }
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
                   web
                     ? 'bg-primary-soft text-primary'
                     : 'text-ink-faint hover:bg-surface-sunken hover:text-ink-muted'
                 }`}
-                title="Search the web for current information"
+                title={web ? 'Web search is on — Bermi searches the internet' : 'Turn on web search'}
                 aria-pressed={web}
               >
                 <Globe size={16} />

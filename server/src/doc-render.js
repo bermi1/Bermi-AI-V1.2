@@ -145,87 +145,117 @@ export async function renderDocx({ title, markdown }) {
   return Packer.toBuffer(doc)
 }
 
-// ---------- PPTX ----------
+// ---------- PPTX (Gamma-style designed deck) ----------
+
+const DARK = '1B1630'
+const INK = '1C1C1A'
+const MUTED = '6B6A75'
+const ACCENT = BRAND
+const ACCENT2 = '7C6FF0'
+const SOFT = 'EDEBFB'
 
 export async function renderPptx({ title, markdown }) {
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 })
   pptx.layout = 'WIDE'
+  pptx.theme = { headFontFace: 'Georgia', bodyFontFace: 'Arial' }
 
+  // Parse markdown into slides. Each ## (or #) heading starts a slide.
   const blocks = parseBlocks(markdown)
-  // Split into slides at level-1/2 headings; the first heading is the title slide.
+  const deckTitle = title || blocks.find((b) => b.type === 'heading' && b.level === 1)?.text || 'Presentation'
   const slides = []
   let current = null
   for (const b of blocks) {
-    if (b.type === 'heading' && b.level <= 2) {
+    if (b.type === 'heading' && b.level === 1) continue // deck title → cover only
+    if (b.type === 'heading') {
       current = { title: b.text, bullets: [] }
       slides.push(current)
-    } else if (b.type === 'heading') {
-      if (!current) {
-        current = { title: b.text, bullets: [] }
-        slides.push(current)
-      } else current.bullets.push({ text: b.text, bold: true })
     } else if (b.type === 'bullet' || b.type === 'number' || b.type === 'para') {
       if (!current) {
-        current = { title: title || 'Overview', bullets: [] }
+        current = { title: 'Overview', bullets: [] }
         slides.push(current)
       }
-      current.bullets.push({ text: b.text.replace(/\*\*/g, ''), bold: false })
+      current.bullets.push(b.text.replace(/\*\*/g, ''))
     }
   }
-  if (slides.length === 0) slides.push({ title: title || 'Slide', bullets: [] })
+  if (slides.length === 0) slides.push({ title: deckTitle, bullets: [] })
 
-  // Title slide
+  // ---- Cover slide: bold, on-brand ----
   const cover = pptx.addSlide()
-  cover.background = { color: BRAND }
-  cover.addText(title || slides[0].title, {
-    x: 0.7,
-    y: 2.6,
-    w: 11.9,
-    h: 2,
-    fontSize: 40,
-    bold: true,
-    color: 'FFFFFF',
-    fontFace: 'Arial',
+  cover.background = { color: DARK }
+  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.35, h: 7.5, fill: { color: ACCENT } })
+  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 6.9, w: 13.33, h: 0.6, fill: { color: ACCENT } })
+  cover.addText('BERMI AI', {
+    x: 0.9, y: 1.5, w: 11, h: 0.4, fontSize: 13, color: ACCENT2, bold: true, charSpacing: 3,
   })
-  cover.addText('Generated with Bermi AI', {
-    x: 0.7,
-    y: 4.6,
-    w: 11.9,
-    h: 0.5,
-    fontSize: 14,
-    color: 'EDEBFB',
+  cover.addText(deckTitle, {
+    x: 0.9, y: 2.1, w: 11.2, h: 2.6, fontSize: 44, bold: true, color: 'FFFFFF', fontFace: 'Georgia', valign: 'top',
+  })
+  cover.addText('Presentation', {
+    x: 0.9, y: 5.1, w: 11, h: 0.4, fontSize: 15, color: SOFT,
   })
 
-  for (const s of slides) {
-    const slide = pptx.addSlide()
-    slide.addText(s.title, {
-      x: 0.6,
-      y: 0.4,
-      w: 12.1,
-      h: 0.9,
-      fontSize: 26,
-      bold: true,
-      color: BRAND,
-      fontFace: 'Arial',
+  // ---- Section agenda slide (if enough slides) ----
+  if (slides.length >= 4) {
+    const agenda = pptx.addSlide()
+    agenda.background = { color: 'FFFFFF' }
+    agenda.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 1.5, fill: { color: SOFT } })
+    agenda.addText('Contents', {
+      x: 0.7, y: 0.45, w: 12, h: 0.7, fontSize: 30, bold: true, color: ACCENT, fontFace: 'Georgia',
     })
-    slide.addShape(pptx.ShapeType.line, {
-      x: 0.6,
-      y: 1.35,
-      w: 12.1,
-      h: 0,
-      line: { color: BRAND, width: 2 },
+    agenda.addText(
+      slides.map((s, i) => ({
+        text: `${String(i + 1).padStart(2, '0')}   ${s.title}`,
+        options: { fontSize: 18, color: INK, breakLine: true, paraSpaceAfter: 10 },
+      })),
+      { x: 0.9, y: 1.9, w: 11.5, h: 5, valign: 'top' },
+    )
+  }
+
+  // ---- Content slides ----
+  slides.forEach((s, idx) => {
+    const slide = pptx.addSlide()
+    slide.background = { color: 'FFFFFF' }
+    // Header band
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 1.35, fill: { color: DARK } })
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 1.35, w: 13.33, h: 0.08, fill: { color: ACCENT } })
+    slide.addText(String(idx + 1).padStart(2, '0'), {
+      x: 0.6, y: 0.3, w: 1, h: 0.8, fontSize: 30, bold: true, color: ACCENT2, fontFace: 'Georgia',
+    })
+    slide.addText(s.title, {
+      x: 1.7, y: 0.3, w: 11, h: 0.8, fontSize: 25, bold: true, color: 'FFFFFF', fontFace: 'Georgia', valign: 'middle',
     })
     if (s.bullets.length) {
       slide.addText(
-        s.bullets.map((b) => ({
-          text: b.text,
-          options: { bullet: true, bold: b.bold, fontSize: b.bold ? 20 : 18, color: '1C1C1A' },
+        s.bullets.slice(0, 6).map((t) => ({
+          text: t,
+          options: {
+            bullet: { code: '2022', indent: 18 },
+            fontSize: s.bullets.length > 4 ? 17 : 19,
+            color: INK,
+            paraSpaceAfter: 12,
+            breakLine: true,
+          },
         })),
-        { x: 0.7, y: 1.7, w: 12, h: 5.2, valign: 'top', lineSpacingMultiple: 1.2 },
+        { x: 0.9, y: 1.9, w: 11.5, h: 5.0, valign: 'top', lineSpacingMultiple: 1.15 },
       )
     }
-  }
+    // Footer
+    slide.addText(deckTitle, { x: 0.6, y: 7.0, w: 8, h: 0.35, fontSize: 10, color: MUTED })
+    slide.addText(`${idx + 1} / ${slides.length}`, {
+      x: 11.4, y: 7.0, w: 1.3, h: 0.35, fontSize: 10, color: MUTED, align: 'right',
+    })
+  })
+
+  // ---- Closing slide ----
+  const end = pptx.addSlide()
+  end.background = { color: DARK }
+  end.addShape(pptx.ShapeType.rect, { x: 0, y: 3.5, w: 13.33, h: 0.08, fill: { color: ACCENT } })
+  end.addText('Thank you', {
+    x: 0.9, y: 2.6, w: 11.5, h: 1, fontSize: 40, bold: true, color: 'FFFFFF', fontFace: 'Georgia',
+  })
+  end.addText('Created with Bermi AI', { x: 0.9, y: 3.8, w: 11, h: 0.5, fontSize: 15, color: SOFT })
+
   return pptx.write({ outputType: 'nodebuffer' })
 }
 

@@ -105,7 +105,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [newBrainOpen, setNewBrainOpen] = useState(false)
   const [nicheOpen, setNicheOpen] = useState(false)
 
-  const [chatStatus, setChatStatus] = useState<string | null>(null)
+  const [chatSteps, setChatSteps] = useState<string[]>([])
   const [study, setStudy] = useState(() => localStorage.getItem('bermi-study') === '1')
   const [studyStats, setStudyStats] = useState<StudyStats | null>(null)
   const [studyToast, setStudyToast] = useState<StudyAwardEvent | null>(null)
@@ -225,7 +225,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
     (text: string, opts: { web?: boolean; study?: boolean } = {}) => {
       const { web = false, study: studyReq = false } = opts
       setChatError(null)
-      setChatStatus(null)
+      setChatSteps([])
       const now = new Date().toISOString()
       const userMsg: Message = {
         id: `local-${Date.now()}-u`,
@@ -253,14 +253,17 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             setActiveId(conversation.id)
             refreshConversations()
           },
-          onStatus: (label) => setChatStatus(label),
+          onStatus: (label) => {
+            if (label === null) setChatSteps([])
+            else setChatSteps((prev) => (prev.includes(label) ? prev : [...prev, label]))
+          },
           onStudy: (award) => {
             setStudyStats(award.stats)
             setStudyToast(award)
             setTimeout(() => setStudyToast(null), 4000)
           },
           onToken: (token) => {
-            setChatStatus(null)
+            setChatSteps([])
             setMessages((prev) => {
               const next = [...prev]
               const last = next[next.length - 1]
@@ -285,12 +288,12 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
           },
           onDone: () => {
             setStreaming(false)
-            setChatStatus(null)
+            setChatSteps([])
             refreshConversations()
           },
           onError: (message) => {
             setStreaming(false)
-            setChatStatus(null)
+            setChatSteps([])
             setChatError(message)
             setMessages((prev) =>
               prev[prev.length - 1]?.role === 'assistant' &&
@@ -309,7 +312,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const stop = useCallback(() => {
     abortRef.current?.abort()
     setStreaming(false)
-    setChatStatus(null)
+    setChatSteps([])
   }, [])
 
   const deleteDocument = useCallback(
@@ -412,7 +415,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             <ChatPanel
               messages={messages}
               streaming={streaming}
-              status={chatStatus}
+              steps={chatSteps}
               error={chatError}
               userName={userName}
             />

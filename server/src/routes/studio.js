@@ -55,24 +55,62 @@ studioRouter.post('/studio/generate', async (req, res, next) => {
     if (!prompt.trim()) return res.status(400).json({ error: 'Describe what the document should contain' })
     const kindDesc = KINDS[kind] || KINDS.report
 
+    const isSlides = kind === 'slides' || format === 'pptx'
+
     let markdown = null
     try {
+      // Pass 1 — refine the user's brief into a detailed outline/spec. This
+      // sharpens vague prompts into a strong plan before any writing happens.
+      let outline = ''
+      try {
+        outline = await complete({
+          model: DRAFT_MODEL,
+          maxTokens: 900,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a senior editor. Turn the user\'s brief into a detailed outline for ' +
+                kindDesc +
+                '. Infer the audience, goal, and tone. ' +
+                (isSlides
+                  ? 'Plan 8-12 slides; for each give a slide title and 2-4 key points. '
+                  : 'Plan a clear title and 5-9 substantive sections, each with the points it should cover. ') +
+                'Output a concise outline only — no prose intro.',
+            },
+            { role: 'user', content: `Title: ${title || '(choose one)'}\n\nBrief: ${prompt}` },
+          ],
+        })
+      } catch {
+        /* outline optional */
+      }
+
+      // Pass 2 — write the FULL document from the refined outline. Longer budget
+      // for a complete, publish-ready piece.
       markdown = await complete({
         model: DRAFT_MODEL,
-        maxTokens: 2200,
+        maxTokens: isSlides ? 3200 : 4096,
         messages: [
           {
             role: 'system',
-            content:
-              'You are Bermi, an expert document writer. Produce ' +
-              kindDesc +
-              '. Respond in GitHub-flavored Markdown ONLY (no code fences around the whole thing). ' +
-              'Use # for the document title, ## for sections, - for bullets, **bold** for emphasis. ' +
-              'Be substantive and well-organized. Do not include commentary about the task.',
+            content: isSlides
+              ? 'You are Bermi, an expert presentation writer. Produce a complete, presentation-ready deck in ' +
+                'GitHub-flavored Markdown ONLY. Rules: use # for the deck title (title slide); use ## for EACH ' +
+                'slide title; under each slide put 2-5 concise bullet points with - ; keep bullets punchy (max ~12 words); ' +
+                'bold key terms with **. Aim for 8-12 slides with a logical arc (hook → context → substance → takeaways → call to action). ' +
+                'No commentary about the task.'
+              : 'You are Bermi, an expert document writer. Produce a COMPLETE, long, publish-ready ' +
+                kindDesc +
+                '. Respond in GitHub-flavored Markdown ONLY (no code fences around the whole thing). ' +
+                'Use # for the title, ## for sections, ### for sub-points, - for bullets, **bold** for emphasis, and tables where useful. ' +
+                'Write in full, substantive paragraphs — do not be terse. Cover the topic thoroughly with multiple well-developed sections. ' +
+                'No commentary about the task.',
           },
           {
             role: 'user',
-            content: `Title: ${title || '(choose a fitting title)'}\n\nBrief: ${prompt}`,
+            content:
+              `Title: ${title || '(choose a fitting title)'}\n\nBrief: ${prompt}` +
+              (outline ? `\n\nApproved outline to follow:\n${outline}` : ''),
           },
         ],
       })
