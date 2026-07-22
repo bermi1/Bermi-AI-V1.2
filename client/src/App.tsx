@@ -348,6 +348,29 @@ function Workspace({
     setChatSteps([])
   }, [])
 
+  // Study handoff from the Learn portal: a lesson/course was opened "in Bermi
+  // AI", so start a fresh Study Mode chat pre-loaded with that material.
+  const handoffDone = useRef(false)
+  useEffect(() => {
+    if (handoffDone.current || !selectedModel || streaming) return
+    let payload: { prompt?: string } | null = null
+    try {
+      const raw = localStorage.getItem('bermi-study-handoff')
+      if (raw) payload = JSON.parse(raw)
+    } catch {
+      /* ignore */
+    }
+    if (!payload?.prompt) return
+    handoffDone.current = true
+    localStorage.removeItem('bermi-study-handoff')
+    setStudy(true)
+    setView('chat')
+    setActiveId(null)
+    setMessages([])
+    const prompt = payload.prompt
+    setTimeout(() => send(prompt, { study: true }), 60)
+  }, [selectedModel, streaming, send])
+
   const deleteDocument = useCallback(
     (id: string) => {
       api.deleteDocument(id).then(refreshDocuments)

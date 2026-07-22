@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BookOpen, Building2, CheckCircle2, Lock, PlayCircle } from 'lucide-react'
+import { ArrowLeft, BookOpen, Building2, CheckCircle2, Lock, PlayCircle, Wand2 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Course, Enrollment, Lesson } from '../lib/types'
-import { Btn, ErrorNote, Pill, Spinner, type LearnRoute } from './ui'
+import { Btn, ErrorNote, Pill, Spinner, handoffToStudy, type LearnRoute } from './ui'
 import { Markdown } from '../components/Markdown'
 
 export function CoursePage({
@@ -107,15 +107,33 @@ export function CoursePage({
               <PlayCircle size={17} /> Enroll — it's free
             </Btn>
           ) : (
-            <Btn
-              onClick={() => {
-                const next = lessons.find((l) => !progress[l.id]?.done) || lessons[0]
-                if (next) navigate({ name: 'study', courseId: course.id, lessonId: next.id })
-              }}
-              disabled={!lessons.length}
-            >
-              <PlayCircle size={17} /> {doneCount ? 'Continue learning' : 'Start learning'}
-            </Btn>
+            <>
+              <Btn
+                onClick={() =>
+                  handoffToStudy({
+                    title: course.title,
+                    prompt:
+                      `I'm enrolled in the course "${course.title}"` +
+                      (institution ? ` by ${institution.name}` : '') +
+                      `. Be my tutor and take me through it. Start with the first lesson and teach me step by step.` +
+                      (course.summary ? `\n\nCourse overview: ${course.summary}` : ''),
+                  })
+                }
+                disabled={!lessons.length}
+              >
+                <Wand2 size={17} /> Study in Bermi AI
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => {
+                  const next = lessons.find((l) => !progress[l.id]?.done) || lessons[0]
+                  if (next) navigate({ name: 'study', courseId: course.id, lessonId: next.id })
+                }}
+                disabled={!lessons.length}
+              >
+                <PlayCircle size={16} /> {doneCount ? 'Continue in portal' : 'Open lessons'}
+              </Btn>
+            </>
           )}
         </div>
 
