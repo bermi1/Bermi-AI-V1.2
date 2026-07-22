@@ -6,9 +6,49 @@ import { renderDocument } from '../doc-render.js'
 
 export const studioRouter = Router()
 
-// Documents deserve the strongest writer; Bermi Reason gives the richest,
-// best-structured drafts.
-const DRAFT_MODEL = process.env.DRAFT_MODEL || 'bermi-reason'
+// Use a fast, reliable writer that returns clean Markdown. (Reasoning models
+// like R1 often emit <think> traces or get rate-limited, which is why docs were
+// falling back to the scaffold.)
+const DRAFT_MODEL = process.env.DRAFT_MODEL || 'bermi-core'
+const OUTLINE_MODEL = process.env.OUTLINE_MODEL || 'bermi-fast'
+
+/** Strips reasoning traces and wrapping code fences from model output. */
+function cleanMarkdown(raw) {
+  if (!raw) return ''
+  let t = String(raw)
+  // Remove <think>…</think> reasoning blocks (some models leak these).
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  t = t.replace(/<\/?think>/gi, '')
+  // Unwrap a single fenced block that wraps the whole document.
+  const fence = t.trim().match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i)
+  if (fence) t = fence[1]
+  return t.trim()
+}
+
+/** A genuinely full, structured document when the model is unavailable. */
+function scaffold({ title, prompt, kind, isSlides }) {
+  const t = title || 'Untitled document'
+  if (isSlides) {
+    return (
+      `# ${t}\n\n` +
+      `## Introduction\n- What this is about\n- Why it matters now\n\n` +
+      `## Background\n- Key context\n- The current situation\n\n` +
+      `## Main Points\n- First key idea\n- Second key idea\n- Third key idea\n\n` +
+      `## Details\n- Supporting evidence\n- Practical examples\n\n` +
+      `## Recommendations\n- What to do next\n- Priorities\n\n` +
+      `## Conclusion\n- Summary\n- Call to action\n\n> Brief: ${prompt}`
+    )
+  }
+  return (
+    `# ${t}\n\n` +
+    `## Introduction\n\n${prompt}\n\nThis document sets out the key points, context, and recommendations on the topic above.\n\n` +
+    `## Background\n\nProvide the relevant context and current situation here.\n\n` +
+    `## Key Considerations\n\n- First consideration and why it matters\n- Second consideration\n- Third consideration\n\n` +
+    `## Analysis\n\nDiscuss the topic in depth, weighing the options and evidence.\n\n` +
+    `## Recommendations\n\n1. First recommended action\n2. Second recommended action\n3. Next steps\n\n` +
+    `## Conclusion\n\nSummarise the main points and the path forward.`
+  )
+}
 
 // Document kinds shape the AI's drafting instructions.
 const KINDS = {
@@ -57,70 +97,78 @@ studioRouter.post('/studio/generate', async (req, res, next) => {
 
     const isSlides = kind === 'slides' || format === 'pptx'
 
-    let markdown = null
-    try {
-      // Pass 1 — refine the user's brief into a detailed outline/spec. This
-      // sharpens vague prompts into a strong plan before any writing happens.
-      let outline = ''
-      try {
-        outline = await complete({
-          model: DRAFT_MODEL,
-          maxTokens: 900,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are a senior editor. Turn the user\'s brief into a detailed outline for ' +
-                kindDesc +
-                '. Infer the audience, goal, and tone. ' +
-                (isSlides
-                  ? 'Plan 8-12 slides; for each give a slide title and 2-4 key points. '
-                  : 'Plan a clear title and 5-9 substantive sections, each with the points it should cover. ') +
-                'Output a concise outline only — no prose intro.',
-            },
-            { role: 'user', content: `Title: ${title || '(choose one)'}\n\nBrief: ${prompt}` },
-          ],
-        })
-      } catch {
-        /* outline optional */
-      }
+    const writeSystem = isSlides
+      ? 'You are Bermi, an expert presentation writer. Produce a complete, presentation-ready deck in ' +
+        'GitHub-flavored Markdown ONLY. Rules: use # for the deck title (title slide); use ## for EACH ' +
+        'slide title; under each slide put 2-5 concise bullet points with - ; keep bullets punchy (max ~12 words); ' +
+        'bold key terms with **. Produce 8-12 slides with a logical arc (hook → context → substance → takeaways → call to action). ' +
+        'Output ONLY the markdown deck, no preamble, no commentary, no <think> tags.'
+      : 'You are Bermi, an expert document writer. Produce a COMPLETE, long, publish-ready ' +
+        kindDesc +
+        '. Respond in GitHub-flavored Markdown ONLY. ' +
+        'Use # for the title, ## for sections, ### for sub-points, - for bullets, **bold** for emphasis, and tables where useful. ' +
+        'Write in full, substantive PARAGRAPHS under each section — several sentences each, not just bullet points. ' +
+        'Produce at least 5 well-developed sections and 500+ words. ' +
+        'Output ONLY the finished document — no preamble, no commentary, no <think> tags, no code fences around the whole thing.'
 
-      // Pass 2 — write the FULL document from the refined outline. Longer budget
-      // for a complete, publish-ready piece.
-      markdown = await complete({
-        model: DRAFT_MODEL,
+    async function draft(model, outline) {
+      const raw = await complete({
+        model,
         maxTokens: isSlides ? 3200 : 4096,
         messages: [
-          {
-            role: 'system',
-            content: isSlides
-              ? 'You are Bermi, an expert presentation writer. Produce a complete, presentation-ready deck in ' +
-                'GitHub-flavored Markdown ONLY. Rules: use # for the deck title (title slide); use ## for EACH ' +
-                'slide title; under each slide put 2-5 concise bullet points with - ; keep bullets punchy (max ~12 words); ' +
-                'bold key terms with **. Aim for 8-12 slides with a logical arc (hook → context → substance → takeaways → call to action). ' +
-                'No commentary about the task.'
-              : 'You are Bermi, an expert document writer. Produce a COMPLETE, long, publish-ready ' +
-                kindDesc +
-                '. Respond in GitHub-flavored Markdown ONLY (no code fences around the whole thing). ' +
-                'Use # for the title, ## for sections, ### for sub-points, - for bullets, **bold** for emphasis, and tables where useful. ' +
-                'Write in full, substantive paragraphs — do not be terse. Cover the topic thoroughly with multiple well-developed sections. ' +
-                'No commentary about the task.',
-          },
+          { role: 'system', content: writeSystem },
           {
             role: 'user',
             content:
               `Title: ${title || '(choose a fitting title)'}\n\nBrief: ${prompt}` +
-              (outline ? `\n\nApproved outline to follow:\n${outline}` : ''),
+              (outline ? `\n\nFollow this outline:\n${outline}` : ''),
           },
         ],
       })
+      return cleanMarkdown(raw)
+    }
+
+    let markdown = ''
+    try {
+      // Pass 1 — refine the brief into an outline (quick, optional).
+      let outline = ''
+      try {
+        outline = cleanMarkdown(
+          await complete({
+            model: OUTLINE_MODEL,
+            maxTokens: 700,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a senior editor. Turn the brief into a detailed outline for ' +
+                  kindDesc +
+                  '. Infer audience, goal, and tone. ' +
+                  (isSlides
+                    ? 'Plan 8-12 slides; for each give a slide title and 2-4 key points. '
+                    : 'Plan a title and 5-9 substantive sections, each with the points it covers. ') +
+                  'Output the outline only.',
+              },
+              { role: 'user', content: `Title: ${title || '(choose one)'}\n\nBrief: ${prompt}` },
+            ],
+          }),
+        )
+      } catch {
+        /* outline optional */
+      }
+
+      // Pass 2 — write the full document.
+      markdown = await draft(DRAFT_MODEL, outline)
+      // Retry on a different model if the result is too thin to be a real doc.
+      if (markdown.replace(/\s+/g, ' ').length < 250) {
+        markdown = await draft(OUTLINE_MODEL, outline)
+      }
     } catch (err) {
       console.error('Studio draft failed, using scaffold:', err.message)
     }
 
-    if (!markdown) {
-      // No API key / model — still produce a usable scaffold.
-      markdown = `# ${title || 'Untitled document'}\n\n## Overview\n\n${prompt}\n\n## Details\n\n- Point one\n- Point two\n\n## Conclusion\n\nSummary of the above.`
+    if (!markdown || markdown.replace(/\s+/g, ' ').length < 120) {
+      markdown = scaffold({ title, prompt, kind, isSlides })
     }
 
     // Derive a title from the first heading when not provided.
