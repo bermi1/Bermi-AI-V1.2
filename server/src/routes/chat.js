@@ -52,7 +52,7 @@ function sse(res, payload) {
  */
 chatRouter.post('/chat', async (req, res, next) => {
   try {
-    const { conversationId, message, model } = req.body ?? {}
+    const { conversationId, message, model, web = false } = req.body ?? {}
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required' })
     }
@@ -107,10 +107,20 @@ chatRouter.post('/chat', async (req, res, next) => {
       if (!res.writableEnded) abort.abort()
     })
 
+    // Show the "triangulating" work Bermi does before answering — a visible
+    // think/search/synthesize loop. With web search on, the steps are real
+    // phases of the grounded request.
+    const steps = web
+      ? ['Understanding your request', 'Searching the web', 'Reading sources', 'Synthesizing an answer']
+      : ['Understanding your request', 'Reasoning through it', 'Composing an answer']
+    for (const label of steps) sse(res, { type: 'status', label })
+
     let assistantText = ''
+    const citations = []
     try {
       const upstream = await streamCompletion({
         model,
+        web,
         messages: [
           { role: 'system', content: systemPrompt },
           ...history.map(({ role, content }) => ({ role, content })),
@@ -121,6 +131,7 @@ chatRouter.post('/chat', async (req, res, next) => {
       const reader = upstream.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let firstToken = true
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
@@ -133,8 +144,23 @@ chatRouter.post('/chat', async (req, res, next) => {
           if (payload === '[DONE]') continue
           try {
             const chunk = JSON.parse(payload)
-            const token = chunk.choices?.[0]?.delta?.content
+            const delta = chunk.choices?.[0]?.delta
+            const token = delta?.content
+            // Collect url citations from web-grounded answers.
+            const anns = delta?.annotations || chunk.choices?.[0]?.message?.annotations
+            if (Array.isArray(anns)) {
+              for (const a of anns) {
+                const u = a.url_citation || a
+                if (u?.url && !citations.some((c) => c.url === u.url)) {
+                  citations.push({ url: u.url, title: u.title || u.url })
+                }
+              }
+            }
             if (token) {
+              if (firstToken) {
+                sse(res, { type: 'status', label: null }) // clear the loop
+                firstToken = false
+              }
               assistantText += token
               sse(res, { type: 'token', token })
             }
@@ -143,6 +169,7 @@ chatRouter.post('/chat', async (req, res, next) => {
           }
         }
       }
+      if (citations.length) sse(res, { type: 'citations', items: citations })
     } catch (err) {
       if (!abort.signal.aborted) {
         sse(res, { type: 'error', error: err.message })
@@ -152,12 +179,19 @@ chatRouter.post('/chat', async (req, res, next) => {
     }
 
     if (assistantText) {
+      // Persist citations inline so they survive a reload.
+      let toSave = assistantText
+      if (citations.length) {
+        toSave +=
+          '\n\n---\n**Sources**\n' +
+          citations.map((c, i) => `${i + 1}. [${c.title}](${c.url})`).join('\n')
+      }
       const doneAt = new Date().toISOString()
       await storage.addMessage({
         id: randomUUID(),
         conversation_id: conversation.id,
         role: 'assistant',
-        content: assistantText,
+        content: toSave,
         model,
         created_at: doneAt,
       })

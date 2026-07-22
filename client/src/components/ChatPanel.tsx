@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Loader2 } from 'lucide-react'
 import type { Message } from '../lib/types'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
@@ -6,6 +7,7 @@ import { BermiMark } from './Logo'
 interface ChatPanelProps {
   messages: Message[]
   streaming: boolean
+  status: string | null
   error: string | null
   userName?: string
 }
@@ -18,7 +20,7 @@ function greeting(): string {
   return 'Good evening'
 }
 
-export function ChatPanel({ messages, streaming, error, userName }: ChatPanelProps) {
+export function ChatPanel({ messages, streaming, status, error, userName }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -76,11 +78,13 @@ export function ChatPanel({ messages, streaming, error, userName }: ChatPanelPro
               <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
                 <BermiMark size={17} className="text-primary" />
               </div>
-              <div className={`min-w-0 flex-1 ${showCursor ? 'streaming-cursor' : ''}`}>
+              <div className={`min-w-0 flex-1 ${showCursor && m.content ? 'streaming-cursor' : ''}`}>
                 {m.content ? (
                   <Markdown>{m.content}</Markdown>
+                ) : showCursor && status ? (
+                  <ThinkingLoop label={status} />
                 ) : (
-                  showCursor && <span className="text-ink-faint">&nbsp;</span>
+                  showCursor && <span className="streaming-cursor text-ink-faint">&nbsp;</span>
                 )}
               </div>
             </div>
@@ -96,11 +100,29 @@ export function ChatPanel({ messages, streaming, error, userName }: ChatPanelPro
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
               <BermiMark size={17} className="text-primary" />
             </div>
-            <span className="streaming-cursor text-ink-faint">&nbsp;</span>
+            {status ? (
+              <ThinkingLoop label={status} />
+            ) : (
+              <span className="streaming-cursor text-ink-faint">&nbsp;</span>
+            )}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
+    </div>
+  )
+}
+
+/** The visible "triangulating" work — searching, reading, synthesizing. */
+function ThinkingLoop({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-edge bg-surface-sunken px-3 py-2 text-[13px] text-ink-muted animate-fade-up">
+      <Loader2 size={14} className="animate-spin text-primary" />
+      <span className="relative overflow-hidden">
+        <span className="bg-gradient-to-r from-ink-muted via-ink to-ink-muted bg-[length:200%_100%] bg-clip-text text-transparent">
+          {label}…
+        </span>
+      </span>
     </div>
   )
 }

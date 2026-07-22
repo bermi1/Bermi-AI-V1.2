@@ -65,60 +65,82 @@ function inlineHtml(text) {
 
 // ---------- DOCX ----------
 
+// Premium DOCX typography — a real title block, tuned heading sizes/colors,
+// comfortable line spacing, and a subtle divider under the title. Sizes are in
+// half-points (docx unit): body 21 = 10.5pt, H1 30 = 15pt, etc.
 export async function renderDocx({ title, markdown }) {
   const blocks = parseBlocks(markdown)
   const children = []
+
+  // If the first block is an H1 matching the title, don't repeat it.
+  let start = 0
+  if (title && blocks[0]?.type === 'heading' && blocks[0].level === 1) start = 1
+
   if (title) {
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: title, bold: true, size: 40, color: BRAND })],
-        spacing: { after: 240 },
+        children: [new TextRun({ text: title, bold: true, size: 44, color: BRAND, font: 'Georgia' })],
+        spacing: { after: 80 },
+      }),
+      new Paragraph({
+        border: { bottom: { color: BRAND, size: 12, space: 6, style: 'single' } },
+        spacing: { after: 260 },
       }),
     )
   }
-  const headingMap = {
-    1: HeadingLevel.HEADING_1,
-    2: HeadingLevel.HEADING_2,
-    3: HeadingLevel.HEADING_3,
-    4: HeadingLevel.HEADING_4,
-  }
-  for (const b of blocks) {
+
+  const HSIZE = { 1: 30, 2: 26, 3: 23, 4: 21 }
+  const HCOLOR = { 1: BRAND, 2: '1C1C1A', 3: '1C1C1A', 4: '5C5B56' }
+  for (let i = start; i < blocks.length; i++) {
+    const b = blocks[i]
     if (b.type === 'space') continue
     if (b.type === 'heading') {
       children.push(
         new Paragraph({
-          heading: headingMap[b.level] || HeadingLevel.HEADING_3,
-          children: inlineRuns(b.text).map((r) => new TextRun({ text: r.text, bold: r.bold })),
-          spacing: { before: 200, after: 100 },
+          children: inlineRuns(b.text).map(
+            (r) =>
+              new TextRun({
+                text: r.text,
+                bold: true,
+                size: HSIZE[b.level] || 21,
+                color: HCOLOR[b.level] || '1C1C1A',
+                font: b.level <= 2 ? 'Georgia' : 'Calibri',
+              }),
+          ),
+          spacing: { before: 300, after: 120 },
+          keepNext: true,
         }),
       )
     } else if (b.type === 'bullet' || b.type === 'number') {
       children.push(
         new Paragraph({
           bullet: b.type === 'bullet' ? { level: 0 } : undefined,
-          numbering: undefined,
           children: inlineRuns((b.type === 'number' ? '• ' : '') + b.text).map(
-            (r) => new TextRun({ text: r.text, bold: r.bold }),
+            (r) => new TextRun({ text: r.text, bold: r.bold, size: 21, font: 'Calibri' }),
           ),
-          spacing: { after: 60 },
+          spacing: { after: 90, line: 276 },
         }),
       )
     } else {
       children.push(
         new Paragraph({
-          children: inlineRuns(b.text).map((r) => new TextRun({ text: r.text, bold: r.bold })),
-          spacing: { after: 120 },
+          children: inlineRuns(b.text).map(
+            (r) => new TextRun({ text: r.text, bold: r.bold, size: 21, font: 'Calibri' }),
+          ),
+          spacing: { after: 160, line: 288 },
         }),
       )
     }
   }
+
   const doc = new Document({
-    styles: {
-      default: {
-        document: { run: { font: 'Calibri', size: 22 } },
+    styles: { default: { document: { run: { font: 'Calibri', size: 21, color: '1C1C1A' } } } },
+    sections: [
+      {
+        properties: { page: { margin: { top: 1200, bottom: 1200, left: 1300, right: 1300 } } },
+        children,
       },
-    },
-    sections: [{ children }],
+    ],
   })
   return Packer.toBuffer(doc)
 }
@@ -211,6 +233,8 @@ export async function renderPptx({ title, markdown }) {
 
 export function renderDocHtml({ title, markdown }) {
   const blocks = parseBlocks(markdown)
+  // Avoid printing the title twice when the markdown opens with the same H1.
+  if (title && blocks[0]?.type === 'heading' && blocks[0].level === 1) blocks.shift()
   let html = ''
   let listOpen = null
   const closeList = () => {
@@ -247,20 +271,30 @@ export function renderDocHtml({ title, markdown }) {
   closeList()
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { margin: 0; }
     * { box-sizing: border-box; }
-    body { font-family: 'Inter','Segoe UI',Roboto,sans-serif; color:#1c1c1a; padding:56px 64px; line-height:1.65; font-size:15px; }
-    h1 { color:#3b2fbf; font-size:28px; margin:0 0 6px; }
-    h2 { font-size:20px; margin:26px 0 8px; }
-    h3 { font-size:16px; margin:20px 0 6px; }
-    h4 { font-size:14px; margin:16px 0 4px; color:#5c5b56; }
-    p { margin:0 0 12px; }
-    ul,ol { margin:0 0 14px 22px; } li { margin:4px 0; }
-    .title { border-bottom:2px solid #3b2fbf; padding-bottom:14px; margin-bottom:26px; }
-    .foot { margin-top:48px; padding-top:14px; border-top:1px solid #e6e5df; color:#8d8c85; font-size:12px; }
+    body {
+      font-family: 'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+      color:#1c1c1a; padding:64px 72px; line-height:1.7; font-size:14.5px;
+      -webkit-font-smoothing: antialiased;
+    }
+    h1,h2 { font-family: Georgia,'Times New Roman',serif; letter-spacing:-0.01em; }
+    h1 { color:#3b2fbf; font-size:32px; line-height:1.2; margin:0 0 4px; font-weight:600; }
+    h2 { font-size:21px; margin:32px 0 10px; font-weight:600; color:#1c1c1a; }
+    h3 { font-size:16.5px; margin:24px 0 7px; font-weight:600; }
+    h4 { font-size:13px; margin:18px 0 4px; color:#5c5b56; text-transform:uppercase; letter-spacing:0.06em; }
+    p { margin:0 0 13px; }
+    strong { font-weight:600; }
+    ul,ol { margin:0 0 16px 20px; padding:0; } li { margin:5px 0; padding-left:4px; }
+    li::marker { color:#3b2fbf; }
+    a { color:#3b2fbf; text-decoration:none; }
+    .title { border-bottom:2px solid #3b2fbf; padding-bottom:16px; margin-bottom:30px; }
+    .title .kicker { font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:#8d8c85; margin-bottom:8px; font-family:Inter,sans-serif; }
+    .foot { margin-top:52px; padding-top:14px; border-top:1px solid #e6e5df; color:#8d8c85; font-size:11.5px; display:flex; justify-content:space-between; }
   </style></head><body>
-    ${title ? `<div class="title"><h1>${escapeHtml(title)}</h1></div>` : ''}
+    ${title ? `<div class="title"><div class="kicker">Document</div><h1>${escapeHtml(title)}</h1></div>` : ''}
     ${html}
-    <div class="foot">Generated with Bermi AI</div>
+    <div class="foot"><span>${escapeHtml(title || '')}</span><span>Generated with Bermi AI</span></div>
   </body></html>`
 }
 

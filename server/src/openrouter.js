@@ -54,7 +54,7 @@ async function errorDetail(res) {
  * Streaming chat completion. Returns the raw Response so callers can pipe
  * the SSE body. Throws with a readable message on non-2xx.
  */
-export async function streamCompletion({ model, messages, signal }) {
+export async function streamCompletion({ model, messages, signal, web = false }) {
   const { key } = await resolveApiKey()
   if (!key) {
     const err = new Error(
@@ -66,12 +66,15 @@ export async function streamCompletion({ model, messages, signal }) {
   // A Bermi model resolves to a free-first fallback chain; try each until one
   // is available (free models are frequently rate-limited or rotated).
   const chain = await resolveModelChain(model)
+  // Web search: OpenRouter's web plugin grounds the answer in live internet
+  // results and returns url citations.
+  const plugins = web ? [{ id: 'web', max_results: 5 }] : undefined
   let lastErr
   for (const realModel of chain) {
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: headers(key),
-      body: JSON.stringify({ model: realModel, messages, stream: true }),
+      body: JSON.stringify({ model: realModel, messages, stream: true, plugins }),
       signal,
     })
     if (res.ok) return res

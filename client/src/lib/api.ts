@@ -331,9 +331,16 @@ export const fetchGmailMessages = () =>
 
 // ---------- Chat streaming ----------
 
+export interface Citation {
+  url: string
+  title: string
+}
+
 export interface ChatStreamCallbacks {
   onConversation: (conversation: Conversation) => void
   onToken: (token: string) => void
+  onStatus?: (label: string | null) => void
+  onCitations?: (items: Citation[]) => void
   onDone: (fullText: string) => void
   onError: (message: string) => void
 }
@@ -344,7 +351,7 @@ export interface ChatStreamCallbacks {
  * API itself is stateless).
  */
 export async function streamChat(
-  params: { conversationId: string | null; message: string; model: string },
+  params: { conversationId: string | null; message: string; model: string; web?: boolean },
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -391,6 +398,8 @@ export async function streamChat(
           conversation?: Conversation
           token?: string
           error?: string
+          label?: string | null
+          items?: Citation[]
         }
         try {
           parsed = JSON.parse(payload)
@@ -399,6 +408,10 @@ export async function streamChat(
         }
         if (parsed.type === 'conversation' && parsed.conversation) {
           callbacks.onConversation(parsed.conversation)
+        } else if (parsed.type === 'status') {
+          callbacks.onStatus?.(parsed.label ?? null)
+        } else if (parsed.type === 'citations' && parsed.items) {
+          callbacks.onCitations?.(parsed.items)
         } else if (parsed.type === 'token' && parsed.token != null) {
           full += parsed.token
           callbacks.onToken(parsed.token)

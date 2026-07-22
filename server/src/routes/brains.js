@@ -36,7 +36,9 @@ async function ensureBuiltins(userId) {
         id: def.id,
         name: def.name,
         content: def.id === 'vibecoding' ? vibeContent() : '',
-        enabled: true,
+        // Vibe coding is reference material, not always-on context — Bermi
+        // Coder + live web search handle current coding knowledge instead.
+        enabled: def.id !== 'vibecoding',
         updated_at: new Date().toISOString(),
       })
     }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, FileText, Loader2, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, FileText, Globe, Loader2, Paperclip, Square, X } from 'lucide-react'
 import type { Attachment, ModelOption } from '../lib/types'
 import { extractFile } from '../lib/api'
 
@@ -7,7 +7,7 @@ interface InputBarProps {
   models: ModelOption[]
   selectedModel: string
   onSelectModel: (id: string) => void
-  onSend: (text: string) => void
+  onSend: (text: string, web: boolean) => void
   onStop: () => void
   streaming: boolean
 }
@@ -36,6 +36,7 @@ export function InputBar({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [web, setWeb] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -75,7 +76,7 @@ export function InputBar({
   const submit = () => {
     const trimmed = text.trim()
     if ((!trimmed && attachments.length === 0) || streaming || uploading) return
-    onSend(composeMessage(trimmed || 'Please review the attached file.', attachments))
+    onSend(composeMessage(trimmed || 'Please review the attached file.', attachments), web)
     setText('')
     setAttachments([])
   }
@@ -144,10 +145,23 @@ export function InputBar({
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
                 className="rounded-lg p-2 text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink-muted disabled:opacity-40"
-                title="Attach a file (.txt, .md, .csv, .json, .pdf)"
+                title="Attach a file (.txt, .md, .csv, .json, .pdf, image)"
                 aria-label="Attach file"
               >
                 <Paperclip size={17} />
+              </button>
+              <button
+                onClick={() => setWeb((v) => !v)}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+                  web
+                    ? 'bg-primary-soft text-primary'
+                    : 'text-ink-faint hover:bg-surface-sunken hover:text-ink-muted'
+                }`}
+                title="Search the web for current information"
+                aria-pressed={web}
+              >
+                <Globe size={16} />
+                <span className="hidden sm:inline">Search</span>
               </button>
               <div className="relative" ref={pickerRef}>
                 <button

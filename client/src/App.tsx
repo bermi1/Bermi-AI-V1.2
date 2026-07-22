@@ -102,6 +102,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [newBrainOpen, setNewBrainOpen] = useState(false)
   const [nicheOpen, setNicheOpen] = useState(false)
 
+  const [chatStatus, setChatStatus] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -210,8 +211,9 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   )
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, web = false) => {
       setChatError(null)
+      setChatStatus(null)
       const now = new Date().toISOString()
       const userMsg: Message = {
         id: `local-${Date.now()}-u`,
@@ -233,13 +235,15 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
       abortRef.current = abort
 
       api.streamChat(
-        { conversationId: activeId, message: text, model: selectedModel },
+        { conversationId: activeId, message: text, model: selectedModel, web },
         {
           onConversation: (conversation) => {
             setActiveId(conversation.id)
             refreshConversations()
           },
+          onStatus: (label) => setChatStatus(label),
           onToken: (token) => {
+            setChatStatus(null)
             setMessages((prev) => {
               const next = [...prev]
               const last = next[next.length - 1]
@@ -249,12 +253,27 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               return next
             })
           },
+          onCitations: (items) => {
+            setMessages((prev) => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last?.role === 'assistant') {
+                const sources =
+                  '\n\n---\n**Sources**\n' +
+                  items.map((c, i) => `${i + 1}. [${c.title}](${c.url})`).join('\n')
+                next[next.length - 1] = { ...last, content: last.content + sources }
+              }
+              return next
+            })
+          },
           onDone: () => {
             setStreaming(false)
+            setChatStatus(null)
             refreshConversations()
           },
           onError: (message) => {
             setStreaming(false)
+            setChatStatus(null)
             setChatError(message)
             setMessages((prev) =>
               prev[prev.length - 1]?.role === 'assistant' &&
@@ -273,6 +292,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const stop = useCallback(() => {
     abortRef.current?.abort()
     setStreaming(false)
+    setChatStatus(null)
   }, [])
 
   const deleteDocument = useCallback(
@@ -374,6 +394,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             <ChatPanel
               messages={messages}
               streaming={streaming}
+              status={chatStatus}
               error={chatError}
               userName={userName}
             />

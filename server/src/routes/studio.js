@@ -6,7 +6,9 @@ import { renderDocument } from '../doc-render.js'
 
 export const studioRouter = Router()
 
-const DRAFT_MODEL = process.env.DRAFT_MODEL || 'bermi-core'
+// Documents deserve the strongest writer; Bermi Reason gives the richest,
+// best-structured drafts.
+const DRAFT_MODEL = process.env.DRAFT_MODEL || 'bermi-reason'
 
 // Document kinds shape the AI's drafting instructions.
 const KINDS = {
