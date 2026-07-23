@@ -217,7 +217,19 @@ export interface Course {
   level: string
   published: boolean
   enrollment: 'open' | 'approval'
+  objectives?: string
+  evaluation?: string
+  tracking?: string
   institution?: { name: string; slug: string } | null
+}
+
+export interface LearnerRow {
+  name: string
+  status: string
+  lessons_done: number
+  lessons_total: number
+  understanding: number | null
+  dependency: number | null
 }
 
 export interface Lesson {
@@ -265,6 +277,7 @@ export interface InstitutionAnalytics {
     enrollments: number
     completions: number
     avg_score: number | null
+    learners?: LearnerRow[]
   }[]
 }
 

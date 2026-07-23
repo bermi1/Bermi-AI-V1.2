@@ -11,6 +11,7 @@ interface ChatPanelProps {
   steps: string[]
   error: string | null
   userName?: string
+  onStudyCourse?: (title: string) => void
 }
 
 const SOURCES_MARKER = '\n\n---\n**Sources**\n'
@@ -44,7 +45,7 @@ function greeting(): string {
   return 'Good evening'
 }
 
-export function ChatPanel({ messages, streaming, steps, error, userName }: ChatPanelProps) {
+export function ChatPanel({ messages, streaming, steps, error, userName, onStudyCourse }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -78,7 +79,7 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
             Ask anything, or open the Dashboard to generate documents, teach your brains,
             and connect your apps.
           </p>
-          <ContinueLearning />
+          <ContinueLearning onStudyCourse={onStudyCourse} />
         </div>
       </div>
     )
@@ -150,7 +151,7 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
 }
 
 /** Gentle reminder of courses the learner started but hasn't finished. */
-function ContinueLearning() {
+function ContinueLearning({ onStudyCourse }: { onStudyCourse?: (title: string) => void }) {
   const [items, setItems] = useState<Enrollment[]>([])
 
   useEffect(() => {
@@ -181,10 +182,10 @@ function ContinueLearning() {
         {items.map((e) => {
           const done = Object.values(e.progress || {}).filter((p) => p.done).length
           return (
-            <a
+            <button
               key={e.id}
-              href={`/portal/c/${e.course!.id}`}
-              className="flex items-center gap-3 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 transition-colors hover:border-primary"
+              onClick={() => onStudyCourse?.(e.course!.title)}
+              className="flex w-full items-center gap-3 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 text-left transition-colors hover:border-primary"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
                 {e.course!.cover_emoji || '📘'}
@@ -192,11 +193,11 @@ function ContinueLearning() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px] font-medium text-ink">{e.course!.title}</span>
                 <span className="text-[11.5px] text-ink-faint">
-                  {done > 0 ? `${done} ${done === 1 ? 'lesson' : 'lessons'} done — resume` : 'Not started — begin now'}
+                  {done > 0 ? `${done} ${done === 1 ? 'lesson' : 'lessons'} done — resume in chat` : 'Not started — begin in chat'}
                 </span>
               </span>
-              <span className="shrink-0 text-[12px] font-semibold text-primary">Resume →</span>
-            </a>
+              <span className="shrink-0 text-[12px] font-semibold text-primary">Study →</span>
+            </button>
           )
         })}
       </div>

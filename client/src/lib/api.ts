@@ -667,6 +667,9 @@ export const learnCreateCourse = (
     description?: string
     cover_emoji?: string
     level?: string
+    objectives?: string
+    evaluation?: string
+    tracking?: string
   },
 ) =>
   apiFetch(`/api/learn/institutions/${institutionId}/courses`, {
@@ -685,6 +688,9 @@ export const learnUpdateCourse = (
     level: string
     published: boolean
     enrollment: 'open' | 'approval'
+    objectives: string
+    evaluation: string
+    tracking: string
   }>,
 ) =>
   apiFetch(`/api/learn/courses/${id}`, {

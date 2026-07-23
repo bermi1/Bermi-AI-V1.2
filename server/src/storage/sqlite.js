@@ -100,6 +100,7 @@ export class SqliteStorage {
         summary TEXT DEFAULT '', description TEXT DEFAULT '', cover_emoji TEXT DEFAULT '📘',
         level TEXT DEFAULT 'All levels', published INTEGER NOT NULL DEFAULT 0,
         enrollment TEXT NOT NULL DEFAULT 'open',
+        objectives TEXT DEFAULT '', evaluation TEXT DEFAULT '', tracking TEXT DEFAULT '',
         created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS lessons (
@@ -126,6 +127,9 @@ export class SqliteStorage {
       'ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE users ADD COLUMN verify_code TEXT',
       'ALTER TABLE users ADD COLUMN verify_expires TEXT',
+      "ALTER TABLE courses ADD COLUMN objectives TEXT DEFAULT ''",
+      "ALTER TABLE courses ADD COLUMN evaluation TEXT DEFAULT ''",
+      "ALTER TABLE courses ADD COLUMN tracking TEXT DEFAULT ''",
     ]
     for (const sql of migrations) {
       try {
@@ -436,9 +440,9 @@ export class SqliteStorage {
 
   async createCourse(r) {
     this.db.prepare(
-      `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, published, enrollment, created_at, updated_at)
-       VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@published,@enrollment,@created_at,@updated_at)`,
-    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', enrollment: 'open', ...r, published: r.published ? 1 : 0 })
+      `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, published, enrollment, objectives, evaluation, tracking, created_at, updated_at)
+       VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@published,@enrollment,@objectives,@evaluation,@tracking,@created_at,@updated_at)`,
+    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', enrollment: 'open', objectives: '', evaluation: '', tracking: '', ...r, published: r.published ? 1 : 0 })
     return this.getCourse(r.id)
   }
   async getCourse(id) {
@@ -461,9 +465,12 @@ export class SqliteStorage {
       level: patch.level ?? cur.level,
       published: (patch.published ?? cur.published) ? 1 : 0,
       enrollment: patch.enrollment ?? cur.enrollment,
+      objectives: patch.objectives ?? cur.objectives ?? '',
+      evaluation: patch.evaluation ?? cur.evaluation ?? '',
+      tracking: patch.tracking ?? cur.tracking ?? '',
       updated_at: new Date().toISOString(),
     }
-    this.db.prepare('UPDATE courses SET title=@title, summary=@summary, description=@description, cover_emoji=@cover_emoji, level=@level, published=@published, enrollment=@enrollment, updated_at=@updated_at WHERE id=@id').run(m)
+    this.db.prepare('UPDATE courses SET title=@title, summary=@summary, description=@description, cover_emoji=@cover_emoji, level=@level, published=@published, enrollment=@enrollment, objectives=@objectives, evaluation=@evaluation, tracking=@tracking, updated_at=@updated_at WHERE id=@id').run(m)
     return this.getCourse(id)
   }
   async deleteCourse(id) {

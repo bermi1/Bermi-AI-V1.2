@@ -10,6 +10,7 @@ import {
   Loader2,
   Plus,
   Sparkles,
+  Target,
   Trash2,
   Upload,
   Users,
@@ -285,33 +286,62 @@ function AnalyticsTab({ institutionId }: { institutionId: string }) {
         ))}
       </div>
 
-      <h3 className="mb-3 text-[14px] font-semibold text-ink">Per-course performance</h3>
+      <h3 className="mb-3 text-[14px] font-semibold text-ink">Courses & learners</h3>
       {data.per_course.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-edge px-4 py-8 text-center text-[13px] text-ink-faint">No data yet — publish a course and enroll learners.</p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-edge">
-          <table className="w-full text-[13px]">
-            <thead className="bg-surface-sunken text-ink-muted">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-semibold">Course</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Enrolled</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Completed</th>
-                <th className="px-4 py-2.5 text-right font-semibold">Avg. score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.per_course.map((c) => (
-                <tr key={c.id} className="border-t border-edge">
-                  <td className="px-4 py-2.5 text-ink">
-                    {c.title} {!c.published && <span className="text-ink-faint">(draft)</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-right text-ink-muted">{c.enrollments}</td>
-                  <td className="px-3 py-2.5 text-right text-ink-muted">{c.completions}</td>
-                  <td className="px-4 py-2.5 text-right text-ink-muted">{c.avg_score != null ? `${c.avg_score}%` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {data.per_course.map((c) => (
+            <div key={c.id} className="overflow-hidden rounded-2xl border border-edge bg-surface-raised">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge px-4 py-3">
+                <div className="text-[14px] font-semibold text-ink">
+                  {c.title} {!c.published && <span className="text-ink-faint">(draft)</span>}
+                </div>
+                <div className="flex items-center gap-3 text-[12px] text-ink-muted">
+                  <span>{c.enrollments} enrolled</span>
+                  <span>{c.completions} completed</span>
+                  <span>avg {c.avg_score != null ? `${c.avg_score}%` : '—'}</span>
+                </div>
+              </div>
+              {c.learners && c.learners.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-[13px]">
+                    <thead className="bg-surface-sunken text-ink-muted">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-semibold">Learner</th>
+                        <th className="px-3 py-2 text-left font-semibold">Progress</th>
+                        <th className="px-3 py-2 text-right font-semibold" title="How well they understand — from quiz scores">Understanding</th>
+                        <th className="px-4 py-2 text-right font-semibold" title="How much they lean on the AI vs. work independently">AI-dependency</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {c.learners.map((l, i) => (
+                        <tr key={i} className="border-t border-edge">
+                          <td className="px-4 py-2 text-ink">{l.name} <span className="text-ink-faint">· {l.status}</span></td>
+                          <td className="px-3 py-2 text-ink-muted">
+                            {l.lessons_total ? `${l.lessons_done}/${l.lessons_total} lessons` : `${l.lessons_done} lessons`}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {l.understanding != null ? (
+                              <span className={l.understanding >= 70 ? 'text-emerald-600 dark:text-emerald-400' : l.understanding >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>{l.understanding}%</span>
+                            ) : (
+                              <span className="text-ink-faint">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right text-ink-muted">{l.dependency != null ? `${l.dependency}%` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="px-4 py-4 text-[12.5px] text-ink-faint">No learners enrolled yet.</p>
+              )}
+            </div>
+          ))}
+          <p className="text-[11.5px] text-ink-faint">
+            Understanding comes from quiz performance. AI-dependency populates as learners study in Bermi AI against this course's objectives.
+          </p>
         </div>
       )}
     </div>
@@ -341,6 +371,9 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         level: body.level,
         published: body.published,
         enrollment: body.enrollment,
+        objectives: body.objectives,
+        evaluation: body.evaluation,
+        tracking: body.tracking,
       })
       setCourse(updated)
       setSavedAt(Date.now())
@@ -415,6 +448,25 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         <Field label="Full description" hint="Markdown supported. Shown on the course page.">
           <textarea className={`${inputClass} min-h-[120px] resize-y`} value={course.description || ''} onChange={(e) => patch({ description: e.target.value })} />
         </Field>
+
+        <div className="rounded-2xl border border-edge bg-surface-sunken/40 p-4">
+          <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink">
+            <Target size={15} className="text-primary" /> Teaching & evaluation plan
+            <span className="font-normal text-ink-faint">— guides how Bermi AI teaches and grades learners</span>
+          </div>
+          <div className="space-y-3">
+            <Field label="Learning objectives" hint="What should a learner be able to do after this course? One per line.">
+              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.objectives || ''} onChange={(e) => patch({ objectives: e.target.value })} placeholder={'Explain the water cycle\nIdentify the stages of photosynthesis'} />
+            </Field>
+            <Field label="Areas to test & evaluation bases" hint="What to assess and how mastery is judged (e.g. quiz score thresholds, must-know concepts).">
+              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.evaluation || ''} onChange={(e) => patch({ evaluation: e.target.value })} placeholder={'Test recall of key terms and applied problem-solving.\nMastery = 70%+ on end-of-level quizzes.'} />
+            </Field>
+            <Field label="What to track" hint="Signals the institution wants on each learner (e.g. understanding per objective, quiz scores, AI-dependency).">
+              <textarea className={`${inputClass} min-h-[64px] resize-y`} value={course.tracking || ''} onChange={(e) => patch({ tracking: e.target.value })} placeholder={'Understanding per objective, quiz scores, how independently they solve vs. leaning on the AI.'} />
+            </Field>
+          </div>
+        </div>
+
         {error && <ErrorNote>{error}</ErrorNote>}
         <div className="flex items-center gap-3">
           <Btn onClick={() => save()} loading={saving}>Save details</Btn>

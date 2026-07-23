@@ -94,7 +94,11 @@ async function learningContext(userId, message) {
     .slice(0, 40)
     .map((c) => {
       const inst = instById.get(c.institution_id)
-      return `- "${c.title}" (${c.level || 'All levels'}) by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}`
+      const obj = (c.objectives || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+      return (
+        `- "${c.title}" (${c.level || 'All levels'}) by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}` +
+        (obj ? `\n    Objectives: ${obj}` : '')
+      )
     })
     .join('\n')
 
@@ -128,7 +132,10 @@ async function learningContext(userId, message) {
     'then tell them to open /portal or say "Study in Bermi AI" to begin. ' +
     'For "show my progress", summarize their progress above clearly. ' +
     'For "what should I learn next", recommend the best next step — finish an in-progress course first, otherwise ' +
-    'suggest a fitting course from the catalog (name it). Recommend only courses from this list.'
+    'suggest a fitting course from the catalog (name it). Recommend only courses from this list. ' +
+    'When you teach a course, TEACH AND EVALUATE AGAINST ITS OBJECTIVES: work through them in order, quiz the ' +
+    "learner on them, and note how well they understand and how independently they work. Learning happens here in " +
+    'Bermi AI — never tell the learner to go to the portal (the portal is for institutions only).'
 
   let note = ''
   if (ENROLL_RE.test(message)) {

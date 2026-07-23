@@ -1,25 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowRight,
-  BarChart3,
   BookOpen,
   Building2,
   ChevronLeft,
-  Compass,
-  GraduationCap,
   Library,
   Menu,
   MessageSquare,
   Search,
-  Sparkles,
-  Wand2,
   X,
 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { AuthUser, Course, Institution } from '../lib/types'
 import { BermiMark } from '../components/Logo'
 import {
-  Btn,
   EmptyState,
   Pill,
   Spinner,
@@ -69,7 +62,7 @@ export function LearnPortal({ user, onExit }: { user: AuthUser; onExit: () => vo
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileBar onMenu={() => setNavOpen(true)} route={route} navigate={navigate} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          {route.name === 'landing' && <Landing navigate={navigate} />}
+          {route.name === 'landing' && <InstitutionStudio navigate={navigate} />}
           {route.name === 'institution' && <InstitutionLibrary slug={route.slug} navigate={navigate} />}
           {route.name === 'course' && <CoursePage courseId={route.id} navigate={navigate} />}
           {route.name === 'study' && (
@@ -156,7 +149,7 @@ function PortalSidebar({
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
           <div className="space-y-0.5">
             <SectionLabel>Organization</SectionLabel>
-            <NavItem active={route.name === 'studio'} icon={<Building2 size={17} />} label="Dashboard" onClick={() => navigate({ name: 'studio' })} />
+            <NavItem active={route.name === 'studio' || route.name === 'landing'} icon={<Building2 size={17} />} label="Dashboard" onClick={() => navigate({ name: 'studio' })} />
             {myOrgs.map((o) => (
               <NavItem
                 key={o.id}
@@ -168,10 +161,8 @@ function PortalSidebar({
             ))}
           </div>
 
-          <div className="space-y-0.5">
-            <SectionLabel>Catalog</SectionLabel>
-            <NavItem active={route.name === 'landing' || route.name === 'course' || (route.name === 'institution' && !myOrgs.some((o) => o.slug === route.slug))} icon={<Compass size={17} />} label="Browse programs" onClick={() => navigate({ name: 'landing' })} />
-            <NavItem active={route.name === 'mylearning'} icon={<GraduationCap size={17} />} label="Enrollments" onClick={() => navigate({ name: 'mylearning' })} />
+          <div className="px-3 pt-2 text-[11.5px] leading-snug text-ink-faint">
+            This portal is for organizations. Learners browse, enroll and study entirely inside Bermi AI chat.
           </div>
         </nav>
 
@@ -227,141 +218,6 @@ function MobileBar({
 }
 
 // ---------- Landing (B2B / organization-first) ----------
-
-function Landing({ navigate }: { navigate: (r: LearnRoute) => void }) {
-  const [catalog, setCatalog] = useState<{ institutions: Institution[]; courses: Course[] } | null>(null)
-  const [query, setQuery] = useState('')
-
-  useEffect(() => {
-    api.learnCatalog().then(setCatalog).catch(() => setCatalog({ institutions: [], courses: [] }))
-  }, [])
-
-  const courses = useMemo(() => {
-    if (!catalog) return []
-    const q = query.trim().toLowerCase()
-    if (!q) return catalog.courses
-    return catalog.courses.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        (c.summary || '').toLowerCase().includes(q) ||
-        (c.institution?.name || '').toLowerCase().includes(q),
-    )
-  }, [catalog, query])
-
-  return (
-    <div>
-      {/* Hero */}
-      <section className="border-b border-edge bg-gradient-to-b from-primary-soft/40 to-transparent px-5 py-12 md:px-10 md:py-16">
-        <div className="mx-auto max-w-5xl text-center">
-          <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-edge bg-surface-raised px-3 py-1 text-[12px] font-medium text-ink-muted">
-            <Sparkles size={13} className="text-primary" /> Bermi Learn · for businesses & institutions
-          </div>
-          <h1 className="mx-auto max-w-2xl text-[28px] font-bold leading-tight text-ink md:text-[40px]">
-            The learning platform for your organization.
-          </h1>
-          <p className="mx-auto mt-4 max-w-xl text-[15px] text-ink-muted">
-            Publish your courses and digital library, enroll your clients and teams, let AI evaluate them, and
-            issue certificates — while they learn hands-on inside Bermi AI.
-          </p>
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-            <Btn onClick={() => navigate({ name: 'studio' })}>
-              <Building2 size={17} /> Set up your organization
-            </Btn>
-            <Btn variant="outline" onClick={() => document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' })}>
-              <Compass size={16} /> Browse the catalog
-            </Btn>
-          </div>
-
-          <div className="mx-auto mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
-            {[
-              { icon: <Library size={18} />, title: 'Build your library', body: 'Organize classes and lectures into a branded digital library the public can enroll in.' },
-              { icon: <BarChart3 size={18} />, title: 'Evaluate with AI', body: 'AI quizzes score every learner and roll up into completion and performance analytics.' },
-              { icon: <GraduationCap size={18} />, title: 'Certify learners', body: 'Issue verifiable certificates of completion under your organization’s name.' },
-            ].map((f) => (
-              <div key={f.title} className="rounded-2xl border border-edge bg-surface-raised p-5 text-left">
-                <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">{f.icon}</div>
-                <h3 className="text-[14px] font-semibold text-ink">{f.title}</h3>
-                <p className="mt-1 text-[12.5px] text-ink-muted">{f.body}</p>
-              </div>
-            ))}
-          </div>
-
-          <p className="mx-auto mt-6 max-w-lg text-[12.5px] text-ink-faint">
-            <Wand2 size={12} className="mr-1 inline" /> Learners study your material hands-on inside Bermi AI’s Study
-            Mode — this portal is where your organization builds, manages and certifies it all.
-          </p>
-        </div>
-      </section>
-
-      {/* Catalog */}
-      <section id="catalog" className="mx-auto max-w-5xl px-5 py-10 md:px-10 md:py-14">
-        {!catalog ? (
-          <Spinner label="Loading catalog…" />
-        ) : (
-          <>
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-[22px] font-bold text-ink">Course catalog</h2>
-                <p className="text-[13.5px] text-ink-muted">
-                  {catalog.courses.length} {catalog.courses.length === 1 ? 'program' : 'programs'} from{' '}
-                  {catalog.institutions.length} {catalog.institutions.length === 1 ? 'organization' : 'organizations'}
-                </p>
-              </div>
-              <div className="relative w-full sm:w-72">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search programs…"
-                  className="w-full rounded-xl border border-edge bg-surface-raised py-2.5 pl-9 pr-3 text-[14px] text-ink outline-none placeholder:text-ink-faint focus:border-primary"
-                />
-              </div>
-            </div>
-
-            {courses.length === 0 ? (
-              <EmptyState
-                icon={<BookOpen size={30} />}
-                title={query ? 'No programs match your search' : 'No programs published yet'}
-                body={query ? 'Try a different search term.' : 'Set up your organization to publish your first program.'}
-              />
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {courses.map((c) => (
-                  <CourseCard key={c.id} course={c} onOpen={() => navigate({ name: 'course', id: c.id })} />
-                ))}
-              </div>
-            )}
-
-            {catalog.institutions.length > 0 && (
-              <div className="mt-14">
-                <h2 className="mb-1 text-[22px] font-bold text-ink">Organizations</h2>
-                <p className="mb-5 text-[13.5px] text-ink-muted">Businesses and institutions teaching on Bermi Learn.</p>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {catalog.institutions.map((i) => (
-                    <button
-                      key={i.id}
-                      onClick={() => navigate({ name: 'institution', slug: i.slug })}
-                      className="flex items-center gap-3 rounded-2xl border border-edge bg-surface-raised p-4 text-left transition-colors hover:border-primary"
-                    >
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
-                        <Building2 size={20} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-[14.5px] font-semibold text-ink">{i.name}</h3>
-                        <p className="truncate text-[12.5px] text-ink-faint">{i.about || 'View library'}</p>
-                      </div>
-                      <ArrowRight size={16} className="shrink-0 text-ink-faint" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-    </div>
-  )
-}
 
 function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
   return (

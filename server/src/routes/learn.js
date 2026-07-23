@@ -141,7 +141,16 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
   try {
     if (!(await ownsInstitution(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Institution not found' })
-    const { title, summary = '', description = '', cover_emoji = '📘', level = 'All levels' } = req.body ?? {}
+    const {
+      title,
+      summary = '',
+      description = '',
+      cover_emoji = '📘',
+      level = 'All levels',
+      objectives = '',
+      evaluation = '',
+      tracking = '',
+    } = req.body ?? {}
     if (!title?.trim()) return res.status(400).json({ error: 'Course title is required' })
     const now = new Date().toISOString()
     const course = await storage.createCourse({
@@ -155,6 +164,9 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
       level,
       published: false,
       enrollment: 'open',
+      objectives,
+      evaluation,
+      tracking,
       created_at: now,
       updated_at: now,
     })
@@ -175,7 +187,8 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
   try {
     if (!(await ownsCourse(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Course not found' })
-    const { title, summary, description, cover_emoji, level, published, enrollment } = req.body ?? {}
+    const { title, summary, description, cover_emoji, level, published, enrollment, objectives, evaluation, tracking } =
+      req.body ?? {}
     res.json(
       await storage.updateCourse(req.params.id, {
         title,
@@ -185,6 +198,9 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
         level,
         published,
         enrollment,
+        objectives,
+        evaluation,
+        tracking,
       }),
     )
   } catch (err) {
@@ -488,11 +504,30 @@ learnRouter.get('/learn/institutions/:id/analytics', async (req, res, next) => {
     let totalCompletions = 0
     const perCourse = []
     for (const c of courses) {
-      const enrollments = await storage.listEnrollmentsByCourse(c.id)
+      const [enrollments, lessons] = await Promise.all([
+        storage.listEnrollmentsByCourse(c.id),
+        storage.listLessons(c.id),
+      ])
       const completions = enrollments.filter((e) => e.status === 'completed')
       const scores = enrollments.map((e) => e.score).filter((s) => typeof s === 'number')
       totalEnrollments += enrollments.length
       totalCompletions += completions.length
+
+      // Per-learner view: how far they've come and how well they understand.
+      const learners = []
+      for (const e of enrollments.slice(0, 200)) {
+        const user = await storage.getUserById(e.user_id)
+        const done = Object.values(e.progress || {}).filter((p) => p && p.done).length
+        learners.push({
+          name: user?.name || 'Learner',
+          status: e.status,
+          lessons_done: done,
+          lessons_total: lessons.length,
+          understanding: typeof e.score === 'number' ? e.score : null,
+          dependency: typeof e.dependency === 'number' ? e.dependency : null,
+        })
+      }
+
       perCourse.push({
         id: c.id,
         title: c.title,
@@ -500,6 +535,7 @@ learnRouter.get('/learn/institutions/:id/analytics', async (req, res, next) => {
         enrollments: enrollments.length,
         completions: completions.length,
         avg_score: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+        learners,
       })
     }
     res.json({

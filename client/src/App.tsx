@@ -484,6 +484,12 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               steps={chatSteps}
               error={chatError}
               userName={userName}
+              onStudyCourse={(title) => {
+                setStudy(true)
+                send(`Let's continue the course "${title}". Pick up where I left off and teach me the next objective.`, {
+                  study: true,
+                })
+              }}
             />
             <InputBar
               models={models}
