@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { Check, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, ChevronDown, Copy, Globe, Loader2, Share2 } from 'lucide-react'
 import type { Message } from '../lib/types'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
@@ -10,6 +10,29 @@ interface ChatPanelProps {
   steps: string[]
   error: string | null
   userName?: string
+}
+
+const SOURCES_MARKER = '\n\n---\n**Sources**\n'
+
+interface Source {
+  n: string
+  title: string
+  url: string
+}
+
+// Split an assistant message into its prose body and any inline "Sources"
+// block (persisted by the server / appended live in the same format).
+function splitSources(content: string): { body: string; sources: Source[] } {
+  const idx = content.indexOf(SOURCES_MARKER)
+  if (idx === -1) return { body: content, sources: [] }
+  const body = content.slice(0, idx)
+  const raw = content.slice(idx + SOURCES_MARKER.length)
+  const sources: Source[] = []
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^(\d+)\.\s*\[([^\]]+)\]\(([^)]+)\)/)
+    if (m) sources.push({ n: m[1], title: m[2], url: m[3] })
+  }
+  return { body, sources }
 }
 
 function greeting(): string {
@@ -67,25 +90,36 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
         {messages.map((m, i) => {
           const isLast = i === messages.length - 1
           const showCursor = streaming && isLast && m.role === 'assistant'
-          return m.role === 'user' ? (
-            <div key={m.id} className="mb-6 flex justify-end animate-fade-up">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-[15px] leading-relaxed text-ink md:max-w-[75%]">
-                {m.content}
+          if (m.role === 'user') {
+            return (
+              <div key={m.id} className="group mb-6 flex flex-col items-end animate-fade-up">
+                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-[15px] leading-relaxed text-ink md:max-w-[75%]">
+                  {m.content}
+                </div>
+                <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                  <MessageActions text={m.content} compact />
+                </div>
               </div>
-            </div>
-          ) : (
+            )
+          }
+          const { body, sources } = splitSources(m.content)
+          const shareText =
+            body + (sources.length ? '\n\nSources:\n' + sources.map((s) => `- ${s.title} (${s.url})`).join('\n') : '')
+          return (
             <div key={m.id} className="mb-6 flex gap-3 animate-fade-up">
               <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
                 <BermiMark size={17} className="text-primary" />
               </div>
               <div className={`min-w-0 flex-1 ${showCursor && m.content ? 'streaming-cursor' : ''}`}>
-                {m.content ? (
-                  <Markdown>{m.content}</Markdown>
+                {body ? (
+                  <Markdown>{body}</Markdown>
                 ) : showCursor && steps.length ? (
                   <ThinkingLoop steps={steps} />
                 ) : (
                   showCursor && <span className="streaming-cursor text-ink-faint">&nbsp;</span>
                 )}
+                {sources.length > 0 && <SourcesPanel sources={sources} />}
+                {!showCursor && body && <MessageActions text={shareText} />}
               </div>
             </div>
           )
@@ -109,6 +143,88 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
         )}
         <div ref={bottomRef} />
       </div>
+    </div>
+  )
+}
+
+/** Copy / share controls for a message. */
+function MessageActions({ text, compact }: { text: string; compact?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const [shared, setShared] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  const share = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ text })
+      } catch {
+        /* user cancelled */
+      }
+    } else {
+      await copy()
+      setShared(true)
+      setTimeout(() => setShared(false), 1500)
+    }
+  }
+
+  const btn =
+    'inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-medium text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink-muted'
+
+  return (
+    <div className={`flex items-center gap-1 ${compact ? 'mt-1' : 'mt-2'}`}>
+      <button onClick={copy} className={btn} aria-label="Copy">
+        {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <button onClick={share} className={btn} aria-label="Share">
+        <Share2 size={13} />
+        {shared ? 'Copied to share' : 'Share'}
+      </button>
+    </div>
+  )
+}
+
+/** Collapsible list of web sources cited in an answer. */
+function SourcesPanel({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-2 rounded-lg border border-edge bg-surface-sunken px-2.5 py-1.5 text-[12.5px] font-medium text-ink-muted transition-colors hover:text-ink"
+      >
+        <Globe size={13} className="text-primary" />
+        Sources
+        <span className="rounded-full bg-primary-soft px-1.5 text-[11px] font-semibold text-primary">{sources.length}</span>
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <ol className="mt-2 space-y-1.5">
+          {sources.map((s) => (
+            <li key={s.n} className="flex gap-2 text-[13px] leading-snug">
+              <span className="mt-px shrink-0 text-ink-faint">{s.n}.</span>
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 text-primary hover:underline"
+              >
+                <span className="line-clamp-1 font-medium">{s.title}</span>
+                <span className="line-clamp-1 text-[11.5px] text-ink-faint">{s.url}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   )
 }
