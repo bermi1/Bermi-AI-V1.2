@@ -65,7 +65,7 @@ async function buildSystemPrompt(userId, study = false) {
 // Only touch the LMS when the message is actually about learning/courses, so
 // normal chats stay fast and lean.
 const LEARN_RE =
-  /\b(courses?|classes?|lessons?|enroll?|enrol|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|curriculum|syllabus|tutor)\b/i
+  /\b(courses?|classes?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next)\b/i
 const ENROLL_RE = /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|join)\b/i
 
 /**
@@ -97,10 +97,38 @@ async function learningContext(userId, message) {
       return `- "${c.title}" (${c.level || 'All levels'}) by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}`
     })
     .join('\n')
+
+  // The learner's own progress — powers "show my progress" and "what next".
+  let progressBlock = ''
+  try {
+    const enrollments = await storage.listEnrollmentsByUser(userId)
+    const rows = []
+    for (const e of (enrollments || []).slice(0, 15)) {
+      const course = await storage.getCourse(e.course_id)
+      if (!course) continue
+      const lessons = await storage.listLessons(course.id)
+      const done = Object.values(e.progress || {}).filter((p) => p && p.done).length
+      rows.push(
+        `- "${course.title}": ${e.status}` +
+          (lessons.length ? `, ${done}/${lessons.length} lessons done` : '') +
+          (e.score != null ? `, average score ${e.score}%` : ''),
+      )
+    }
+    if (rows.length) {
+      progressBlock = `\n\n# This learner's progress\n${rows.join('\n')}`
+    }
+  } catch {
+    /* progress optional */
+  }
+
   const block =
-    `# Bermi Learn — courses available right now (you can discuss, recommend and enroll the user in these)\n${list}\n\n` +
-    'If the user asks to enroll or apply, the system enrolls them directly (see any Live action below); ' +
-    'then tell them to open /portal or say "Study in Bermi AI" to begin. Recommend courses from this list only.'
+    `# Bermi Learn — courses available right now (you can discuss, recommend and enroll the user in these)\n${list}` +
+    progressBlock +
+    '\n\nGuidance: If the user asks to enroll/apply, the system enrolls them directly (see any Live action below), ' +
+    'then tell them to open /portal or say "Study in Bermi AI" to begin. ' +
+    'For "show my progress", summarize their progress above clearly. ' +
+    'For "what should I learn next", recommend the best next step — finish an in-progress course first, otherwise ' +
+    'suggest a fitting course from the catalog (name it). Recommend only courses from this list.'
 
   let note = ''
   if (ENROLL_RE.test(message)) {
