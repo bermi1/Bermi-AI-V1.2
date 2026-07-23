@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, Globe, Loader2, Share2, ThumbsDown, ThumbsUp } from 'lucide-react'
-import type { Message } from '../lib/types'
-import { sendFeedback } from '../lib/api'
+import { Check, ChevronDown, Copy, Globe, GraduationCap, Loader2, Share2, ThumbsDown, ThumbsUp } from 'lucide-react'
+import type { Enrollment, Message } from '../lib/types'
+import { learnMyEnrollments, sendFeedback } from '../lib/api'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
 
@@ -78,6 +78,7 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
             Ask anything, or open the Dashboard to generate documents, teach your brains,
             and connect your apps.
           </p>
+          <ContinueLearning />
         </div>
       </div>
     )
@@ -143,6 +144,61 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
           </div>
         )}
         <div ref={bottomRef} />
+      </div>
+    </div>
+  )
+}
+
+/** Gentle reminder of courses the learner started but hasn't finished. */
+function ContinueLearning() {
+  const [items, setItems] = useState<Enrollment[]>([])
+
+  useEffect(() => {
+    learnMyEnrollments()
+      .then((list) =>
+        setItems(
+          list
+            .filter((e) => e.status !== 'completed' && e.course)
+            .sort((a, b) => {
+              const da = Object.values(a.progress || {}).filter((p) => p.done).length
+              const db = Object.values(b.progress || {}).filter((p) => p.done).length
+              return db - da
+            })
+            .slice(0, 2),
+        ),
+      )
+      .catch(() => {})
+  }, [])
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="mt-8 text-left">
+      <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+        <GraduationCap size={13} /> Pick up where you left off
+      </div>
+      <div className="space-y-2">
+        {items.map((e) => {
+          const done = Object.values(e.progress || {}).filter((p) => p.done).length
+          return (
+            <a
+              key={e.id}
+              href={`/portal/c/${e.course!.id}`}
+              className="flex items-center gap-3 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 transition-colors hover:border-primary"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
+                {e.course!.cover_emoji || '📘'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] font-medium text-ink">{e.course!.title}</span>
+                <span className="text-[11.5px] text-ink-faint">
+                  {done > 0 ? `${done} ${done === 1 ? 'lesson' : 'lessons'} done — resume` : 'Not started — begin now'}
+                </span>
+              </span>
+              <span className="shrink-0 text-[12px] font-semibold text-primary">Resume →</span>
+            </a>
+          )
+        })}
       </div>
     </div>
   )

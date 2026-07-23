@@ -17,23 +17,16 @@ interface InputBarProps {
   models: ModelOption[]
   selectedModel: string
   onSelectModel: (id: string) => void
-  onSend: (text: string, opts: { web: boolean; study: boolean }) => void
+  onSend: (text: string, opts: { web: boolean; study: boolean; attachments?: Attachment[] }) => void
   onStop: () => void
   streaming: boolean
   study: boolean
   onToggleStudy: (v: boolean) => void
 }
 
-const ACCEPT = '.txt,.md,.markdown,.csv,.json,.xml,.yml,.yaml,.log,.pdf,text/plain,application/pdf'
-
-function composeMessage(text: string, attachments: Attachment[]): string {
-  if (attachments.length === 0) return text
-  const blocks = attachments.map(
-    (a) =>
-      `--- Attached file: ${a.name}${a.truncated ? ' (truncated)' : ''} ---\n${a.text}\n--- End of ${a.name} ---`,
-  )
-  return [text, ...blocks].filter(Boolean).join('\n\n')
-}
+const ACCEPT =
+  '.txt,.md,.markdown,.csv,.json,.xml,.yml,.yaml,.log,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,' +
+  'text/plain,application/pdf,image/*'
 
 export function InputBar({
   models,
@@ -91,9 +84,12 @@ export function InputBar({
   const submit = () => {
     const trimmed = text.trim()
     if ((!trimmed && attachments.length === 0) || streaming || uploading) return
-    onSend(composeMessage(trimmed || 'Please review the attached file.', attachments), {
+    // The document text is sent as context for the model to read internally —
+    // it is NOT dumped into the visible message.
+    onSend(trimmed || 'Please review the attached document.', {
       web,
       study,
+      attachments: attachments.length ? attachments : undefined,
     })
     setText('')
     setAttachments([])

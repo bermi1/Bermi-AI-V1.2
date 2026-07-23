@@ -35,8 +35,13 @@ async function planSearches(model, message) {
 }
 
 const BASE_PROMPT =
-  'You are Bermi AI, a helpful, precise assistant. Format responses in Markdown. ' +
-  'Use code blocks with language tags for code, and tables where they aid clarity. ' +
+  'You are Bermi AI, a helpful, precise assistant. ' +
+  'Before you answer, silently refine the request: work out the true intent, fill obvious gaps, and plan the ' +
+  'clearest, most complete response — then reply with that improved understanding (never show this planning). ' +
+  'Format responses in Markdown. Use tables where they aid clarity. ' +
+  'IMPORTANT: only include code blocks when the user is actually asking about programming or explicitly wants ' +
+  'code. For everyday, factual, or non-technical questions, answer in prose and DO NOT append example code, ' +
+  'commands, or snippets. Match the format to the question. ' +
   'Write ALL mathematics in LaTeX: $...$ for inline and $$...$$ for display equations. ' +
   'For any math problem, show clear step-by-step working, then give the final answer on its own line as ' +
   '**Answer:** $...$. When a function, curve, inequality region or dataset would be clearer as a graph, add a ' +
@@ -91,10 +96,23 @@ function sse(res, payload) {
  */
 chatRouter.post('/chat', async (req, res, next) => {
   try {
-    const { conversationId, message, model, web = false, study = false } = req.body ?? {}
+    const { conversationId, message, model, web = false, study = false, attachments } = req.body ?? {}
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required' })
     }
+
+    // Attached documents are read INTERNALLY: their (OCR'd / parsed) text is
+    // folded into this turn's context for the model, but never stored or shown
+    // in the chat — the saved user message only carries the visible text.
+    const docBlocks = Array.isArray(attachments)
+      ? attachments
+          .filter((a) => a && typeof a.text === 'string' && a.text.trim())
+          .map(
+            (a) =>
+              `--- Attached document: ${a.name || 'file'} ---\n${a.text.slice(0, 24000)}\n--- End of document ---`,
+          )
+          .join('\n\n')
+      : ''
     if (typeof model !== 'string' || !model) {
       return res.status(400).json({ error: 'model is required' })
     }
@@ -174,7 +192,16 @@ chatRouter.post('/chat', async (req, res, next) => {
         web,
         messages: [
           { role: 'system', content: systemPrompt },
-          ...history.map(({ role, content }) => ({ role, content })),
+          ...history.map(({ role, content }, i, arr) => {
+            // Fold attached-document text into the final user turn only.
+            if (docBlocks && role === 'user' && i === arr.length - 1) {
+              return {
+                role,
+                content: `${content}\n\n${docBlocks}\n\nRead the attached document(s) above carefully and use them to answer. Do not paste the document back verbatim; work from your understanding of it.`,
+              }
+            }
+            return { role, content }
+          }),
         ],
         signal: abort.signal,
       })

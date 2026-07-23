@@ -389,6 +389,7 @@ export async function streamChat(
     model: string
     web?: boolean
     study?: boolean
+    attachments?: { name: string; text: string }[]
   },
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,

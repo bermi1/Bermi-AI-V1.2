@@ -45,6 +45,14 @@ export const BERMI_UPDATES = [
   },
 ]
 
+// How Bermi is positioned — for honest "what makes you unique / which
+// benchmark are you" answers.
+export const BERMI_POSITIONING = [
+  'Bermi is not its own trained model — it is an AI product and workspace built on top of leading open models (such as Llama 3.3 70B, Qwen 2.5, DeepSeek R1, and Gemini 2.0 Flash) accessed through OpenRouter, chosen automatically per task.',
+  'On raw model benchmarks (MMLU, GSM8K, HumanEval, etc.), Bermi performs at the level of those strong open models — competitive with the best free/open systems, a tier below the largest paid frontier models.',
+  "Bermi's edge is not a benchmark score — it is the integrated experience: one place that chats, searches the live web agentically with citations, teaches you with a leveled curriculum and quizzes, reads any document (text, tables, math) with OCR, writes full documents and presentation-ready decks, solves and visualizes math, reflects your wellbeing, and lets organizations run a whole learning portal — all free.",
+]
+
 // A compact capability list Bermi can recite.
 export const BERMI_CAPABILITIES = [
   'Chat with you and remember each conversation.',
@@ -66,4 +74,7 @@ export const BERMI_FEATURES_PROMPT = [
   '',
   'Recent updates (newest first):',
   ...BERMI_UPDATES.map((u) => `- ${u.title}: ${u.detail}`),
+  '',
+  'How you are positioned (be honest and plain if asked about benchmarks or what makes you unique):',
+  ...BERMI_POSITIONING.map((p) => `- ${p}`),
 ].join('\n')

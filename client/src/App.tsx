@@ -20,6 +20,7 @@ import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
 import type { StudyAwardEvent } from './lib/api'
 import type {
+  Attachment,
   AuthUser,
   Brain,
   Conversation,
@@ -251,15 +252,21 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   )
 
   const send = useCallback(
-    (text: string, opts: { web?: boolean; study?: boolean } = {}) => {
-      const { web = false, study: studyReq = false } = opts
+    (text: string, opts: { web?: boolean; study?: boolean; attachments?: Attachment[] } = {}) => {
+      const { web = false, study: studyReq = false, attachments } = opts
       setChatError(null)
       setChatSteps([])
       const now = new Date().toISOString()
+      // Show only a compact chip for attachments; their full (OCR'd) text is
+      // sent as context for the model to read internally, never displayed.
+      const tags = attachments?.length
+        ? '\n\n' + attachments.map((a) => `📎 ${a.name}`).join('\n')
+        : ''
+      const displayText = text + tags
       const userMsg: Message = {
         id: `local-${Date.now()}-u`,
         role: 'user',
-        content: text,
+        content: displayText,
         created_at: now,
       }
       const assistantMsg: Message = {
@@ -276,7 +283,14 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
       abortRef.current = abort
 
       api.streamChat(
-        { conversationId: activeId, message: text, model: selectedModel, web, study: studyReq },
+        {
+          conversationId: activeId,
+          message: displayText,
+          model: selectedModel,
+          web,
+          study: studyReq,
+          attachments: attachments?.map((a) => ({ name: a.name, text: a.text })),
+        },
         {
           onConversation: (conversation) => {
             setActiveId(conversation.id)
