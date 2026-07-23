@@ -7,3 +7,4 @@ server/data/
 .DS_Store
 *.tsbuildinfo
 server/src/runtime-config.js
+server/src/runtime-config.json
