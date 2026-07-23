@@ -51,6 +51,32 @@ async function ocrImage(buffer, mimetype) {
   return ocrImageTesseract(buffer)
 }
 
+/** Extract slide text from a .pptx (a zip of slide XML) using jszip. */
+async function extractPptx(buffer) {
+  const { default: JSZip } = await import('jszip')
+  const zip = await JSZip.loadAsync(buffer)
+  const slidePaths = Object.keys(zip.files)
+    .filter((p) => /^ppt\/slides\/slide\d+\.xml$/.test(p))
+    .sort((a, b) => Number(a.match(/(\d+)/)[1]) - Number(b.match(/(\d+)/)[1]))
+  const decode = (s) =>
+    s
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+  const out = []
+  let n = 0
+  for (const p of slidePaths) {
+    n++
+    const xml = await zip.files[p].async('string')
+    const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => decode(m[1]))
+    const clean = texts.join(' ').replace(/\s+/g, ' ').trim()
+    if (clean) out.push(`## Slide ${n}\n${clean}`)
+  }
+  return out.join('\n\n')
+}
+
 /** Classic offline OCR fallback (lazy-loaded — it's heavy). */
 async function ocrImageTesseract(buffer) {
   const { createWorker } = await import('tesseract.js')
@@ -97,11 +123,16 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
     ) {
       const { default: mammoth } = await import('mammoth')
       text = (await mammoth.extractRawText({ buffer })).value
+    } else if (
+      lower.endsWith('.pptx') ||
+      mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ) {
+      text = await extractPptx(buffer)
     } else if (TEXT_TYPES.test(mimetype) || /\.(txt|md|markdown|csv|json|xml|ya?ml|log)$/i.test(originalname)) {
       text = buffer.toString('utf8')
     } else {
       return res.status(415).json({
-        error: `Unsupported file type (${mimetype}). Upload text (.txt, .md, .csv, .json), Word (.docx), PDF, or an image (.png, .jpg) for OCR.`,
+        error: `Unsupported file type (${mimetype}). Upload text (.txt, .md, .csv, .json), Word (.docx), PowerPoint (.pptx), PDF, or an image (.png, .jpg) for OCR.`,
       })
     }
 

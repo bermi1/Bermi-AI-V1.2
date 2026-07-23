@@ -8,9 +8,12 @@ import { BERMI_FEATURES_PROMPT } from '../features.js'
 export const chatRouter = Router()
 
 const BASE_PROMPT =
-  'You are Bermi AI, a helpful, precise assistant. ' +
+  'You are Bermi AI, a helpful, precise, highly capable assistant. ' +
   'Before you answer, silently refine the request: work out the true intent, fill obvious gaps, and plan the ' +
   'clearest, most complete response — then reply with that improved understanding (never show this planning). ' +
+  'STAY ON TOPIC: answer exactly what the user asked, directly and fully; do not drift into unrelated tangents, ' +
+  'filler, or unrequested topics. If the request is broad, cover it thoroughly and stay within its scope. ' +
+  'Be genuinely useful and expansive when depth helps, concise when it does not. ' +
   'Format responses in Markdown. Use tables where they aid clarity. ' +
   'IMPORTANT: only include code blocks when the user is actually asking about programming or explicitly wants ' +
   'code. For everyday, factual, or non-technical questions, answer in prose and DO NOT append example code, ' +
@@ -57,6 +60,90 @@ async function buildSystemPrompt(userId, study = false) {
     }
   }
   return parts.join('\n\n')
+}
+
+// Only touch the LMS when the message is actually about learning/courses, so
+// normal chats stay fast and lean.
+const LEARN_RE =
+  /\b(courses?|classes?|lessons?|enroll?|enrol|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|curriculum|syllabus|tutor)\b/i
+const ENROLL_RE = /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|join)\b/i
+
+/**
+ * Lets Bermi access the course catalog and act on it agentically from chat:
+ * it can discuss/recommend any published course, and enroll the user directly
+ * when they ask. Returns a context block (the catalog) and an action note
+ * (what the system already did) to append to the system prompt.
+ */
+async function learningContext(userId, message) {
+  if (!LEARN_RE.test(message)) return { block: '', note: '' }
+  let courses = []
+  let instById = new Map()
+  try {
+    const [cs, insts] = await Promise.all([
+      storage.listPublishedCourses(),
+      storage.listPublishedInstitutions(),
+    ])
+    courses = cs || []
+    instById = new Map((insts || []).map((i) => [i.id, i]))
+  } catch {
+    return { block: '', note: '' }
+  }
+  if (!courses.length) return { block: '', note: '' }
+
+  const list = courses
+    .slice(0, 40)
+    .map((c) => {
+      const inst = instById.get(c.institution_id)
+      return `- "${c.title}" (${c.level || 'All levels'}) by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}`
+    })
+    .join('\n')
+  const block =
+    `# Bermi Learn — courses available right now (you can discuss, recommend and enroll the user in these)\n${list}\n\n` +
+    'If the user asks to enroll or apply, the system enrolls them directly (see any Live action below); ' +
+    'then tell them to open /portal or say "Study in Bermi AI" to begin. Recommend courses from this list only.'
+
+  let note = ''
+  if (ENROLL_RE.test(message)) {
+    const lower = message.toLowerCase()
+    let best = courses.find((c) => lower.includes(c.title.toLowerCase()))
+    if (!best) {
+      let bestHits = 0
+      for (const c of courses) {
+        const words = c.title.toLowerCase().split(/\W+/).filter((w) => w.length > 3)
+        const hits = words.filter((w) => lower.includes(w)).length
+        if (hits > bestHits && hits >= Math.max(1, Math.ceil(words.length / 2))) {
+          best = c
+          bestHits = hits
+        }
+      }
+    }
+    if (best) {
+      try {
+        const existing = await storage.getEnrollment(best.id, userId)
+        if (existing) {
+          note = `Live action: the user is ALREADY enrolled in "${best.title}". Confirm and tell them to open /portal to continue.`
+        } else {
+          await storage.createEnrollment({
+            id: randomUUID(),
+            course_id: best.id,
+            user_id: userId,
+            status: best.enrollment === 'approval' ? 'applied' : 'enrolled',
+            progress: {},
+            score: null,
+            enrolled_at: new Date().toISOString(),
+          })
+          const inst = instById.get(best.institution_id)
+          note = `Live action: you HAVE NOW enrolled the user in "${best.title}"${inst ? ` by ${inst.name}` : ''}. Confirm warmly, briefly say what it covers, and tell them to open /portal or say "Study in Bermi AI" to start. State only what actually happened.`
+        }
+      } catch (e) {
+        note = `Live action: enrollment failed (${e.message}). Apologize briefly and suggest enrolling from /portal.`
+      }
+    } else {
+      note =
+        'Live action: the user wants to enroll but did not name a course that matches the catalog. Ask which one, listing 2-3 relevant available courses by name.'
+    }
+  }
+  return { block, note }
 }
 
 function sse(res, payload) {
@@ -118,10 +205,14 @@ chatRouter.post('/chat', async (req, res, next) => {
       created_at: now,
     })
 
-    const [systemPrompt, history] = await Promise.all([
+    const [systemPromptBase, history, learn] = await Promise.all([
       buildSystemPrompt(req.user.id, study),
       storage.listMessages(conversation.id),
+      learningContext(req.user.id, message),
     ])
+    let systemPrompt = systemPromptBase
+    if (learn.block) systemPrompt += `\n\n${learn.block}`
+    if (learn.note) systemPrompt += `\n\n# Live action (already performed by the system)\n${learn.note}`
 
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
@@ -152,6 +243,8 @@ chatRouter.post('/chat', async (req, res, next) => {
     }
 
     let assistantText = ''
+    // Real, in-context web citations (the sources the grounded answer used).
+    const citations = []
     try {
       const upstream = await streamCompletion({
         model,
@@ -190,6 +283,16 @@ chatRouter.post('/chat', async (req, res, next) => {
             const chunk = JSON.parse(payload)
             const delta = chunk.choices?.[0]?.delta
             const token = delta?.content
+            // Capture the real sources the web-grounded answer actually cited.
+            const anns = delta?.annotations || chunk.choices?.[0]?.message?.annotations
+            if (Array.isArray(anns)) {
+              for (const a of anns) {
+                const u = a.url_citation || a
+                if (u?.url && !citations.some((c) => c.url === u.url)) {
+                  citations.push({ url: u.url, title: u.title || u.url })
+                }
+              }
+            }
             if (token) {
               if (firstToken) {
                 sse(res, { type: 'status', label: null }) // clear the loop
@@ -203,6 +306,8 @@ chatRouter.post('/chat', async (req, res, next) => {
           }
         }
       }
+      // Only surface sources that are real and tied to this answer's context.
+      if (web && citations.length) sse(res, { type: 'citations', items: citations })
     } catch (err) {
       if (!abort.signal.aborted) {
         sse(res, { type: 'error', error: err.message })
@@ -212,12 +317,19 @@ chatRouter.post('/chat', async (req, res, next) => {
     }
 
     if (assistantText) {
+      // Persist real sources inline so they survive a reload.
+      let toSave = assistantText
+      if (web && citations.length) {
+        toSave +=
+          '\n\n---\n**Sources**\n' +
+          citations.map((c, i) => `${i + 1}. [${c.title}](${c.url})`).join('\n')
+      }
       const doneAt = new Date().toISOString()
       await storage.addMessage({
         id: randomUUID(),
         conversation_id: conversation.id,
         role: 'assistant',
-        content: assistantText,
+        content: toSave,
         model,
         created_at: doneAt,
       })

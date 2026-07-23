@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   BarChart3,
@@ -7,9 +7,11 @@ import {
   Eye,
   EyeOff,
   Layers,
+  Loader2,
   Plus,
   Sparkles,
   Trash2,
+  Upload,
   Users,
   Wand2,
 } from 'lucide-react'
@@ -511,9 +513,28 @@ function LessonEditor({
   const [lesson, setLesson] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [drafting, setDrafting] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const patch = (p: Partial<Lesson>) => setLesson((l) => ({ ...l, ...p }))
+
+  const uploadMaterial = async (file: File) => {
+    setUploading(true)
+    setError(null)
+    try {
+      const att = await api.extractFile(file)
+      const header = `# ${att.name}`
+      patch({
+        material: (lesson.material ? lesson.material.trim() + '\n\n' : '') + `${header}\n${att.text}`,
+      })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -563,19 +584,38 @@ function LessonEditor({
         />
       </div>
 
-      <Field label="Source material" hint="Paste notes, an outline, or raw text — Bermi turns it into a polished lesson.">
+      <Field label="Source material" hint="Paste text, or upload a PPT, PDF, Word doc or image — Bermi reads it and turns it into a polished lesson.">
         <textarea
           className={`${inputClass} min-h-[90px] resize-y`}
           value={lesson.material || ''}
           onChange={(e) => patch({ material: e.target.value })}
-          placeholder="Paste your teaching material here…"
+          placeholder="Paste your teaching material, or upload a file below…"
         />
       </Field>
 
-      <div className="my-3">
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        accept=".pptx,.pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.tif,.tiff,image/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) uploadMaterial(f)
+        }}
+      />
+
+      <div className="my-3 flex flex-wrap items-center gap-2">
+        <Btn size="sm" variant="outline" onClick={() => fileRef.current?.click()} loading={uploading}>
+          <Upload size={14} /> Upload PPT / PDF / doc
+        </Btn>
         <Btn size="sm" variant="outline" onClick={aiDraft} loading={drafting} disabled={!lesson.material?.trim()}>
           <Wand2 size={14} /> {lesson.content ? 'Redraft with AI' : 'Draft lesson with AI'}
         </Btn>
+        {uploading && (
+          <span className="inline-flex items-center gap-1 text-[12px] text-ink-faint">
+            <Loader2 size={12} className="animate-spin" /> Reading file…
+          </span>
+        )}
       </div>
 
       <Field label="Lesson content" hint="What learners read. Markdown supported.">
