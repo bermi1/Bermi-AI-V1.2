@@ -34,6 +34,42 @@ async function collectTranscript(userId, sinceMs) {
   return { transcript: chunks.join('\n'), userTurns, assistantTurns, conversations: recent.length }
 }
 
+// Wellbeing "vitals" — a health-app style panel. Each has a polarity so the UI
+// can color it: for some, higher is healthier; for others (brain rot,
+// dependency) higher is a concern.
+const VITAL_META = {
+  emotional_balance: { label: 'Emotional balance', goodHigh: true },
+  focus: { label: 'Focus & depth', goodHigh: true },
+  growth: { label: 'Growth & learning', goodHigh: true },
+  healthy_usage: { label: 'Healthy usage', goodHigh: true },
+  dependency: { label: 'AI dependency', goodHigh: false },
+  brain_rot: { label: 'Brain-rot risk', goodHigh: false },
+}
+const VITAL_ORDER = ['emotional_balance', 'focus', 'growth', 'healthy_usage', 'dependency', 'brain_rot']
+
+const vitalStatus = (score, goodHigh) => {
+  const eff = goodHigh ? score : 100 - score
+  return eff >= 67 ? 'good' : eff >= 34 ? 'watch' : 'high'
+}
+
+function buildVitals(parsed) {
+  const src = {}
+  if (Array.isArray(parsed.vitals)) for (const v of parsed.vitals) if (v && v.id) src[v.id] = v
+  return VITAL_ORDER.map((id) => {
+    const meta = VITAL_META[id]
+    const v = src[id] || {}
+    const score = Math.max(0, Math.min(100, Math.round(Number(v.score) || 0)))
+    return {
+      id,
+      label: meta.label,
+      score,
+      good_high: meta.goodHigh,
+      status: vitalStatus(score, meta.goodHigh),
+      note: String(v.note || ''),
+    }
+  })
+}
+
 function emptyReport(period, stats) {
   return {
     period,
@@ -44,6 +80,10 @@ function emptyReport(period, stats) {
     productivity_pct: 0,
     dependency_pct: 0,
     prompt_quality_pct: 0,
+    wellbeing_pct: 0,
+    emotion: { label: '—', score: 0, note: '' },
+    vitals: [],
+    recommendations: [],
     prompt_tips: [],
     skills: [],
     positive_traits: [],
@@ -51,8 +91,8 @@ function emptyReport(period, stats) {
     adaptation: '',
     summary:
       stats.userTurns === 0
-        ? 'No conversations in this period yet. Start chatting and your insights will appear here.'
-        : 'Not enough signal yet — keep chatting to build your report.',
+        ? 'No conversations in this period yet. Start chatting and your check-in will appear here.'
+        : 'Not enough signal yet — keep chatting to build your check-in.',
   }
 }
 
@@ -67,20 +107,32 @@ async function analyze(period, stats) {
       {
         role: 'system',
         content:
-          'You are Bermi Insights, a supportive coach that reviews a person\'s chat history with an AI ' +
-          'assistant and produces an honest, encouraging wellbeing-and-productivity report — like a health app ' +
-          'summary. Respond with ONLY a JSON object, no markdown, shaped exactly as:\n' +
-          '{"productivity_pct":0-100,"dependency_pct":0-100,"prompt_quality_pct":0-100,' +
-          '"prompt_tips":[string,string,string],"skills":[string,...],' +
+          'You are Bermi Health, a warm, non-judgmental wellbeing companion — like a mental-health / screen-time ' +
+          'app — that reviews how a person uses an AI assistant and reflects it back kindly. You are a mirror, not a ' +
+          'doctor: never diagnose, never alarm, always be gentle and practical. Respond with ONLY a JSON object, no ' +
+          'markdown, shaped exactly as:\n' +
+          '{"productivity_pct":0-100,"dependency_pct":0-100,"prompt_quality_pct":0-100,"wellbeing_pct":0-100,' +
+          '"emotion":{"label":string,"score":0-100,"note":string},' +
+          '"vitals":[{"id":"emotional_balance","score":0-100,"note":string},{"id":"focus","score":0-100,"note":string},' +
+          '{"id":"growth","score":0-100,"note":string},{"id":"healthy_usage","score":0-100,"note":string},' +
+          '{"id":"dependency","score":0-100,"note":string},{"id":"brain_rot","score":0-100,"note":string}],' +
+          '"recommendations":[string,string,string],"prompt_tips":[string,string,string],"skills":[string,...],' +
           '"positive_traits":[{"trait":string,"note":string},{...},{...}],' +
           '"negative_traits":[{"trait":string,"note":string},{...},{...}],' +
           '"adaptation":string,"summary":string}\n' +
-          'Guidance: productivity_pct = how goal-directed and useful the discussions are. ' +
-          'dependency_pct = how much the person leans on the AI to think for them vs. using it as a tool ' +
-          '(higher = more dependent, a caution). prompt_quality_pct = how clear, specific and well-structured ' +
-          'their prompts are. prompt_tips = 3 concrete ways to write better prompts. skills = concrete skills or ' +
-          'knowledge they appear to be building. Exactly 3 positive and 3 negative traits, each with a short kind note. ' +
-          'adaptation = one sentence on how Bermi is tuning to their style. summary = 2 warm sentences. Be specific to the transcript.',
+          'Guidance for the health vitals (each 0-100 with a short kind note):\n' +
+          '- emotional_balance: how steady, calm and positive their emotional tone reads (higher = healthier).\n' +
+          '- focus: depth and intentionality of their sessions vs. scattered (higher = healthier).\n' +
+          '- growth: how much they are learning and building real skills (higher = healthier).\n' +
+          '- healthy_usage: balanced, purposeful use rather than compulsive over-use (higher = healthier).\n' +
+          '- dependency: over-reliance on AI to think for them (higher = MORE concern).\n' +
+          '- brain_rot: shallow, mindless, doom-scroll-style or low-value use (higher = MORE concern).\n' +
+          'emotion.label = one or two words for their overall mood (e.g. "Motivated", "Stressed", "Curious"); ' +
+          'emotion.score = positivity 0-100. wellbeing_pct = overall healthy-use score. ' +
+          'recommendations = 3 concrete, caring suggestions to improve mental wellbeing and healthy AI use. ' +
+          'prompt_tips = 3 concrete ways to write better prompts. skills = concrete skills they are building. ' +
+          'Exactly 3 positive and 3 negative traits, each with a short kind note. adaptation = one sentence on how ' +
+          'Bermi is tuning to their style. summary = 2 warm, encouraging sentences. Be specific to the transcript.',
       },
       {
         role: 'user',
@@ -98,11 +150,20 @@ async function analyze(period, stats) {
       Array.isArray(arr)
         ? arr.slice(0, 3).map((t) => ({ trait: String(t.trait || ''), note: String(t.note || '') }))
         : []
+    const emotion = parsed.emotion && typeof parsed.emotion === 'object' ? parsed.emotion : {}
     return {
       ...base,
       productivity_pct: clampPct(parsed.productivity_pct),
       dependency_pct: clampPct(parsed.dependency_pct),
       prompt_quality_pct: clampPct(parsed.prompt_quality_pct),
+      wellbeing_pct: clampPct(parsed.wellbeing_pct),
+      emotion: {
+        label: String(emotion.label || '—').slice(0, 24),
+        score: clampPct(emotion.score),
+        note: String(emotion.note || ''),
+      },
+      vitals: buildVitals(parsed),
+      recommendations: (parsed.recommendations || []).slice(0, 5).map(String),
       prompt_tips: (parsed.prompt_tips || []).slice(0, 5).map(String),
       skills: (parsed.skills || []).slice(0, 8).map(String),
       positive_traits: traits(parsed.positive_traits),

@@ -132,6 +132,21 @@ export interface Trait {
   note: string
 }
 
+export interface Vital {
+  id: string
+  label: string
+  score: number
+  good_high: boolean
+  status: 'good' | 'watch' | 'high'
+  note: string
+}
+
+export interface Emotion {
+  label: string
+  score: number
+  note: string
+}
+
 export interface InsightsReport {
   period: 'day' | 'week'
   generated_at: string
@@ -141,6 +156,10 @@ export interface InsightsReport {
   productivity_pct: number
   dependency_pct: number
   prompt_quality_pct: number
+  wellbeing_pct: number
+  emotion: Emotion
+  vitals: Vital[]
+  recommendations: string[]
   prompt_tips: string[]
   skills: string[]
   positive_traits: Trait[]

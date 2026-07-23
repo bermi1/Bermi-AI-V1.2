@@ -342,6 +342,17 @@ export const resetVibeBrain = () =>
 export const fetchGmailMessages = () =>
   apiFetch('/api/connectors/google/gmail/messages').then((r) => json<GmailMessage[]>(r))
 
+// ---------- Message feedback (like / dislike) ----------
+
+export const sendFeedback = (messageId: string, value: 'up' | 'down' | null) =>
+  apiFetch('/api/chat/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId, value }),
+  })
+    .then((r) => json<{ ok: true }>(r))
+    .catch(() => ({ ok: true as const }))
+
 // ---------- Chat streaming ----------
 
 export interface Citation {

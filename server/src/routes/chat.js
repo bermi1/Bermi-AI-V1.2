@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
 import { streamCompletion, complete } from '../openrouter.js'
 import { STUDY_PROMPT, awardStudy } from '../study.js'
+import { BERMI_FEATURES_PROMPT } from '../features.js'
 
 export const chatRouter = Router()
 
@@ -44,6 +45,10 @@ const BASE_PROMPT =
  */
 async function buildSystemPrompt(userId, study = false) {
   const parts = [study ? STUDY_PROMPT : BASE_PROMPT]
+
+  // Bermi's self-knowledge: current features & updates, so it can answer
+  // "what's new?" / "what can you do?" accurately instead of guessing.
+  parts.push(`# About Bermi (yourself)\n${BERMI_FEATURES_PROMPT}`)
 
   const [name, role, prefs] = await Promise.all([
     storage.getSetting(`u:${userId}:profile_name`),
@@ -250,6 +255,29 @@ chatRouter.post('/chat', async (req, res, next) => {
 
     res.write('data: [DONE]\n\n')
     res.end()
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /api/chat/feedback { messageId, value }
+ * Records a thumbs up/down on an answer so Bermi can learn what helps.
+ * value: 'up' | 'down' | null (clears).
+ */
+chatRouter.post('/chat/feedback', async (req, res, next) => {
+  try {
+    const { messageId, value } = req.body ?? {}
+    if (typeof messageId !== 'string' || !messageId) {
+      return res.status(400).json({ error: 'messageId is required' })
+    }
+    const key = `fb:${req.user.id}:${messageId}`
+    if (value === 'up' || value === 'down') {
+      await storage.setSetting(key, value)
+    } else {
+      await storage.deleteSetting(key)
+    }
+    res.json({ ok: true })
   } catch (err) {
     next(err)
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, Globe, Loader2, Share2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Globe, Loader2, Share2, ThumbsDown, ThumbsUp } from 'lucide-react'
 import type { Message } from '../lib/types'
+import { sendFeedback } from '../lib/api'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
 
@@ -119,7 +120,7 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
                   showCursor && <span className="streaming-cursor text-ink-faint">&nbsp;</span>
                 )}
                 {sources.length > 0 && <SourcesPanel sources={sources} />}
-                {!showCursor && body && <MessageActions text={shareText} />}
+                {!showCursor && body && <MessageActions text={shareText} messageId={m.id} rate />}
               </div>
             </div>
           )
@@ -147,10 +148,36 @@ export function ChatPanel({ messages, streaming, steps, error, userName }: ChatP
   )
 }
 
-/** Copy / share controls for a message. */
-function MessageActions({ text, compact }: { text: string; compact?: boolean }) {
+/** Copy / share / rate controls for a message. */
+function MessageActions({
+  text,
+  compact,
+  messageId,
+  rate,
+}: {
+  text: string
+  compact?: boolean
+  messageId?: string
+  rate?: boolean
+}) {
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState(false)
+  const fbKey = messageId ? `bermi-fb-${messageId}` : ''
+  const [vote, setVote] = useState<'up' | 'down' | null>(() => {
+    if (!fbKey) return null
+    const v = localStorage.getItem(fbKey)
+    return v === 'up' || v === 'down' ? v : null
+  })
+
+  const setRating = (v: 'up' | 'down') => {
+    const next = vote === v ? null : v
+    setVote(next)
+    if (fbKey) {
+      if (next) localStorage.setItem(fbKey, next)
+      else localStorage.removeItem(fbKey)
+    }
+    if (messageId) sendFeedback(messageId, next)
+  }
 
   const copy = async () => {
     try {
@@ -189,6 +216,31 @@ function MessageActions({ text, compact }: { text: string; compact?: boolean }) 
         <Share2 size={13} />
         {shared ? 'Copied to share' : 'Share'}
       </button>
+      {rate && (
+        <>
+          <span className="mx-0.5 h-4 w-px bg-edge" />
+          <button
+            onClick={() => setRating('up')}
+            className={`rounded-lg p-1.5 transition-colors hover:bg-surface-sunken ${
+              vote === 'up' ? 'text-emerald-500' : 'text-ink-faint hover:text-ink-muted'
+            }`}
+            aria-label="Good response"
+            aria-pressed={vote === 'up'}
+          >
+            <ThumbsUp size={13} />
+          </button>
+          <button
+            onClick={() => setRating('down')}
+            className={`rounded-lg p-1.5 transition-colors hover:bg-surface-sunken ${
+              vote === 'down' ? 'text-rose-500' : 'text-ink-faint hover:text-ink-muted'
+            }`}
+            aria-label="Bad response"
+            aria-pressed={vote === 'down'}
+          >
+            <ThumbsDown size={13} />
+          </button>
+        </>
+      )}
     </div>
   )
 }
