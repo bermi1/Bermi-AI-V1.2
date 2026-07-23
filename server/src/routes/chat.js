@@ -36,7 +36,13 @@ async function planSearches(model, message) {
 
 const BASE_PROMPT =
   'You are Bermi AI, a helpful, precise assistant. Format responses in Markdown. ' +
-  'Use code blocks with language tags for code, and tables where they aid clarity.'
+  'Use code blocks with language tags for code, and tables where they aid clarity. ' +
+  'Write ALL mathematics in LaTeX: $...$ for inline and $$...$$ for display equations. ' +
+  'For any math problem, show clear step-by-step working, then give the final answer on its own line as ' +
+  '**Answer:** $...$. When a function, curve, inequality region or dataset would be clearer as a graph, add a ' +
+  'fenced code block with the language `plot` containing one expression in x per line ' +
+  '(for example a block with `y = x^2` then `y = sin(x)`); Bermi renders these as an interactive graph. ' +
+  'Optionally set the range with a first line like `# x: -10..10`.'
 
 /**
  * System prompt = base + user personalization + enabled brains. The company

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import multer from 'multer'
+import { complete } from '../openrouter.js'
 
 export const extractRouter = Router()
 
@@ -12,8 +13,46 @@ const MAX_CHARS = 24_000
 const TEXT_TYPES = /^(text\/|application\/(json|xml|csv|x-yaml))/
 const IMAGE_TYPES = /^image\/(png|jpe?g|webp|bmp|tiff?)/
 
-/** OCR an image buffer to text via tesseract.js (lazy-loaded — it's heavy). */
-async function ocrImage(buffer) {
+const OCR_PROMPT =
+  'You are a powerful OCR engine. Transcribe EVERYTHING in this document image, exactly, losing nothing. ' +
+  'Preserve the reading order and structure. Output clean Markdown: use headings for headings, bullet/numbered ' +
+  'lists for lists, and Markdown tables for any tabular data. Render every mathematical expression, equation, ' +
+  'formula or symbol in LaTeX ($...$ inline, $$...$$ for display). Transcribe handwriting if present. Do NOT ' +
+  'summarize, explain, translate, or add commentary — output only the transcribed content.'
+
+/**
+ * Modern OCR via a vision-language model (Qwen2.5-VL and friends) through
+ * OpenRouter. Reads text, tables and math (as LaTeX) from an image far better
+ * than classic OCR. Falls back to tesseract.js if the model call fails or no
+ * API key is set.
+ */
+async function ocrImage(buffer, mimetype) {
+  const mime = IMAGE_TYPES.test(mimetype) ? mimetype : 'image/png'
+  const dataUri = `data:${mime};base64,${buffer.toString('base64')}`
+  try {
+    const text = await complete({
+      model: 'bermi-vision',
+      maxTokens: 4000,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: OCR_PROMPT },
+            { type: 'image_url', image_url: { url: dataUri } },
+          ],
+        },
+      ],
+    })
+    const cleaned = (text || '').replace(/<\/?think>/gi, '').trim()
+    if (cleaned) return cleaned
+  } catch {
+    /* fall through to tesseract */
+  }
+  return ocrImageTesseract(buffer)
+}
+
+/** Classic offline OCR fallback (lazy-loaded — it's heavy). */
+async function ocrImageTesseract(buffer) {
   const { createWorker } = await import('tesseract.js')
   const worker = await createWorker('eng')
   try {
@@ -49,8 +88,8 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
         await parser.destroy()
       }
     } else if (IMAGE_TYPES.test(mimetype) || /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(lower)) {
-      // Scanned document / photo → OCR.
-      text = await ocrImage(buffer)
+      // Scanned document / photo → modern vision-model OCR.
+      text = await ocrImage(buffer, mimetype)
       ocr = true
     } else if (
       lower.endsWith('.docx') ||
