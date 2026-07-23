@@ -1,38 +1,11 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
-import { streamCompletion, complete } from '../openrouter.js'
+import { streamCompletion } from '../openrouter.js'
 import { STUDY_PROMPT, awardStudy } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 
 export const chatRouter = Router()
-
-/**
- * Plans the web research: asks the model for a few focused search queries so
- * the UI can show a real "Google-style" search loop (plan → search → read).
- */
-async function planSearches(model, message) {
-  try {
-    const raw = await complete({
-      model,
-      maxTokens: 200,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You plan web research. Given the user message, output ONLY a JSON array of 2-3 concise ' +
-            'search engine queries (strings) that would answer it. No prose.',
-        },
-        { role: 'user', content: message.slice(0, 800) },
-      ],
-    })
-    if (!raw) return []
-    const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''))
-    return Array.isArray(parsed) ? parsed.slice(0, 3).map(String) : []
-  } catch {
-    return []
-  }
-}
 
 const BASE_PROMPT =
   'You are Bermi AI, a helpful, precise assistant. ' +
@@ -167,15 +140,9 @@ chatRouter.post('/chat', async (req, res, next) => {
     // Show the work Bermi does before answering. For web search this is a real
     // agentic loop: plan queries → search each → read sources → synthesize.
     if (web) {
-      sse(res, { type: 'status', label: 'Planning research' })
-      const queries = await planSearches(model, message)
-      if (queries.length) {
-        for (const q of queries) sse(res, { type: 'status', label: `Searching the web: “${q}”` })
-      } else {
-        sse(res, { type: 'status', label: 'Searching the web' })
-      }
-      sse(res, { type: 'status', label: 'Reading sources' })
-      sse(res, { type: 'status', label: 'Synthesizing an answer' })
+      // Keep this light — no extra pre-call — so answers start fast.
+      for (const label of ['Searching the web', 'Reading results', 'Writing the answer'])
+        sse(res, { type: 'status', label })
     } else if (study) {
       for (const label of ['Assessing what you know', 'Planning the lesson', 'Preparing your next step'])
         sse(res, { type: 'status', label })
@@ -185,7 +152,6 @@ chatRouter.post('/chat', async (req, res, next) => {
     }
 
     let assistantText = ''
-    const citations = []
     try {
       const upstream = await streamCompletion({
         model,
@@ -224,16 +190,6 @@ chatRouter.post('/chat', async (req, res, next) => {
             const chunk = JSON.parse(payload)
             const delta = chunk.choices?.[0]?.delta
             const token = delta?.content
-            // Collect url citations from web-grounded answers.
-            const anns = delta?.annotations || chunk.choices?.[0]?.message?.annotations
-            if (Array.isArray(anns)) {
-              for (const a of anns) {
-                const u = a.url_citation || a
-                if (u?.url && !citations.some((c) => c.url === u.url)) {
-                  citations.push({ url: u.url, title: u.title || u.url })
-                }
-              }
-            }
             if (token) {
               if (firstToken) {
                 sse(res, { type: 'status', label: null }) // clear the loop
@@ -247,7 +203,6 @@ chatRouter.post('/chat', async (req, res, next) => {
           }
         }
       }
-      if (citations.length) sse(res, { type: 'citations', items: citations })
     } catch (err) {
       if (!abort.signal.aborted) {
         sse(res, { type: 'error', error: err.message })
@@ -257,19 +212,12 @@ chatRouter.post('/chat', async (req, res, next) => {
     }
 
     if (assistantText) {
-      // Persist citations inline so they survive a reload.
-      let toSave = assistantText
-      if (citations.length) {
-        toSave +=
-          '\n\n---\n**Sources**\n' +
-          citations.map((c, i) => `${i + 1}. [${c.title}](${c.url})`).join('\n')
-      }
       const doneAt = new Date().toISOString()
       await storage.addMessage({
         id: randomUUID(),
         conversation_id: conversation.id,
         role: 'assistant',
-        content: toSave,
+        content: assistantText,
         model,
         created_at: doneAt,
       })

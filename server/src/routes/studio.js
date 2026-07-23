@@ -111,7 +111,11 @@ studioRouter.post('/studio/generate', async (req, res, next) => {
         'Produce at least 5 well-developed sections and 500+ words. ' +
         'Output ONLY the finished document — no preamble, no commentary, no <think> tags, no code fences around the whole thing.'
 
-    async function draft(model, outline) {
+    // One reliable pass: the model plans internally, then writes the whole
+    // document in a single call. `complete` already walks a free-first model
+    // fallback chain, so we avoid extra round-trips (which were the main source
+    // of latency and mismatched output).
+    async function draft(model) {
       const raw = await complete({
         model,
         maxTokens: isSlides ? 3200 : 4096,
@@ -120,49 +124,23 @@ studioRouter.post('/studio/generate', async (req, res, next) => {
           {
             role: 'user',
             content:
-              `Title: ${title || '(choose a fitting title)'}\n\nBrief: ${prompt}` +
-              (outline ? `\n\nFollow this outline:\n${outline}` : ''),
+              `Title: ${title || '(choose a fitting title)'}\n\nBrief: ${prompt}\n\n` +
+              `Plan the structure first (in your head), then write the complete ${
+                isSlides ? 'deck' : 'document'
+              } directly and in full. Stay strictly on the brief.`,
           },
         ],
       })
       return cleanMarkdown(raw)
     }
 
+    const enough = (md) => md && md.replace(/\s+/g, ' ').length >= 250
+
     let markdown = ''
     try {
-      // Pass 1 — refine the brief into an outline (quick, optional).
-      let outline = ''
-      try {
-        outline = cleanMarkdown(
-          await complete({
-            model: OUTLINE_MODEL,
-            maxTokens: 700,
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You are a senior editor. Turn the brief into a detailed outline for ' +
-                  kindDesc +
-                  '. Infer audience, goal, and tone. ' +
-                  (isSlides
-                    ? 'Plan 8-12 slides; for each give a slide title and 2-4 key points. '
-                    : 'Plan a title and 5-9 substantive sections, each with the points it covers. ') +
-                  'Output the outline only.',
-              },
-              { role: 'user', content: `Title: ${title || '(choose one)'}\n\nBrief: ${prompt}` },
-            ],
-          }),
-        )
-      } catch {
-        /* outline optional */
-      }
-
-      // Pass 2 — write the full document.
-      markdown = await draft(DRAFT_MODEL, outline)
-      // Retry on a different model if the result is too thin to be a real doc.
-      if (markdown.replace(/\s+/g, ' ').length < 250) {
-        markdown = await draft(OUTLINE_MODEL, outline)
-      }
+      markdown = await draft(DRAFT_MODEL)
+      // One fast fallback on a different model if the first result is too thin.
+      if (!enough(markdown)) markdown = await draft(OUTLINE_MODEL)
     } catch (err) {
       console.error('Studio draft failed, using scaffold:', err.message)
     }
