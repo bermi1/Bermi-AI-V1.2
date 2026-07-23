@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { GraduationCap, LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
+import { LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
@@ -14,6 +14,7 @@ import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
 import { LearnPortal } from './learn/LearnPortal'
+import { AdminDashboard } from './admin/AdminDashboard'
 import { StudyHud, StudyToast } from './components/StudyHud'
 import { BermiMark } from './components/Logo'
 import * as api from './lib/api'
@@ -100,21 +101,16 @@ function Router({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void
     window.scrollTo(0, 0)
   }, [])
 
-  if (path.startsWith('/learn')) {
+  if (path.startsWith('/portal') || path.startsWith('/learn')) {
     return <LearnPortal user={user} onExit={() => go('/')} />
   }
-  return <Workspace user={user} onSignedOut={onSignedOut} onOpenLearn={() => go('/learn')} />
+  if (path.startsWith('/admin')) {
+    return <AdminDashboard onExit={() => go('/')} selfEmail={user.email} />
+  }
+  return <Workspace user={user} onSignedOut={onSignedOut} />
 }
 
-function Workspace({
-  user,
-  onSignedOut,
-  onOpenLearn,
-}: {
-  user: AuthUser
-  onSignedOut: () => void
-  onOpenLearn: () => void
-}) {
+function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
   const [view, setView] = useState<'chat' | 'dashboard'>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -461,14 +457,6 @@ function Workspace({
                   {documents.length}
                 </span>
               )}
-            </button>
-            <button
-              onClick={onOpenLearn}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
-              aria-label="Bermi Learn portal"
-            >
-              <GraduationCap size={15} />
-              <span className="hidden sm:inline">Learn</span>
             </button>
           </div>
         </header>

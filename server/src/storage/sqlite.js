@@ -182,6 +182,31 @@ export class SqliteStorage {
   async getUserById(id) {
     return this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) ?? null
   }
+  async listUsers() {
+    return this.db
+      .prepare('SELECT id, name, email, email_verified, created_at FROM users ORDER BY created_at DESC')
+      .all()
+      .map((u) => ({ ...u, email_verified: Boolean(u.email_verified) }))
+  }
+  async adminStats() {
+    const count = (t) => {
+      try {
+        return this.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n
+      } catch {
+        return 0
+      }
+    }
+    return {
+      users: count('users'),
+      conversations: count('conversations'),
+      messages: count('messages'),
+      documents: count('documents'),
+      institutions: count('institutions'),
+      courses: count('courses'),
+      enrollments: count('enrollments'),
+      certificates: count('certificates'),
+    }
+  }
   async createSession(row) {
     this.db
       .prepare(

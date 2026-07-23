@@ -18,6 +18,7 @@ import { insightsRouter } from './routes/insights.js'
 import { studyStatsRouter } from './routes/study.js'
 import { nicheRouter } from './routes/niche.js'
 import { learnRouter } from './routes/learn.js'
+import { adminRouter } from './routes/admin.js'
 import { dataRouter } from './routes/data.js'
 import { connectorsRouter } from './routes/connectors.js'
 
@@ -52,6 +53,7 @@ app.use('/api', insightsRouter)
 app.use('/api', studyStatsRouter)
 app.use('/api', nicheRouter)
 app.use('/api', learnRouter)
+app.use('/api', adminRouter)
 app.use('/api', dataRouter)
 app.use('/api', connectorsRouter)
 

@@ -527,6 +527,52 @@ export const documentPdfUrl = (id: string, version?: number) => {
   return `/api/documents/${id}/pdf${qs ? `?${qs}` : ''}`
 }
 
+// ---------- Admin ----------
+
+export interface AdminUser {
+  id: string
+  name: string
+  email: string
+  email_verified: boolean
+  created_at: string
+}
+
+export interface AdminStats {
+  users: number
+  conversations: number
+  messages: number
+  documents: number
+  institutions: number
+  courses: number
+  enrollments: number
+  certificates: number
+}
+
+export const adminMe = () =>
+  apiFetch('/api/admin/me')
+    .then((r) => json<{ isAdmin: boolean }>(r))
+    .catch(() => ({ isAdmin: false }))
+
+export const adminOverview = () =>
+  apiFetch('/api/admin/overview').then((r) => json<{ stats: AdminStats; users: AdminUser[] }>(r))
+
+export const adminUpdateUser = (id: string, patch: { email_verified?: boolean; name?: string }) =>
+  apiFetch(`/api/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<AdminUser>(r))
+
+export const adminResetPassword = (id: string, password: string) =>
+  apiFetch(`/api/admin/users/${id}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  }).then((r) => json<{ ok: true }>(r))
+
+export const adminDeleteUser = (id: string) =>
+  apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
 // ---------- Bermi Learn (LMS) ----------
 
 // Public catalog + course browsing

@@ -73,6 +73,33 @@ export class SupabaseStorage {
     const rows = await this.#one(this.sb.from(T.users).select('*').eq('id', id).limit(1))
     return rows[0] ?? null
   }
+  async listUsers() {
+    return this.#one(
+      this.sb
+        .from(T.users)
+        .select('id, name, email, email_verified, created_at')
+        .order('created_at', { ascending: false }),
+    )
+  }
+  async adminStats() {
+    const count = async (table) => {
+      const { count, error } = await this.sb.from(table).select('*', { count: 'exact', head: true })
+      if (error) return 0
+      return count ?? 0
+    }
+    const [users, conversations, messages, documents, institutions, courses, enrollments, certificates] =
+      await Promise.all([
+        count(T.users),
+        count(T.conversations),
+        count(T.messages),
+        count(T.documents),
+        count(T.institutions),
+        count(T.courses),
+        count(T.enrollments),
+        count(T.certificates),
+      ])
+    return { users, conversations, messages, documents, institutions, courses, enrollments, certificates }
+  }
   async createSession(row) {
     await this.#one(this.sb.from(T.sessions).insert(row))
   }
