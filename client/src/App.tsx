@@ -358,6 +358,18 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
     setChatSteps([])
   }, [])
 
+  // Resume/continue a course entirely inside Bermi AI chat — never the portal.
+  const studyCourse = useCallback(
+    (title: string) => {
+      setStudy(true)
+      setView('chat')
+      send(`Let's continue the course "${title}". Pick up where I left off and teach me the next objective.`, {
+        study: true,
+      })
+    },
+    [send],
+  )
+
   // Study handoff from the Learn portal: a lesson/course was opened "in Bermi
   // AI", so start a fresh Study Mode chat pre-loaded with that material.
   const handoffDone = useRef(false)
@@ -484,12 +496,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               steps={chatSteps}
               error={chatError}
               userName={userName}
-              onStudyCourse={(title) => {
-                setStudy(true)
-                send(`Let's continue the course "${title}". Pick up where I left off and teach me the next objective.`, {
-                  study: true,
-                })
-              }}
+              onStudyCourse={studyCourse}
             />
             <InputBar
               models={models}
@@ -529,6 +536,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               setView('chat')
               if (!activeId) newChat()
             }}
+            onStudyCourse={studyCourse}
           />
         )}
       </main>

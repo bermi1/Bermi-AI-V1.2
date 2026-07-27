@@ -16,6 +16,29 @@ async function ownsInstitution(userId, institutionId) {
   return inst && inst.owner_id === userId ? inst : null
 }
 
+// Every individual can build their own course/module — not just registered
+// organizations. Each user gets one lightweight personal workspace
+// ("<Name>'s Courses"), created lazily the first time they build something.
+async function personalWorkspace(user) {
+  const existing = (await storage.listInstitutionsByOwner(user.id)).find((i) => i.personal)
+  if (existing) return existing
+  const name = `${(user.name || 'My').split(' ')[0]}'s Courses`
+  let slug = slugify(name)
+  if (await storage.getInstitutionBySlug(slug)) slug = `${slug}-${randomBytes(2).toString('hex')}`
+  return storage.createInstitution({
+    id: randomUUID(),
+    owner_id: user.id,
+    name,
+    slug,
+    about: 'A personal collection of courses and modules.',
+    logo_url: null,
+    website: '',
+    published: true,
+    personal: true,
+    created_at: new Date().toISOString(),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Public catalog (no auth required beyond the app's session gate)
 // ---------------------------------------------------------------------------
@@ -109,6 +132,82 @@ learnRouter.post('/learn/institutions', async (req, res, next) => {
       created_at: new Date().toISOString(),
     })
     res.status(201).json(inst)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Build-your-own: any individual (not just a registered organization) can
+// create their own course/module. Lazily provisions a personal workspace and
+// drafts the module structure with AI from a short brief.
+// ---------------------------------------------------------------------------
+
+learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
+  try {
+    const { title, objectives = '', level = 'All levels' } = req.body ?? {}
+    if (!title?.trim()) return res.status(400).json({ error: 'Give your course a title' })
+
+    const workspace = await personalWorkspace(req.user)
+    const now = new Date().toISOString()
+    const course = await storage.createCourse({
+      id: randomUUID(),
+      institution_id: workspace.id,
+      title: title.trim(),
+      slug: slugify(title),
+      summary: '',
+      description: '',
+      cover_emoji: '📘',
+      level,
+      published: false,
+      enrollment: 'open',
+      objectives,
+      evaluation: '',
+      tracking: '',
+      created_at: now,
+      updated_at: now,
+    })
+
+    // Draft a short module structure with AI so the creator starts with
+    // something real, not a blank course.
+    let lessonTitles = []
+    try {
+      const raw = await complete({
+        model: 'bermi-core',
+        maxTokens: 400,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You design course modules. Given a title and objectives, output ONLY a JSON array of 3-5 short ' +
+              'lesson titles that progressively build toward the objectives. No prose.',
+          },
+          { role: 'user', content: `Title: ${title}\n\nObjectives: ${objectives || '(none given — infer sensible ones)'}` },
+        ],
+      })
+      const parsed = JSON.parse(String(raw).replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+      lessonTitles = Array.isArray(parsed) ? parsed.slice(0, 6).map(String) : []
+    } catch {
+      lessonTitles = []
+    }
+    if (!lessonTitles.length) lessonTitles = ['Introduction', 'Core concepts', 'Putting it into practice']
+
+    const lessons = []
+    for (let i = 0; i < lessonTitles.length; i++) {
+      lessons.push(
+        await storage.createLesson({
+          id: randomUUID(),
+          course_id: course.id,
+          ordinal: i,
+          title: lessonTitles[i],
+          content: '',
+          material: '',
+          created_at: now,
+        }),
+      )
+    }
+
+    res.status(201).json({ institution: workspace, course, lessons })
   } catch (err) {
     next(err)
   }

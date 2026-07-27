@@ -646,6 +646,15 @@ export const learnCreateInstitution = (input: {
     body: JSON.stringify(input),
   }).then((r) => json<Institution>(r))
 
+// Build-your-own: any individual can create a personal course/module without
+// registering an organization.
+export const learnQuickCreateCourse = (input: { title: string; objectives?: string; level?: string }) =>
+  apiFetch('/api/learn/my/courses/quick', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((r) => json<{ institution: Institution; course: Course; lessons: Lesson[] }>(r))
+
 export const learnUpdateInstitution = (
   id: string,
   patch: Partial<{ name: string; about: string; website: string; published: boolean }>,

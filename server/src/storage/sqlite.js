@@ -93,7 +93,8 @@ export class SqliteStorage {
       CREATE TABLE IF NOT EXISTS institutions (
         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL,
         slug TEXT NOT NULL UNIQUE, about TEXT DEFAULT '', logo_url TEXT, website TEXT,
-        published INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        published INTEGER NOT NULL DEFAULT 1, personal INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS courses (
         id TEXT PRIMARY KEY, institution_id TEXT NOT NULL, title TEXT NOT NULL, slug TEXT NOT NULL,
@@ -130,6 +131,7 @@ export class SqliteStorage {
       "ALTER TABLE courses ADD COLUMN objectives TEXT DEFAULT ''",
       "ALTER TABLE courses ADD COLUMN evaluation TEXT DEFAULT ''",
       "ALTER TABLE courses ADD COLUMN tracking TEXT DEFAULT ''",
+      'ALTER TABLE institutions ADD COLUMN personal INTEGER NOT NULL DEFAULT 0',
     ]
     for (const sql of migrations) {
       try {
@@ -407,19 +409,31 @@ export class SqliteStorage {
   }
   async createInstitution(r) {
     this.db.prepare(
-      `INSERT INTO institutions (id, owner_id, name, slug, about, logo_url, website, published, created_at)
-       VALUES (@id,@owner_id,@name,@slug,@about,@logo_url,@website,@published,@created_at)`,
-    ).run({ about: '', logo_url: null, website: null, published: 1, ...r, published: r.published ? 1 : 0 })
+      `INSERT INTO institutions (id, owner_id, name, slug, about, logo_url, website, published, personal, created_at)
+       VALUES (@id,@owner_id,@name,@slug,@about,@logo_url,@website,@published,@personal,@created_at)`,
+    ).run({
+      about: '',
+      logo_url: null,
+      website: null,
+      published: 1,
+      personal: 0,
+      ...r,
+      published: r.published ? 1 : 0,
+      personal: r.personal ? 1 : 0,
+    })
     return this.getInstitution(r.id)
   }
   async getInstitution(id) {
-    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE id = ?').get(id), ['published'])
+    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE id = ?').get(id), ['published', 'personal'])
   }
   async getInstitutionBySlug(slug) {
-    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE slug = ?').get(slug), ['published'])
+    return this.#toBool(this.db.prepare('SELECT * FROM institutions WHERE slug = ?').get(slug), ['published', 'personal'])
   }
   async listInstitutionsByOwner(ownerId) {
-    return this.db.prepare('SELECT * FROM institutions WHERE owner_id = ? ORDER BY created_at DESC').all(ownerId)
+    return this.db
+      .prepare('SELECT * FROM institutions WHERE owner_id = ? ORDER BY created_at DESC')
+      .all(ownerId)
+      .map((i) => this.#toBool(i, ['published', 'personal']))
   }
   async listPublishedInstitutions() {
     return this.db.prepare('SELECT * FROM institutions WHERE published = 1 ORDER BY created_at DESC').all()
