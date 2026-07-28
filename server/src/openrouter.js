@@ -32,7 +32,12 @@ export async function apiKeyInfo() {
 // independent free-tier providers/keys back each other up.
 const cooldown = new Map()
 const COOLDOWN_MS = 60_000
-const isExhausted = (status) => status === 401 || status === 402 || status === 429
+// 401/402/403/429 all mean "this key/provider won't work right now" (bad,
+// revoked, or rate/credit-limited) — worth a cooldown so it isn't retried on
+// every request. Anything else (400 bad model id, 404, 5xx, proxy/network
+// denials) still just moves on to the next attempt below; it's simply not
+// worth cooling down since it's not necessarily the key's fault.
+const isExhausted = (status) => status === 401 || status === 402 || status === 403 || status === 429
 const cooldownKey = (providerId, key) => `${providerId}:${key}`
 
 async function errorDetail(res) {
@@ -112,21 +117,31 @@ export async function streamCompletion({ model, messages, signal, web = false })
   }
   let lastErr
   for (const { provider, key, realModel, web: useWeb } of attempts) {
-    const res = await fetch(provider.url, {
-      method: 'POST',
-      headers: provider.headers(key),
-      body: JSON.stringify(provider.body(realModel, messages, { stream: true, web: useWeb })),
-      signal,
-    })
+    let res
+    try {
+      res = await fetch(provider.url, {
+        method: 'POST',
+        headers: provider.headers(key),
+        body: JSON.stringify(provider.body(realModel, messages, { stream: true, web: useWeb })),
+        signal,
+      })
+    } catch (err) {
+      // Network-level failure (DNS, connection refused, timeout — e.g. no
+      // internet, or a local model server that hasn't finished starting up
+      // yet). Not an HTTP error, so there's no status to branch on; just
+      // move on to the next provider/model in the chain.
+      if (signal?.aborted) throw err
+      lastErr = err
+      continue
+    }
     if (res.ok) return res
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
-    if (isExhausted(res.status)) {
-      cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
-      continue
-    }
-    if ([400, 404, 502, 503].includes(res.status)) continue
-    throw lastErr
+    // Every non-2xx just moves on to the next attempt — provider/model/key
+    // outages should never take the whole request down while any other
+    // option remains. Only cool the (provider, key) down when the failure
+    // looks like an auth/quota problem, so it isn't retried needlessly.
+    if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
   throw lastErr ?? new Error('No model available')
 }
@@ -141,23 +156,24 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
   if (attempts.length === 0) return null
   let lastErr
   for (const { provider, key, realModel } of attempts) {
-    const res = await fetch(provider.url, {
-      method: 'POST',
-      headers: provider.headers(key),
-      body: JSON.stringify(provider.body(realModel, messages, { stream: false, maxTokens })),
-    })
+    let res
+    try {
+      res = await fetch(provider.url, {
+        method: 'POST',
+        headers: provider.headers(key),
+        body: JSON.stringify(provider.body(realModel, messages, { stream: false, maxTokens })),
+      })
+    } catch (err) {
+      lastErr = err
+      continue
+    }
     if (res.ok) {
       const body = await res.json()
       return body.choices?.[0]?.message?.content ?? null
     }
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
-    if (isExhausted(res.status)) {
-      cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
-      continue
-    }
-    if ([400, 404, 502, 503].includes(res.status)) continue
-    throw lastErr
+    if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
   throw lastErr ?? new Error('No model available')
 }

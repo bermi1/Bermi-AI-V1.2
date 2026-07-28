@@ -156,9 +156,43 @@ async function cerebrasProvider() {
   }
 }
 
+// On-device fallback: a bundled llama.cpp server (llama-server) speaks the
+// same OpenAI-compatible /v1/chat/completions contract as every other
+// provider here, so it's just one more link in the same chain — the last
+// one, since a local small model only kicks in once every cloud option is
+// unreachable (used by the offline desktop build; unset in the web deploy).
+// One small on-device model serves every "kind" — there's no lineup of
+// specialized local models like the cloud providers have.
+async function localProvider() {
+  const url = process.env.LOCAL_LLM_URL
+  if (!url) return null
+  const modelId = process.env.LOCAL_LLM_MODEL || 'local'
+  const models = { core: [modelId], fast: [modelId], reason: [modelId], coder: [modelId], vision: [], math: [modelId] }
+  return {
+    id: 'local',
+    keys: ['local'], // no auth — the model runs on localhost inside the same app
+    models,
+    url,
+    headers: () => ({ 'Content-Type': 'application/json' }),
+    supportsWebPlugin: false,
+    body: (model, messages, { stream, maxTokens }) => ({
+      model,
+      messages,
+      ...(stream ? { stream: true } : {}),
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
+    }),
+  }
+}
+
 /** All configured providers, in preference order. Unconfigured ones are skipped. */
 export async function listProviders() {
-  const all = await Promise.all([openrouterProvider(), groqProvider(), googleProvider(), cerebrasProvider()])
+  const all = await Promise.all([
+    openrouterProvider(),
+    groqProvider(),
+    googleProvider(),
+    cerebrasProvider(),
+    localProvider(),
+  ])
   return all.filter(Boolean)
 }
 
