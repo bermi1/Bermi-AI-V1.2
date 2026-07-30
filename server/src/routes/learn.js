@@ -276,8 +276,8 @@ learnRouter.put('/learn/institutions/:id', async (req, res, next) => {
   try {
     if (!(await ownsInstitution(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Institution not found' })
-    const { name, about, website, published } = req.body ?? {}
-    res.json(await storage.updateInstitution(req.params.id, { name, about, website, published }))
+    const { name, about, website, published, logo_url } = req.body ?? {}
+    res.json(await storage.updateInstitution(req.params.id, { name, about, website, published, logo_url }))
   } catch (err) {
     next(err)
   }
@@ -305,6 +305,7 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
       description = '',
       cover_emoji = '📘',
       level = 'All levels',
+      category = '',
       objectives = '',
       evaluation = '',
       tracking = '',
@@ -320,6 +321,7 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
       description,
       cover_emoji,
       level,
+      category,
       published: false,
       enrollment: 'open',
       objectives,
@@ -345,7 +347,7 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
   try {
     if (!(await ownsCourse(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Course not found' })
-    const { title, summary, description, cover_emoji, level, published, enrollment, objectives, evaluation, tracking } =
+    const { title, summary, description, cover_emoji, level, category, published, enrollment, objectives, evaluation, tracking } =
       req.body ?? {}
     res.json(
       await storage.updateCourse(req.params.id, {
@@ -354,6 +356,7 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
         description,
         cover_emoji,
         level,
+        category,
         published,
         enrollment,
         objectives,
@@ -663,6 +666,8 @@ learnRouter.get('/learn/institutions/:id/analytics', async (req, res, next) => {
     let totalEnrollments = 0
     let totalCompletions = 0
     const perCourse = []
+    const allScores = []
+    const activity = []
     for (const c of courses) {
       const [enrollments, lessons] = await Promise.all([
         storage.listEnrollmentsByCourse(c.id),
@@ -678,14 +683,20 @@ learnRouter.get('/learn/institutions/:id/analytics', async (req, res, next) => {
       for (const e of enrollments.slice(0, 200)) {
         const user = await storage.getUserById(e.user_id)
         const done = Object.values(e.progress || {}).filter((p) => p && p.done).length
+        const name = user?.name || 'Learner'
         learners.push({
-          name: user?.name || 'Learner',
+          name,
           status: e.status,
           lessons_done: done,
           lessons_total: lessons.length,
           understanding: typeof e.score === 'number' ? e.score : null,
           dependency: typeof e.dependency === 'number' ? e.dependency : null,
         })
+        if (typeof e.score === 'number') allScores.push(e.score)
+        if (e.enrolled_at) activity.push({ type: 'enrolled', learner: name, course: c.title, at: e.enrolled_at })
+        if (e.status === 'completed' && e.completed_at) {
+          activity.push({ type: 'completed', learner: name, course: c.title, at: e.completed_at })
+        }
       }
 
       perCourse.push({
@@ -698,13 +709,117 @@ learnRouter.get('/learn/institutions/:id/analytics', async (req, res, next) => {
         learners,
       })
     }
+    activity.sort((a, b) => new Date(b.at) - new Date(a.at))
+    const topCourses = [...perCourse].sort((a, b) => b.enrollments - a.enrollments).slice(0, 5)
     res.json({
       courses: courses.length,
       enrollments: totalEnrollments,
       completions: totalCompletions,
       completion_rate: totalEnrollments ? Math.round((totalCompletions / totalEnrollments) * 100) : 0,
+      avg_understanding: allScores.length ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null,
+      recent_activity: activity.slice(0, 15),
+      top_courses: topCourses.map((c) => ({ id: c.id, title: c.title, enrollments: c.enrollments, completions: c.completions })),
       per_course: perCourse,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// A single learner often takes several of an institution's courses. The
+// per-course analytics table above can't answer "who is this person across
+// everything they're enrolled in" — this does, with optional name/email search.
+learnRouter.get('/learn/institutions/:id/learners', async (req, res, next) => {
+  try {
+    if (!(await ownsInstitution(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Institution not found' })
+    const q = String(req.query.q || '').toLowerCase().trim()
+    const courses = await storage.listCoursesByInstitution(req.params.id)
+    const byUser = new Map()
+    for (const c of courses) {
+      const enrollments = await storage.listEnrollmentsByCourse(c.id)
+      for (const e of enrollments) {
+        if (!byUser.has(e.user_id)) {
+          const user = await storage.getUserById(e.user_id)
+          if (!user) continue
+          byUser.set(e.user_id, { user_id: e.user_id, name: user.name, email: user.email, courses: [] })
+        }
+        byUser.get(e.user_id).courses.push({
+          course_id: c.id,
+          title: c.title,
+          status: e.status,
+          understanding: typeof e.score === 'number' ? e.score : null,
+          dependency: typeof e.dependency === 'number' ? e.dependency : null,
+        })
+      }
+    }
+    let learners = [...byUser.values()].map((l) => {
+      const understandings = l.courses.map((c) => c.understanding).filter((s) => typeof s === 'number')
+      const dependencies = l.courses.map((c) => c.dependency).filter((s) => typeof s === 'number')
+      return {
+        ...l,
+        total_courses: l.courses.length,
+        completed: l.courses.filter((c) => c.status === 'completed').length,
+        avg_understanding: understandings.length
+          ? Math.round(understandings.reduce((a, b) => a + b, 0) / understandings.length)
+          : null,
+        avg_dependency: dependencies.length
+          ? Math.round(dependencies.reduce((a, b) => a + b, 0) / dependencies.length)
+          : null,
+      }
+    })
+    if (q) {
+      learners = learners.filter(
+        (l) => l.name.toLowerCase().includes(q) || (l.email || '').toLowerCase().includes(q),
+      )
+    }
+    learners.sort((a, b) => b.total_courses - a.total_courses)
+    res.json(learners.slice(0, 300))
+  } catch (err) {
+    next(err)
+  }
+})
+
+function csvCell(v) {
+  const s = String(v ?? '')
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// A CSV export of every enrollment across every course — institutions expect
+// to pull this into a spreadsheet, not just view it on screen.
+learnRouter.get('/learn/institutions/:id/analytics/export.csv', async (req, res, next) => {
+  try {
+    if (!(await ownsInstitution(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Institution not found' })
+    const courses = await storage.listCoursesByInstitution(req.params.id)
+    const rows = [
+      ['Learner', 'Email', 'Course', 'Status', 'Lessons done', 'Lessons total', 'Understanding %', 'AI-dependency %', 'Enrolled at'],
+    ]
+    for (const c of courses) {
+      const [enrollments, lessons] = await Promise.all([
+        storage.listEnrollmentsByCourse(c.id),
+        storage.listLessons(c.id),
+      ])
+      for (const e of enrollments) {
+        const user = await storage.getUserById(e.user_id)
+        const done = Object.values(e.progress || {}).filter((p) => p && p.done).length
+        rows.push([
+          user?.name || 'Learner',
+          user?.email || '',
+          c.title,
+          e.status,
+          done,
+          lessons.length,
+          typeof e.score === 'number' ? e.score : '',
+          typeof e.dependency === 'number' ? e.dependency : '',
+          e.enrolled_at || '',
+        ])
+      }
+    }
+    const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', 'attachment; filename="bermi-learn-learners.csv"')
+    res.send(csv)
   } catch (err) {
     next(err)
   }

@@ -13,6 +13,7 @@ import type {
   GmailMessage,
   Institution,
   InstitutionAnalytics,
+  InstitutionLearner,
   InvoiceData,
   InsightsReport,
   Lesson,
@@ -673,7 +674,7 @@ export const learnQuickCreateCourse = (input: {
 
 export const learnUpdateInstitution = (
   id: string,
-  patch: Partial<{ name: string; about: string; website: string; published: boolean }>,
+  patch: Partial<{ name: string; about: string; website: string; logo_url: string; published: boolean }>,
 ) =>
   apiFetch(`/api/learn/institutions/${id}`, {
     method: 'PUT',
@@ -692,6 +693,7 @@ export const learnCreateCourse = (
     description?: string
     cover_emoji?: string
     level?: string
+    category?: string
     objectives?: string
     evaluation?: string
     tracking?: string
@@ -711,6 +713,7 @@ export const learnUpdateCourse = (
     description: string
     cover_emoji: string
     level: string
+    category: string
     published: boolean
     enrollment: 'open' | 'approval'
     objectives: string
@@ -770,3 +773,13 @@ export const learnInstitutionAnalytics = (institutionId: string) =>
   apiFetch(`/api/learn/institutions/${institutionId}/analytics`).then((r) =>
     json<InstitutionAnalytics>(r),
   )
+
+export const learnInstitutionLearners = (institutionId: string, q?: string) =>
+  apiFetch(
+    `/api/learn/institutions/${institutionId}/learners${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+  ).then((r) => json<InstitutionLearner[]>(r))
+
+export const learnLearnersExportUrl = (institutionId: string) => {
+  const token = getSessionToken()
+  return `/api/learn/institutions/${institutionId}/analytics/export.csv${token ? `?token=${token}` : ''}`
+}

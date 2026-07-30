@@ -262,13 +262,22 @@ function InstitutionLibrary({ slug, navigate }: { slug: string; navigate: (r: Le
     const filtered = q
       ? data.courses.filter((c) => c.title.toLowerCase().includes(q) || (c.summary || '').toLowerCase().includes(q))
       : data.courses
-    const byLevel = new Map<string, Course[]>()
+
+    // Once an institution starts tagging courses with a category, shelves
+    // organize by subject instead of level — better for a large library.
+    const hasCategories = filtered.some((c) => c.category?.trim())
+    const byGroup = new Map<string, Course[]>()
     for (const c of filtered) {
-      const key = SHELF_ORDER.includes(c.level) ? c.level : 'All levels'
-      if (!byLevel.has(key)) byLevel.set(key, [])
-      byLevel.get(key)!.push(c)
+      const key = hasCategories
+        ? c.category?.trim() || 'Uncategorized'
+        : SHELF_ORDER.includes(c.level) ? c.level : 'All levels'
+      if (!byGroup.has(key)) byGroup.set(key, [])
+      byGroup.get(key)!.push(c)
     }
-    return SHELF_ORDER.filter((l) => byLevel.has(l)).map((l) => ({ level: l, courses: byLevel.get(l)! }))
+    const order = hasCategories
+      ? [...byGroup.keys()].sort((a, b) => a.localeCompare(b))
+      : SHELF_ORDER.filter((l) => byGroup.has(l))
+    return order.map((name) => ({ name, courses: byGroup.get(name)! }))
   }, [data, query])
 
   if (error) return <div className="mx-auto max-w-5xl px-5 py-10 text-center text-[14px] text-ink-muted">{error}</div>
@@ -326,9 +335,9 @@ function InstitutionLibrary({ slug, navigate }: { slug: string; navigate: (r: Le
         ) : (
           <div className="space-y-10">
             {shelves.map((shelf) => (
-              <section key={shelf.level}>
+              <section key={shelf.name}>
                 <div className="mb-3 flex items-center gap-2">
-                  <h2 className="text-[16px] font-semibold text-ink">{shelf.level}</h2>
+                  <h2 className="text-[16px] font-semibold text-ink">{shelf.name}</h2>
                   <span className="text-[12.5px] text-ink-faint">· {shelf.courses.length}</span>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

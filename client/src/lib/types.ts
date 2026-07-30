@@ -202,6 +202,7 @@ export interface Institution {
   slug: string
   about: string
   website?: string
+  logo_url?: string | null
   published: boolean
   created_at: string
 }
@@ -215,12 +216,31 @@ export interface Course {
   description: string
   cover_emoji: string
   level: string
+  category?: string
   published: boolean
   enrollment: 'open' | 'approval'
   objectives?: string
   evaluation?: string
   tracking?: string
   institution?: { name: string; slug: string } | null
+}
+
+export interface InstitutionLearner {
+  user_id: string
+  name: string
+  email: string
+  total_courses: number
+  completed: number
+  avg_understanding: number | null
+  avg_dependency: number | null
+  courses: { course_id: string; title: string; status: string; understanding: number | null; dependency: number | null }[]
+}
+
+export interface ActivityItem {
+  type: 'enrolled' | 'completed'
+  learner: string
+  course: string
+  at: string
 }
 
 export interface LearnerRow {
@@ -271,6 +291,9 @@ export interface InstitutionAnalytics {
   enrollments: number
   completions: number
   completion_rate: number
+  avg_understanding: number | null
+  recent_activity: ActivityItem[]
+  top_courses: { id: string; title: string; enrollments: number; completions: number }[]
   per_course: {
     id: string
     title: string

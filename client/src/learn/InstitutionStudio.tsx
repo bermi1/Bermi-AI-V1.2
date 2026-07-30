@@ -1,24 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Building2,
   CheckCircle2,
+  Download,
   Eye,
   EyeOff,
+  Home,
+  Image as ImageIcon,
   Layers,
   Loader2,
   Plus,
+  Search,
+  Settings as SettingsIcon,
   Sparkles,
   Target,
   Trash2,
   Upload,
+  UserCheck,
   Users,
   Video,
   Wand2,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { Course, Institution, InstitutionAnalytics, Lesson } from '../lib/types'
+import type { Course, Institution, InstitutionAnalytics, InstitutionLearner, Lesson } from '../lib/types'
 import { Btn, EmptyState, ErrorNote, Field, inputClass, Pill, Spinner, type LearnRoute } from './ui'
 
 export function InstitutionStudio({ navigate }: { navigate: (r: LearnRoute) => void }) {
@@ -86,7 +93,7 @@ export function InstitutionStudio({ navigate }: { navigate: (r: LearnRoute) => v
             )}
           </div>
 
-          {active && <StudioBody institution={active} navigate={navigate} />}
+          {active && <StudioBody institution={active} navigate={navigate} onInstitutionUpdated={refresh} />}
 
           <NewInstitutionInline onCreated={refresh} />
         </>
@@ -159,8 +166,25 @@ function NewInstitutionInline({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-function StudioBody({ institution, navigate }: { institution: Institution; navigate: (r: LearnRoute) => void }) {
-  const [tab, setTab] = useState<'courses' | 'analytics'>('courses')
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: Home },
+  { id: 'courses', label: 'Courses', icon: Layers },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'learners', label: 'Learners', icon: Users },
+  { id: 'settings', label: 'Settings', icon: SettingsIcon },
+] as const
+type Tab = (typeof TABS)[number]['id']
+
+function StudioBody({
+  institution,
+  navigate,
+  onInstitutionUpdated,
+}: {
+  institution: Institution
+  navigate: (r: LearnRoute) => void
+  onInstitutionUpdated: () => void
+}) {
+  const [tab, setTab] = useState<Tab>('overview')
   const [editingCourse, setEditingCourse] = useState<Course | null>(null)
 
   if (editingCourse)
@@ -168,26 +192,262 @@ function StudioBody({ institution, navigate }: { institution: Institution; navig
 
   return (
     <>
-      <div className="mb-5 flex gap-1 rounded-xl bg-surface-sunken p-1">
-        {(['courses', 'analytics'] as const).map((t) => (
+      <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl bg-surface-sunken p-1">
+        {TABS.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold capitalize transition-colors ${
-              tab === t ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-muted'
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
+              tab === t.id ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-muted'
             }`}
           >
-            {t === 'courses' ? <Layers size={15} /> : <BarChart3 size={15} />} {t}
+            <t.icon size={15} /> {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'courses' ? (
-        <CoursesTab institution={institution} onEdit={setEditingCourse} />
-      ) : (
-        <AnalyticsTab institutionId={institution.id} />
-      )}
+      {tab === 'overview' && <OverviewTab institutionId={institution.id} onViewCourses={() => setTab('courses')} />}
+      {tab === 'courses' && <CoursesTab institution={institution} onEdit={setEditingCourse} />}
+      {tab === 'analytics' && <AnalyticsTab institutionId={institution.id} />}
+      {tab === 'learners' && <LearnersTab institutionId={institution.id} />}
+      {tab === 'settings' && <SettingsTab institution={institution} onUpdated={onInstitutionUpdated} />}
     </>
+  )
+}
+
+// ---------- Overview ----------
+
+function OverviewTab({ institutionId, onViewCourses }: { institutionId: string; onViewCourses: () => void }) {
+  const [data, setData] = useState<InstitutionAnalytics | null>(null)
+  useEffect(() => { api.learnInstitutionAnalytics(institutionId).then(setData).catch(() => {}) }, [institutionId])
+  if (!data) return <Spinner />
+
+  const stats = [
+    { label: 'Courses', value: data.courses, icon: <Layers size={16} /> },
+    { label: 'Enrollments', value: data.enrollments, icon: <Users size={16} /> },
+    { label: 'Completion rate', value: `${data.completion_rate}%`, icon: <CheckCircle2 size={16} /> },
+    { label: 'Avg. understanding', value: data.avg_understanding != null ? `${data.avg_understanding}%` : '—', icon: <Target size={16} /> },
+  ]
+
+  return (
+    <div>
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-2xl border border-edge bg-surface-raised p-4">
+            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary">{s.icon}</div>
+            <div className="text-[24px] font-bold leading-none text-ink">{s.value}</div>
+            <div className="mt-1 text-[12px] text-ink-faint">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
+              <BarChart3 size={15} className="text-primary" /> Top courses
+            </h3>
+            <button onClick={onViewCourses} className="text-[12.5px] font-medium text-primary hover:underline">
+              Manage all →
+            </button>
+          </div>
+          {data.top_courses.length === 0 ? (
+            <EmptyState icon={<Layers size={24} />} title="No courses yet" />
+          ) : (
+            <div className="space-y-2">
+              {data.top_courses.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-xl border border-edge bg-surface-raised px-4 py-3">
+                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">{c.title}</span>
+                  <span className="shrink-0 text-[12px] text-ink-faint">{c.enrollments} enrolled · {c.completions} done</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3 className="mb-3 flex items-center gap-1.5 text-[14px] font-semibold text-ink">
+            <Activity size={15} className="text-primary" /> Recent activity
+          </h3>
+          {data.recent_activity.length === 0 ? (
+            <EmptyState icon={<Activity size={24} />} title="Nothing yet" body="Enrollments and completions will show up here." />
+          ) : (
+            <div className="space-y-2">
+              {data.recent_activity.map((a, i) => (
+                <div key={i} className="flex items-center gap-2.5 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 text-[13px]">
+                  {a.type === 'completed' ? (
+                    <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />
+                  ) : (
+                    <UserCheck size={14} className="shrink-0 text-primary" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-ink-muted">
+                    <span className="font-medium text-ink">{a.learner}</span>{' '}
+                    {a.type === 'completed' ? 'completed' : 'enrolled in'} <span className="text-ink">{a.course}</span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-ink-faint">{timeAgo(a.at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+// ---------- Learners directory (cross-course) ----------
+
+function LearnersTab({ institutionId }: { institutionId: string }) {
+  const [learners, setLearners] = useState<InstitutionLearner[] | null>(null)
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      api.learnInstitutionLearners(institutionId, query || undefined).then(setLearners).catch(() => setLearners([]))
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [institutionId, query])
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search learners…"
+            className="w-full rounded-xl border border-edge bg-surface-raised py-2 pl-8 pr-3 text-[13.5px] text-ink outline-none placeholder:text-ink-faint focus:border-primary"
+          />
+        </div>
+        <a
+          href={api.learnLearnersExportUrl(institutionId)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-edge-strong px-3 py-2 text-[13px] font-semibold text-ink hover:bg-surface-sunken"
+        >
+          <Download size={14} /> Export CSV
+        </a>
+      </div>
+
+      {!learners ? (
+        <Spinner />
+      ) : learners.length === 0 ? (
+        <EmptyState icon={<Users size={28} />} title={query ? 'No learners match your search' : 'No learners yet'} />
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-edge">
+          <table className="w-full min-w-[640px] text-[13px]">
+            <thead className="bg-surface-sunken text-ink-muted">
+              <tr>
+                <th className="px-4 py-2.5 text-left font-semibold">Learner</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Courses</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Completed</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Understanding</th>
+                <th className="px-4 py-2.5 text-right font-semibold">AI-dependency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {learners.map((l) => (
+                <tr key={l.user_id} className="border-t border-edge bg-surface-raised">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-ink">{l.name}</div>
+                    <div className="text-[11.5px] text-ink-faint">{l.email}</div>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-ink-muted">{l.total_courses}</td>
+                  <td className="px-3 py-2.5 text-right text-ink-muted">{l.completed}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    {l.avg_understanding != null ? (
+                      <span className={l.avg_understanding >= 70 ? 'text-emerald-600 dark:text-emerald-400' : l.avg_understanding >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
+                        {l.avg_understanding}%
+                      </span>
+                    ) : (
+                      <span className="text-ink-faint">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-ink-muted">{l.avg_dependency != null ? `${l.avg_dependency}%` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Settings ----------
+
+function SettingsTab({ institution, onUpdated }: { institution: Institution; onUpdated: () => void }) {
+  const [name, setName] = useState(institution.name)
+  const [about, setAbout] = useState(institution.about || '')
+  const [website, setWebsite] = useState(institution.website || '')
+  const [logoUrl, setLogoUrl] = useState(institution.logo_url || '')
+  const [published, setPublished] = useState(institution.published)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  const save = async () => {
+    if (!name.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.learnUpdateInstitution(institution.id, { name, about, website, logo_url: logoUrl, published })
+      setSavedAt(Date.now())
+      onUpdated()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="max-w-xl space-y-4 rounded-3xl border border-edge bg-surface-raised p-5 md:p-6">
+      <Field label="Organization name">
+        <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label="About" hint="Shown on your public digital library page.">
+        <textarea className={`${inputClass} min-h-[80px] resize-y`} value={about} onChange={(e) => setAbout(e.target.value)} />
+      </Field>
+      <Field label="Website">
+        <input className={inputClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
+      </Field>
+      <Field
+        label={
+          <span className="inline-flex items-center gap-1.5">
+            <ImageIcon size={13} /> Logo URL
+          </span>
+        }
+        hint="A hosted image URL — shown on your public library page."
+      >
+        <input className={inputClass} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…/logo.png" />
+      </Field>
+
+      <label className="flex items-center justify-between rounded-xl border border-edge px-4 py-3">
+        <span>
+          <span className="block text-[13.5px] font-medium text-ink">Public digital library</span>
+          <span className="block text-[12px] text-ink-faint">When off, your library page and catalog courses are hidden from the public.</span>
+        </span>
+        <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-5 w-5 accent-primary" />
+      </label>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <div className="flex items-center gap-3">
+        <Btn onClick={save} loading={busy} disabled={!name.trim()}>Save changes</Btn>
+        {savedAt && !busy && <span className="text-[12px] text-emerald-500">Saved</span>}
+      </div>
+    </div>
   )
 }
 
@@ -370,6 +630,7 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         description: body.description,
         cover_emoji: body.cover_emoji,
         level: body.level,
+        category: body.category,
         published: body.published,
         enrollment: body.enrollment,
         objectives: body.objectives,
@@ -433,11 +694,14 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         <Field label="Short summary" hint="One line shown on catalog cards.">
           <input className={inputClass} value={course.summary || ''} onChange={(e) => patch({ summary: e.target.value })} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Level">
             <select className={inputClass} value={course.level || 'All levels'} onChange={(e) => patch({ level: e.target.value })}>
               {['All levels', 'Beginner', 'Intermediate', 'Advanced'].map((l) => <option key={l}>{l}</option>)}
             </select>
+          </Field>
+          <Field label="Category" hint="Groups classes on your library shelf (e.g. Mathematics, Design).">
+            <input className={inputClass} value={course.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder="e.g. Mathematics" />
           </Field>
           <Field label="Enrollment">
             <select className={inputClass} value={course.enrollment || 'open'} onChange={(e) => patch({ enrollment: e.target.value as 'open' | 'approval' })}>
