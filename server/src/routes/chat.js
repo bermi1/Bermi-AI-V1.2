@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
 import { streamCompletion } from '../openrouter.js'
-import { STUDY_PROMPT, awardStudy } from '../study.js'
+import { STUDY_PROMPT, awardStudy, parseMasteredSteps } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember } from '../memory.js'
 import { summarizeVideo } from '../video.js'
@@ -428,11 +428,17 @@ chatRouter.post('/chat', async (req, res, next) => {
       // it — never blocks or affects the response already sent.
       remember(req.user.id, message, assistantText)
 
-      // Gamify study sessions: award XP, update streaks/badges, and tell the UI.
+      // Gamify Study Mode — but only for real progress: XP is granted solely
+      // when the tutor's own reply just confirmed mastery of a lesson (its
+      // "✅ **Mastered:** …" marker), never for the act of exchanging a
+      // message. No marker this turn means no XP, no streak, no toast.
       if (study) {
         try {
-          const result = await awardStudy(req.user.id, conversation.title)
-          sse(res, { type: 'study', ...result })
+          const mastered = parseMasteredSteps(assistantText)
+          if (mastered.length) {
+            const result = await awardStudy(req.user.id, conversation.title, mastered)
+            if (result) sse(res, { type: 'study', ...result })
+          }
         } catch {
           /* non-fatal */
         }

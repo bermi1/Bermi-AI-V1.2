@@ -183,7 +183,7 @@ export interface StudyStats {
   xp_for_level: number
   badges: string[]
   badges_detailed?: { id: string; label: string }[]
-  topic_list?: { topic: string; count: number }[]
+  topic_list?: { topic: string; count: number; steps: string[] }[]
 }
 
 export interface StudyAward {

@@ -7,11 +7,16 @@ const DEFAULT = {
   level: 1,
   streak: 0,
   last_study_day: null,
-  sessions: 0,
-  topics: {},
+  sessions: 0, // total genuinely mastered steps, across all topics
+  topics: {}, // topic -> { count, steps: [{ label, at }] } — one entry per mastered step
   badges: [],
   updated_at: null,
 }
+
+// Deterministic, not random: a fixed amount per real completion. No XP is
+// ever awarded just for exchanging messages in Study Mode.
+const XP_PER_STEP = 25
+const XP_NEW_TOPIC_BONUS = 15
 
 // Level curve: each level needs 100 XP. Simple and legible in the UI.
 export function levelForXp(xp) {
@@ -51,17 +56,48 @@ export async function getStudyStats(userId) {
 }
 
 /**
- * Awards XP for a completed study exchange and updates streaks, topics, and
- * badges. Returns { stats, gained, leveledUp, newBadges } for a celebratory UI.
+ * Awards XP for genuinely mastered steps only — never for the act of
+ * exchanging a message. `masteredLabels` are the lesson/skill names the tutor
+ * explicitly confirmed as mastered THIS turn (parsed from its own "Mastered:"
+ * markers). A label already recorded for this topic is not re-awarded, so
+ * the AI re-stating a past lesson can't farm XP.
+ *
+ * Returns null when nothing new was mastered (no XP, no streak, no state
+ * change) — callers should treat null as "no gamification event this turn".
  */
-export async function awardStudy(userId, topic) {
+export async function awardStudy(userId, topic, masteredLabels) {
+  const labels = [...new Set((masteredLabels || []).map((l) => String(l).trim()).filter(Boolean))]
+  if (!labels.length) return null
+
   const raw = await storage.getSetting(KEY(userId))
   const s = raw ? { ...DEFAULT, ...JSON.parse(raw) } : { ...DEFAULT }
-
   const prevLevel = levelForXp(s.xp)
-  const t = today()
 
-  // Streak
+  const key = (topic || 'General').slice(0, 60)
+  if (!s.topics[key] || typeof s.topics[key] !== 'object' || !Array.isArray(s.topics[key].steps)) {
+    s.topics[key] = { count: 0, steps: [] }
+  }
+  const bucket = s.topics[key]
+  const isNewTopic = bucket.count === 0
+  const already = new Set(bucket.steps.map((st) => st.label.toLowerCase()))
+
+  const now = new Date().toISOString()
+  let gained = 0
+  let newSteps = 0
+  for (const label of labels) {
+    const norm = label.toLowerCase()
+    if (already.has(norm)) continue // already awarded for this exact step before
+    already.add(norm)
+    bucket.steps.push({ label, at: now })
+    bucket.count += 1
+    newSteps += 1
+    gained += XP_PER_STEP
+  }
+  if (!newSteps) return null // every named step here was already recorded — no double-award
+  if (isNewTopic) gained += XP_NEW_TOPIC_BONUS
+
+  // Streak counts a day only when a real step was completed on it.
+  const t = today()
   if (s.last_study_day === t) {
     /* already counted today */
   } else if (s.last_study_day === yesterday()) {
@@ -71,16 +107,10 @@ export async function awardStudy(userId, topic) {
   }
   s.last_study_day = t
 
-  // Topic + XP
-  let gained = 12
-  const key = (topic || 'General').slice(0, 60)
-  const isNewTopic = !s.topics[key]
-  if (isNewTopic) gained += 8
-  s.topics[key] = (s.topics[key] || 0) + 1
   s.xp += gained
-  s.sessions += 1
+  s.sessions += newSteps
   s.level = levelForXp(s.xp)
-  s.updated_at = new Date().toISOString()
+  s.updated_at = now
 
   // Badges
   const before = new Set(s.badges)
@@ -100,6 +130,22 @@ export async function awardStudy(userId, topic) {
     leveledUp: s.level > prevLevel,
     newBadges,
   }
+}
+
+// Parses the tutor's own "Mastered:" markers out of a reply — the only
+// signal that grants XP. Matches "✅ **Mastered:** <name>" on its own line.
+const MASTERED_RE = /✅\s*\*\*Mastered:\*\*\s*([^\n]+)/gi
+
+export function parseMasteredSteps(text) {
+  if (!text) return []
+  const out = []
+  let m
+  MASTERED_RE.lastIndex = 0
+  while ((m = MASTERED_RE.exec(text))) {
+    const label = m[1].trim().replace(/\*+$/, '').trim()
+    if (label) out.push(label)
+  }
+  return out
 }
 
 export const STUDY_PROMPT = `You are Bermi Study Mode — a world-class personal tutor. Your job is to TEACH, not just answer.
@@ -132,6 +178,7 @@ MASTERY GATE — test before moving on (this is mandatory):
 - Grade their answer honestly. If correct and well-reasoned → mark the section mastered and move on. If partly right → probe the gap, then re-test.
 - If wrong or confused → do NOT advance. Re-teach that same section a DIFFERENT way (new analogy, simpler level, smaller steps, concrete example), then test again.
 - Before leaving a level, run a 2-3 question quiz covering it. Only advance on a solid pass.
+- XP is earned ONLY for real mastery, never for chatting: the moment — and ONLY the moment — the learner's answer just demonstrated real mastery of a lesson, end your reply with its own line, exactly: ✅ **Mastered:** <short lesson name>. Never include this line speculatively, before testing, or when the answer was wrong, partial, or untested — that would award XP for nothing earned. Include it at most once per reply, naming only the single lesson just cleared.
 
 ADAPT to the individual (native, personalized learning):
 - Notice HOW this person learns and adapt in real time: if they reason well, go faster and deeper; if they struggle, slow down, shrink the steps, add analogies and scaffolding.

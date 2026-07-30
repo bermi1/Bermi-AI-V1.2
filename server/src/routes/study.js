@@ -11,8 +11,12 @@ studyStatsRouter.get('/study/stats', async (req, res, next) => {
       badge_labels: BADGE_LABELS,
       badges_detailed: stats.badges.map((id) => ({ id, label: BADGE_LABELS[id] || id })),
       topic_list: Object.entries(stats.topics)
-        .sort((a, b) => b[1] - a[1])
-        .map(([topic, count]) => ({ topic, count })),
+        .map(([topic, v]) => ({
+          topic,
+          count: typeof v === 'object' ? v.count : v,
+          steps: typeof v === 'object' ? v.steps.map((s) => s.label) : [],
+        }))
+        .sort((a, b) => b.count - a.count),
     })
   } catch (err) {
     next(err)

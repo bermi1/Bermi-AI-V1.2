@@ -73,18 +73,31 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
           )}
 
           {stats!.topic_list && stats!.topic_list.length > 0 && (
-            <div>
-              <div className="mb-2 text-[13px] font-semibold">Topics studied</div>
-              <div className="flex flex-wrap gap-1.5">
-                {stats!.topic_list.slice(0, 8).map((t) => (
-                  <span
-                    key={t.topic}
-                    className="rounded-full border border-edge px-2.5 py-1 text-[11.5px] text-ink-muted"
-                  >
-                    {t.topic}
-                  </span>
-                ))}
-              </div>
+            <div className="space-y-3">
+              <div className="text-[13px] font-semibold">Topics studied</div>
+              {stats!.topic_list.slice(0, 6).map((t) => (
+                <div key={t.topic} className="rounded-xl border border-edge bg-surface p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[12.5px] font-medium text-ink">{t.topic}</span>
+                    <span className="text-[11px] text-ink-faint">
+                      {t.count} step{t.count === 1 ? '' : 's'} mastered
+                    </span>
+                  </div>
+                  {t.steps.length > 0 && (
+                    <ul className="space-y-1">
+                      {t.steps.slice(0, 6).map((step, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11.5px] text-ink-muted">
+                          <span className="mt-[3px] text-primary">✓</span>
+                          <span className="min-w-0">{step}</span>
+                        </li>
+                      ))}
+                      {t.steps.length > 6 && (
+                        <li className="text-[11px] text-ink-faint">+{t.steps.length - 6} more</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
