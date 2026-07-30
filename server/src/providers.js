@@ -1,9 +1,13 @@
 import { storage } from './storage/index.js'
 
-// Hybrid multi-provider layer: several free/open-weight AI providers, each
+// Hybrid multi-provider layer: several free, OPEN-WEIGHT AI providers, each
 // with its own key(s) and model-name dialect. If one provider is out of
 // tokens, rate-limited, or down, requests roll over to the next — so the
 // whole platform never goes dark because of a single exhausted key.
+//
+// Every model behind every provider here is open-weight (Llama, Qwen,
+// DeepSeek, Mistral, Gemma) — deliberately, no closed/proprietary model
+// (e.g. Gemini, GPT, Claude) is ever routed to, on principle.
 //
 // Each provider maps Bermi's neutral model "kind" (core/fast/reason/coder/
 // vision/math) to that provider's own real model id. Order = preference.
@@ -30,7 +34,7 @@ const OPENROUTER_MODELS = {
     'google/gemma-3-27b-it:free',
     'mistralai/mistral-small-3.1-24b-instruct:free',
   ],
-  fast: ['google/gemini-2.0-flash-exp:free', 'google/gemma-3-27b-it:free', 'meta-llama/llama-3.2-3b-instruct:free'],
+  fast: ['google/gemma-3-27b-it:free', 'mistralai/mistral-small-3.1-24b-instruct:free', 'meta-llama/llama-3.2-3b-instruct:free'],
   reason: ['deepseek/deepseek-r1:free', 'deepseek/deepseek-r1-0528:free', 'qwen/qwq-32b:free'],
   coder: ['qwen/qwen-2.5-coder-32b-instruct:free', 'deepseek/deepseek-chat-v3-0324:free'],
   vision: ['qwen/qwen-2.5-vl-72b-instruct:free', 'meta-llama/llama-3.2-11b-vision-instruct:free'],
@@ -46,17 +50,6 @@ const GROQ_MODELS = {
   coder: ['llama-3.3-70b-versatile'],
   vision: ['llama-3.2-11b-vision-preview'],
   math: ['llama-3.3-70b-versatile'],
-}
-
-// Google AI Studio's Gemini free tier (separate quota pool from OpenRouter's
-// Gemini route) — another independent free lane when configured.
-const GOOGLE_MODELS = {
-  core: ['gemini-2.0-flash'],
-  fast: ['gemini-2.0-flash'],
-  reason: ['gemini-2.0-flash-thinking-exp'],
-  coder: ['gemini-2.0-flash'],
-  vision: ['gemini-2.0-flash'],
-  math: ['gemini-2.0-flash-thinking-exp'],
 }
 
 // Cerebras serves fast, free-tier open-weight inference — another independent
@@ -106,26 +99,6 @@ async function groqProvider() {
     keys,
     models: GROQ_MODELS,
     url: 'https://api.groq.com/openai/v1/chat/completions',
-    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
-    supportsWebPlugin: false,
-    body: (model, messages, { stream, maxTokens }) => ({
-      model,
-      messages,
-      ...(stream ? { stream: true } : {}),
-      ...(maxTokens ? { max_tokens: maxTokens } : {}),
-    }),
-  }
-}
-
-async function googleProvider() {
-  const keys = await envOrSetting(['GOOGLE_AI_API_KEY', 'GEMINI_API_KEY'], 'google_ai_api_key')
-  if (!keys.length) return null
-  return {
-    id: 'google',
-    keys,
-    models: GOOGLE_MODELS,
-    // OpenAI-compatible endpoint Google AI Studio exposes for Gemini.
-    url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
     supportsWebPlugin: false,
     body: (model, messages, { stream, maxTokens }) => ({
@@ -189,7 +162,6 @@ export async function listProviders() {
   const all = await Promise.all([
     openrouterProvider(),
     groqProvider(),
-    googleProvider(),
     cerebrasProvider(),
     localProvider(),
   ])

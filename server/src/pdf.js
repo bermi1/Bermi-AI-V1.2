@@ -9,6 +9,14 @@ const CHROME_CANDIDATES = [
   '/usr/bin/google-chrome',
   '/usr/bin/google-chrome-stable',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  // Windows: Edge ships pre-installed on virtually every Windows 10/11
+  // machine and is Chromium-based (same DevTools protocol puppeteer needs),
+  // so the offline desktop build gets working PDF export with nothing extra
+  // to bundle. Chrome paths included too, in case that's what's installed.
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
 ].filter(Boolean)
 
 function findChrome() {

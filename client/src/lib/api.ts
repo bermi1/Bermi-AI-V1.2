@@ -647,13 +647,29 @@ export const learnCreateInstitution = (input: {
   }).then((r) => json<Institution>(r))
 
 // Build-your-own: any individual can create a personal course/module without
-// registering an organization.
-export const learnQuickCreateCourse = (input: { title: string; objectives?: string; level?: string }) =>
-  apiFetch('/api/learn/my/courses/quick', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((r) => json<{ institution: Institution; course: Course; lessons: Lesson[] }>(r))
+// registering an organization — from the common dashboard, never the
+// institutional portal.
+export const learnMyCourses = () =>
+  apiFetch('/api/learn/my/courses').then((r) => json<{ institution: Institution | null; courses: Course[] }>(r))
+
+export const learnQuickCreateCourse = (input: {
+  topic: string
+  audience?: string
+  level?: string
+  objectives?: string
+  material?: string
+  avoid?: string
+  title?: string
+}) =>
+  apiFetch(
+    '/api/learn/my/courses/quick',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    90_000,
+  ).then((r) => json<{ institution: Institution; course: Course; lessons: Lesson[] }>(r))
 
 export const learnUpdateInstitution = (
   id: string,
@@ -717,7 +733,7 @@ export const learnManageLessons = (courseId: string) =>
 
 export const learnCreateLesson = (
   courseId: string,
-  input: { title: string; content?: string; material?: string },
+  input: { title: string; content?: string; material?: string; video_url?: string },
 ) =>
   apiFetch(`/api/learn/courses/${courseId}/lessons`, {
     method: 'POST',
@@ -727,7 +743,7 @@ export const learnCreateLesson = (
 
 export const learnUpdateLesson = (
   id: string,
-  patch: Partial<{ title: string; content: string; material: string; ordinal: number }>,
+  patch: Partial<{ title: string; content: string; material: string; video_url: string; ordinal: number }>,
 ) =>
   apiFetch(`/api/learn/lessons/${id}`, {
     method: 'PUT',

@@ -4,6 +4,8 @@ import { storage } from '../storage/index.js'
 import { streamCompletion } from '../openrouter.js'
 import { STUDY_PROMPT, awardStudy } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
+import { getMemory, remember } from '../memory.js'
+import { summarizeVideo } from '../video.js'
 
 export const chatRouter = Router()
 
@@ -23,7 +25,10 @@ const BASE_PROMPT =
   '**Answer:** $...$. When a function, curve, inequality region or dataset would be clearer as a graph, add a ' +
   'fenced code block with the language `plot` containing one expression in x per line ' +
   '(for example a block with `y = x^2` then `y = sin(x)`); Bermi renders these as an interactive graph. ' +
-  'Optionally set the range with a first line like `# x: -10..10`.'
+  'Optionally set the range with a first line like `# x: -10..10`. ' +
+  'To play a course video, add a fenced code block with the language `video` containing `url: <link>` and ' +
+  'optionally `title: <text>` on their own lines — Bermi renders it as an inline player with captions when ' +
+  'available. Only ever use a real video_url given to you in context; never fabricate one.'
 
 /**
  * System prompt = base + user personalization + enabled brains. The company
@@ -37,16 +42,27 @@ async function buildSystemPrompt(userId, study = false) {
   // "what's new?" / "what can you do?" accurately instead of guessing.
   parts.push(`# About Bermi (yourself)\n${BERMI_FEATURES_PROMPT}`)
 
-  const [name, role, prefs] = await Promise.all([
+  const [name, role, prefs, memory] = await Promise.all([
     storage.getSetting(`u:${userId}:profile_name`),
     storage.getSetting(`u:${userId}:profile_role`),
     storage.getSetting(`u:${userId}:profile_preferences`),
+    getMemory(userId),
   ])
   const personal = []
   if (name) personal.push(`The user's name is ${name}.`)
   if (role) personal.push(`About their work: ${role}.`)
   if (prefs) personal.push(`Preferences for how you should respond: ${prefs}`)
   if (personal.length) parts.push(`# About the user\n${personal.join('\n')}`)
+
+  // Cross-conversation memory: what Bermi remembers about this person from
+  // EVERY past conversation, not just the current one — this is what makes
+  // it feel continuous rather than starting fresh every time.
+  if (memory) {
+    parts.push(
+      `# What you remember about this person (from past conversations)\n${memory}\n\n` +
+        'Use this naturally where relevant — do not recite it verbatim or announce that you are "recalling" it.',
+    )
+  }
 
   const brains = await storage.listBrains(userId)
   for (const brain of brains) {
@@ -67,6 +83,8 @@ async function buildSystemPrompt(userId, study = false) {
 const LEARN_RE =
   /\b(courses?|classes?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next)\b/i
 const ENROLL_RE = /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|join)\b/i
+const VIDEO_SUMMARY_RE = /\b(summar(y|ize|ise)|tl;?dr|recap)\b.{0,25}\bvideo\b|\bvideo\b.{0,25}\b(summar(y|ize|ise)|tl;?dr|recap)\b/i
+const VIDEO_PLAY_RE = /\b(play|watch|show|open)\b.{0,25}\bvideo\b/i
 
 /**
  * Lets Bermi access the course catalog and act on it agentically from chat:
@@ -103,7 +121,11 @@ async function learningContext(userId, message) {
     .join('\n')
 
   // The learner's own progress — powers "show my progress" and "what next".
+  // Also collects any lesson videos across their enrolled courses, so a
+  // "play the video" / "summarize the video" request can be resolved to an
+  // actual video_url the institution attached, without the learner naming it.
   let progressBlock = ''
+  const videoLessons = [] // { course, lesson, nextUp }
   try {
     const enrollments = await storage.listEnrollmentsByUser(userId)
     const rows = []
@@ -111,11 +133,16 @@ async function learningContext(userId, message) {
       const course = await storage.getCourse(e.course_id)
       if (!course) continue
       const lessons = await storage.listLessons(course.id)
-      const done = Object.values(e.progress || {}).filter((p) => p && p.done).length
+      const progress = e.progress || {}
+      const done = Object.values(progress).filter((p) => p && p.done).length
+      const withVideo = lessons.filter((l) => l.video_url?.trim())
+      const nextUpId = lessons.find((l) => !progress[l.id]?.done)?.id
+      for (const l of withVideo) videoLessons.push({ course, lesson: l, nextUp: l.id === nextUpId })
       rows.push(
         `- "${course.title}": ${e.status}` +
           (lessons.length ? `, ${done}/${lessons.length} lessons done` : '') +
-          (e.score != null ? `, average score ${e.score}%` : ''),
+          (e.score != null ? `, average score ${e.score}%` : '') +
+          (withVideo.length ? `. Has video for: ${withVideo.map((l) => `"${l.title}"`).join(', ')}` : ''),
       )
     }
     if (rows.length) {
@@ -129,7 +156,7 @@ async function learningContext(userId, message) {
     `# Bermi Learn — courses available right now (you can discuss, recommend and enroll the user in these)\n${list}` +
     progressBlock +
     '\n\nGuidance: If the user asks to enroll/apply, the system enrolls them directly (see any Live action below), ' +
-    'then tell them to open /portal or say "Study in Bermi AI" to begin. ' +
+    'then start teaching them right here, in this chat, immediately. ' +
     'For "show my progress", summarize their progress above clearly. ' +
     'For "what should I learn next", recommend the best next step — finish an in-progress course first, otherwise ' +
     'suggest a fitting course from the catalog (name it). Recommend only courses from this list. ' +
@@ -156,7 +183,7 @@ async function learningContext(userId, message) {
       try {
         const existing = await storage.getEnrollment(best.id, userId)
         if (existing) {
-          note = `Live action: the user is ALREADY enrolled in "${best.title}". Confirm and tell them to open /portal to continue.`
+          note = `Live action: the user is ALREADY enrolled in "${best.title}". Confirm briefly, then continue teaching them right here in this chat from where they left off.`
         } else {
           await storage.createEnrollment({
             id: randomUUID(),
@@ -168,16 +195,42 @@ async function learningContext(userId, message) {
             enrolled_at: new Date().toISOString(),
           })
           const inst = instById.get(best.institution_id)
-          note = `Live action: you HAVE NOW enrolled the user in "${best.title}"${inst ? ` by ${inst.name}` : ''}. Confirm warmly, briefly say what it covers, and tell them to open /portal or say "Study in Bermi AI" to start. State only what actually happened.`
+          note = `Live action: you HAVE NOW enrolled the user in "${best.title}"${inst ? ` by ${inst.name}` : ''}. Confirm warmly, briefly say what it covers, then immediately begin teaching the first lesson right here in this chat. State only what actually happened.`
         }
       } catch (e) {
-        note = `Live action: enrollment failed (${e.message}). Apologize briefly and suggest enrolling from /portal.`
+        note = `Live action: enrollment failed (${e.message}). Apologize briefly and offer to try again right here in chat.`
       }
     } else {
       note =
         'Live action: the user wants to enroll but did not name a course that matches the catalog. Ask which one, listing 2-3 relevant available courses by name.'
     }
   }
+
+  // Playing/summarizing a lesson video — resolve to an actual video_url an
+  // institution attached, never a guessed or fabricated link.
+  if (videoLessons.length && (VIDEO_PLAY_RE.test(message) || VIDEO_SUMMARY_RE.test(message))) {
+    const lower = message.toLowerCase()
+    const target =
+      videoLessons.find((v) => lower.includes(v.lesson.title.toLowerCase())) ||
+      videoLessons.find((v) => lower.includes(v.course.title.toLowerCase())) ||
+      videoLessons.find((v) => v.nextUp) ||
+      videoLessons[0]
+
+    if (VIDEO_SUMMARY_RE.test(message)) {
+      const result = await summarizeVideo(target.lesson.video_url, { title: target.lesson.title })
+      note = result.ok
+        ? `Live action: you already reviewed the video for lesson "${target.lesson.title}" (course "${target.course.title}"). ` +
+          `Present this summary to the user in your own words, well-formatted — do not say "transcript" or "captions", just summarize what the video covers:\n\n${result.summary}`
+        : `Live action: could not summarize the video for lesson "${target.lesson.title}" — ${result.reason} Tell the user plainly and offer to keep teaching the lesson from its written content instead.`
+    } else {
+      note =
+        `Live action: playing the video for lesson "${target.lesson.title}" (course "${target.course.title}"). ` +
+        'In your reply, include exactly one fenced code block with language "video" containing only:\n' +
+        `url: ${target.lesson.video_url}\ntitle: ${target.lesson.title}\n` +
+        'Do not print the raw URL anywhere else. Add one short sentence introducing it, and mention captions play automatically if the source provides them.'
+    }
+  }
+
   return { block, note }
 }
 
@@ -369,6 +422,11 @@ chatRouter.post('/chat', async (req, res, next) => {
         created_at: doneAt,
       })
       await storage.updateConversation(conversation.id, { updated_at: doneAt })
+
+      // Fire-and-forget: fold this exchange into the user's persistent,
+      // cross-conversation memory so future chats (any of them) can draw on
+      // it — never blocks or affects the response already sent.
+      remember(req.user.id, message, assistantText)
 
       // Gamify study sessions: award XP, update streaks/badges, and tell the UI.
       if (study) {

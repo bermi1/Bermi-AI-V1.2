@@ -48,9 +48,9 @@ export const BERMI_UPDATES = [
 // How Bermi is positioned — for honest "what makes you unique / which
 // benchmark are you" answers.
 export const BERMI_POSITIONING = [
-  'Bermi is not its own trained model — it is an AI product and workspace built on top of leading open models (such as Llama 3.3 70B, Qwen 2.5, DeepSeek R1, and Gemini 2.0 Flash) accessed through OpenRouter, chosen automatically per task.',
-  'On raw model benchmarks (MMLU, GSM8K, HumanEval, etc.), Bermi performs at the level of those strong open models — competitive with the best free/open systems, a tier below the largest paid frontier models.',
-  "Bermi's edge is not a benchmark score — it is the integrated experience: one place that chats, searches the live web agentically with citations, teaches you with a leveled curriculum and quizzes, reads any document (text, tables, math) with OCR, writes full documents and presentation-ready decks, solves and visualizes math, reflects your wellbeing, and lets organizations run a whole learning portal — all free.",
+  'Bermi is not its own trained model — it is an AI product and workspace built entirely on open-weight models (Llama 3.3, Qwen 2.5, DeepSeek R1, Mistral, Gemma) run through several independent providers (OpenRouter, Groq, Cerebras, and an on-device model when offline), chosen automatically per task. Deliberately, no closed/proprietary model is ever used.',
+  'On raw model benchmarks (MMLU, GSM8K, HumanEval, etc.), Bermi performs at the level of those strong open models — competitive with the best open-weight systems, a tier below the largest closed frontier models.',
+  "Bermi's edge is not a benchmark score — it is the integrated experience: one place that chats, searches the live web agentically with citations, teaches you with a leveled curriculum and quizzes, reads any document (text, tables, math) with OCR, writes full documents and presentation-ready decks, solves and visualizes math, reflects your wellbeing, remembers who you are across conversations, and lets organizations run a whole learning portal — all free, all open-weight, and able to run fully offline.",
 ]
 
 // A compact capability list Bermi can recite.

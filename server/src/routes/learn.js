@@ -94,6 +94,7 @@ learnRouter.get('/learn/courses/:id', async (req, res, next) => {
         ordinal: l.ordinal,
         title: l.title,
         content: enrolled ? l.content : '',
+        video_url: enrolled ? l.video_url || '' : '',
       })),
       enrollment,
     })
@@ -143,71 +144,129 @@ learnRouter.post('/learn/institutions', async (req, res, next) => {
 // drafts the module structure with AI from a short brief.
 // ---------------------------------------------------------------------------
 
+// Only reads an EXISTING personal workspace — never creates one just because
+// the dashboard asked to look. Individuals who haven't built anything yet
+// simply get an empty list.
+learnRouter.get('/learn/my/courses', async (req, res, next) => {
+  try {
+    const mine = (await storage.listInstitutionsByOwner(req.user.id)).find((i) => i.personal)
+    if (!mine) return res.json({ institution: null, courses: [] })
+    const courses = await storage.listCoursesByInstitution(mine.id)
+    res.json({ institution: mine, courses })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// The guided intake: a short series of answers (what to teach, who it's for,
+// what they should be able to do after, optional source material) becomes a
+// FULL course — real drafted lesson content grounded in those answers, not
+// empty stubs — in one step. This is what "build your own course" actually
+// runs after asking its questions; no institutional setup required.
 learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
   try {
-    const { title, objectives = '', level = 'All levels' } = req.body ?? {}
-    if (!title?.trim()) return res.status(400).json({ error: 'Give your course a title' })
+    const {
+      topic,
+      audience = '',
+      level = 'All levels',
+      objectives = '',
+      material = '',
+      avoid = '',
+      title: titleOverride,
+    } = req.body ?? {}
+    if (!topic?.trim()) return res.status(400).json({ error: 'Tell Bermi what this course should teach' })
+
+    const brief =
+      `Topic: ${topic}\n` +
+      (audience ? `Who it's for / their current level: ${audience}\n` : '') +
+      (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
+      (avoid ? `Skip or avoid: ${avoid}\n` : '') +
+      (material ? `\nSource material to ground the course in:\n${material.slice(0, 12000)}` : '')
+
+    let plan = null
+    try {
+      const raw = await complete({
+        model: 'bermi-core',
+        maxTokens: 5500,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a curriculum designer. Given a brief (topic, audience/level, objectives, optional source ' +
+              'material), design a COMPLETE course and write it in full — not an outline. Respond with ONLY a ' +
+              'JSON object shaped exactly as:\n' +
+              '{"title":string,"cover_emoji":string,"summary":string,"description":string(markdown),' +
+              '"objectives":string(one per line),"evaluation":string,"lessons":[{"title":string,"content":string(markdown)},...]}\n' +
+              'Rules: cover_emoji is one relevant emoji. summary is one sentence. description is a short markdown ' +
+              'overview (## headings ok). objectives lists 3-6 concrete, testable outcomes, one per line. ' +
+              'evaluation states what to test and what mastery looks like. Produce 4-6 lessons that progress in ' +
+              'order; each lesson\'s content is a FULLY WRITTEN lesson (several paragraphs, headings, a worked ' +
+              'example, and a short "Key takeaways" list) — never a placeholder or a one-line stub. If source ' +
+              'material was given, ground the lessons in it directly. Tailor depth and vocabulary to the stated ' +
+              'audience/level. Output ONLY the JSON object.',
+          },
+          { role: 'user', content: brief },
+        ],
+      })
+      plan = JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+    } catch (err) {
+      return res.status(502).json({ error: `Could not draft the course: ${err.message}` })
+    }
+    if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
+      return res.status(502).json({ error: 'Could not draft a complete course from those answers — try adding more detail.' })
+    }
 
     const workspace = await personalWorkspace(req.user)
     const now = new Date().toISOString()
+    const finalTitle = (titleOverride || plan.title || topic).trim()
     const course = await storage.createCourse({
       id: randomUUID(),
       institution_id: workspace.id,
-      title: title.trim(),
-      slug: slugify(title),
-      summary: '',
-      description: '',
-      cover_emoji: '📘',
+      title: finalTitle,
+      slug: slugify(finalTitle),
+      summary: String(plan.summary || '').slice(0, 300),
+      description: String(plan.description || ''),
+      cover_emoji: String(plan.cover_emoji || '📘').slice(0, 8),
       level,
       published: false,
       enrollment: 'open',
-      objectives,
-      evaluation: '',
+      objectives: String(plan.objectives || objectives || ''),
+      evaluation: String(plan.evaluation || ''),
       tracking: '',
       created_at: now,
       updated_at: now,
     })
 
-    // Draft a short module structure with AI so the creator starts with
-    // something real, not a blank course.
-    let lessonTitles = []
-    try {
-      const raw = await complete({
-        model: 'bermi-core',
-        maxTokens: 400,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You design course modules. Given a title and objectives, output ONLY a JSON array of 3-5 short ' +
-              'lesson titles that progressively build toward the objectives. No prose.',
-          },
-          { role: 'user', content: `Title: ${title}\n\nObjectives: ${objectives || '(none given — infer sensible ones)'}` },
-        ],
-      })
-      const parsed = JSON.parse(String(raw).replace(/^```(?:json)?/i, '').replace(/```$/, ''))
-      lessonTitles = Array.isArray(parsed) ? parsed.slice(0, 6).map(String) : []
-    } catch {
-      lessonTitles = []
-    }
-    if (!lessonTitles.length) lessonTitles = ['Introduction', 'Core concepts', 'Putting it into practice']
-
     const lessons = []
-    for (let i = 0; i < lessonTitles.length; i++) {
+    for (let i = 0; i < plan.lessons.length; i++) {
+      const l = plan.lessons[i]
       lessons.push(
         await storage.createLesson({
           id: randomUUID(),
           course_id: course.id,
           ordinal: i,
-          title: lessonTitles[i],
-          content: '',
+          title: String(l.title || `Lesson ${i + 1}`).slice(0, 120),
+          content: String(l.content || ''),
           material: '',
           created_at: now,
         }),
       )
     }
 
-    res.status(201).json({ institution: workspace, course, lessons })
+    // Auto-enroll the creator in their own course so it shows up immediately
+    // in "My learning" and can be studied right here in Bermi AI — no portal
+    // visit, no separate enroll step required.
+    const enrollment = await storage.createEnrollment({
+      id: randomUUID(),
+      course_id: course.id,
+      user_id: req.user.id,
+      status: 'enrolled',
+      progress: {},
+      score: null,
+      enrolled_at: now,
+    })
+
+    res.status(201).json({ institution: workspace, course, lessons, enrollment })
   } catch (err) {
     next(err)
   }
@@ -334,7 +393,7 @@ learnRouter.post('/learn/courses/:id/lessons', async (req, res, next) => {
   try {
     if (!(await ownsCourse(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Course not found' })
-    const { title, content = '', material = '' } = req.body ?? {}
+    const { title, content = '', material = '', video_url = '' } = req.body ?? {}
     if (!title?.trim()) return res.status(400).json({ error: 'Lesson title is required' })
     const existing = await storage.listLessons(req.params.id)
     const lesson = await storage.createLesson({
@@ -344,6 +403,7 @@ learnRouter.post('/learn/courses/:id/lessons', async (req, res, next) => {
       title: title.trim(),
       content,
       material,
+      video_url,
       created_at: new Date().toISOString(),
     })
     res.status(201).json(lesson)
@@ -357,12 +417,13 @@ learnRouter.put('/learn/lessons/:id', async (req, res, next) => {
     const lesson = await storage.getLesson(req.params.id)
     if (!lesson || !(await ownsCourse(req.user.id, lesson.course_id)))
       return res.status(404).json({ error: 'Lesson not found' })
-    const { title, content, material, ordinal } = req.body ?? {}
+    const { title, content, material, video_url, ordinal } = req.body ?? {}
     res.json(
       await storage.updateLesson(req.params.id, {
         title: title ?? lesson.title,
         content: content ?? lesson.content,
         material: material ?? lesson.material,
+        video_url: video_url ?? lesson.video_url,
         ordinal: ordinal ?? lesson.ordinal,
       }),
     )

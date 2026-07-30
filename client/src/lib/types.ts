@@ -239,6 +239,7 @@ export interface Lesson {
   title: string
   content: string
   material?: string
+  video_url?: string
 }
 
 export interface Enrollment {

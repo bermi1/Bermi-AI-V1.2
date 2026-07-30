@@ -20,6 +20,10 @@ export const Markdown = memo(function Markdown({ children }: { children: string 
             if (className?.includes('language-plot')) {
               return <PlotBlock source={String(children)} />
             }
+            // A ```video fenced block becomes an inline player with captions.
+            if (className?.includes('language-video')) {
+              return <VideoBlock source={String(children)} />
+            }
             return <code className={className}>{children}</code>
           },
         }}
@@ -143,6 +147,65 @@ function PlotBlock({ source }: { source: string }) {
             {c.label}
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// Parses a ```video block: a `url:` line (required), optional `caption:` (a
+// .vtt track URL) and `title:` lines. A bare first line with no "key:" is
+// treated as the url, so a plain link still works.
+function parseVideoBlock(source: string) {
+  let url = ''
+  let caption = ''
+  let title = ''
+  for (const raw of source.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const kv = line.match(/^(url|caption|captions|title)\s*:\s*(.+)$/i)
+    if (kv) {
+      const key = kv[1].toLowerCase()
+      const val = kv[2].trim()
+      if (key === 'url') url = val
+      else if (key === 'title') title = val
+      else caption = val
+    } else if (!url) {
+      url = line
+    }
+  }
+  return { url, caption, title }
+}
+
+function youtubeEmbedUrl(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/)
+  return m ? `https://www.youtube.com/embed/${m[1]}?cc_load_policy=1&rel=0` : null
+}
+
+function VideoBlock({ source }: { source: string }) {
+  const { url, caption, title, yt } = useMemo(() => {
+    const parsed = parseVideoBlock(source)
+    return { ...parsed, yt: parsed.url ? youtubeEmbedUrl(parsed.url) : null }
+  }, [source])
+  if (!url) return null
+
+  return (
+    <div className="not-prose my-3 overflow-hidden rounded-xl border border-edge bg-surface-raised">
+      {title && <div className="border-b border-edge px-3 py-2 text-[12.5px] font-medium text-ink">{title}</div>}
+      <div className="relative aspect-video w-full bg-black">
+        {yt ? (
+          <iframe
+            src={yt}
+            title={title || 'Course video'}
+            className="absolute inset-0 h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        ) : (
+          // eslint-disable-next-line jsx-a11y/media-has-caption -- caption track is added below when provided
+          <video controls className="absolute inset-0 h-full w-full" src={url}>
+            {caption && <track kind="captions" src={caption} default />}
+          </video>
+        )}
       </div>
     </div>
   )

@@ -25,6 +25,7 @@ export class SqliteStorage {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         model TEXT NOT NULL,
+        course_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
@@ -106,7 +107,7 @@ export class SqliteStorage {
       );
       CREATE TABLE IF NOT EXISTS lessons (
         id TEXT PRIMARY KEY, course_id TEXT NOT NULL, ordinal INTEGER NOT NULL DEFAULT 0,
-        title TEXT NOT NULL, content TEXT DEFAULT '', material TEXT DEFAULT '',
+        title TEXT NOT NULL, content TEXT DEFAULT '', material TEXT DEFAULT '', video_url TEXT DEFAULT '',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS enrollments (
@@ -132,6 +133,9 @@ export class SqliteStorage {
       "ALTER TABLE courses ADD COLUMN evaluation TEXT DEFAULT ''",
       "ALTER TABLE courses ADD COLUMN tracking TEXT DEFAULT ''",
       'ALTER TABLE institutions ADD COLUMN personal INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE conversations ADD COLUMN course_id TEXT',
+      'ALTER TABLE enrollments ADD COLUMN dependency REAL',
+      "ALTER TABLE lessons ADD COLUMN video_url TEXT DEFAULT ''",
     ]
     for (const sql of migrations) {
       try {
@@ -239,9 +243,9 @@ export class SqliteStorage {
   async createConversation(row) {
     this.db
       .prepare(
-        'INSERT INTO conversations (id, user_id, title, model, created_at, updated_at) VALUES (@id, @user_id, @title, @model, @created_at, @updated_at)',
+        'INSERT INTO conversations (id, user_id, title, model, course_id, created_at, updated_at) VALUES (@id, @user_id, @title, @model, @course_id, @created_at, @updated_at)',
       )
-      .run(row)
+      .run({ course_id: null, ...row })
     return row
   }
   async updateConversation(id, { title, model, updated_at }) {
@@ -494,8 +498,8 @@ export class SqliteStorage {
   }
 
   async createLesson(r) {
-    this.db.prepare('INSERT INTO lessons (id, course_id, ordinal, title, content, material, created_at) VALUES (@id,@course_id,@ordinal,@title,@content,@material,@created_at)')
-      .run({ ordinal: 0, content: '', material: '', ...r })
+    this.db.prepare('INSERT INTO lessons (id, course_id, ordinal, title, content, material, video_url, created_at) VALUES (@id,@course_id,@ordinal,@title,@content,@material,@video_url,@created_at)')
+      .run({ ordinal: 0, content: '', material: '', video_url: '', ...r })
     return this.getLesson(r.id)
   }
   async getLesson(id) {
@@ -511,9 +515,10 @@ export class SqliteStorage {
       title: patch.title ?? cur.title,
       content: patch.content ?? cur.content,
       material: patch.material ?? cur.material,
+      video_url: patch.video_url ?? cur.video_url,
       ordinal: patch.ordinal ?? cur.ordinal,
     }
-    this.db.prepare('UPDATE lessons SET title=@title, content=@content, material=@material, ordinal=@ordinal WHERE id=@id').run(m)
+    this.db.prepare('UPDATE lessons SET title=@title, content=@content, material=@material, video_url=@video_url, ordinal=@ordinal WHERE id=@id').run(m)
     return this.getLesson(id)
   }
   async deleteLesson(id) {
@@ -542,9 +547,10 @@ export class SqliteStorage {
       status: patch.status ?? row.status,
       progress: JSON.stringify(patch.progress ?? JSON.parse(row.progress || '{}')),
       score: patch.score ?? row.score ?? null,
+      dependency: patch.dependency ?? row.dependency ?? null,
       completed_at: patch.completed_at ?? row.completed_at ?? null,
     }
-    this.db.prepare('UPDATE enrollments SET status=@status, progress=@progress, score=@score, completed_at=@completed_at WHERE id=@id').run(m)
+    this.db.prepare('UPDATE enrollments SET status=@status, progress=@progress, score=@score, dependency=@dependency, completed_at=@completed_at WHERE id=@id').run(m)
     const out = this.db.prepare('SELECT * FROM enrollments WHERE id = ?').get(id)
     return { ...out, progress: JSON.parse(out.progress || '{}') }
   }

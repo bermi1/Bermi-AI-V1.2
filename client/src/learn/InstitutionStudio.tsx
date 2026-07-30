@@ -14,6 +14,7 @@ import {
   Trash2,
   Upload,
   Users,
+  Video,
   Wand2,
 } from 'lucide-react'
 import * as api from '../lib/api'
@@ -592,7 +593,12 @@ function LessonEditor({
     setSaving(true)
     setError(null)
     try {
-      await api.learnUpdateLesson(lesson.id, { title: lesson.title, content: lesson.content, material: lesson.material })
+      await api.learnUpdateLesson(lesson.id, {
+        title: lesson.title,
+        content: lesson.content,
+        material: lesson.material,
+        video_url: lesson.video_url,
+      })
       onChanged()
       onClose()
     } catch (e) {
@@ -676,6 +682,22 @@ function LessonEditor({
           value={lesson.content || ''}
           onChange={(e) => patch({ content: e.target.value })}
           placeholder="Write the lesson, or generate it from your material above."
+        />
+      </Field>
+
+      <Field
+        label={
+          <span className="inline-flex items-center gap-1.5">
+            <Video size={13} /> Lesson video (optional)
+          </span>
+        }
+        hint="A YouTube link or direct video file URL. Learners can ask Bermi AI to play it right in chat, with captions when available, and to summarize it."
+      >
+        <input
+          className={inputClass}
+          value={lesson.video_url || ''}
+          onChange={(e) => patch({ video_url: e.target.value })}
+          placeholder="https://youtube.com/watch?v=... or a direct .mp4 link"
         />
       </Field>
 
