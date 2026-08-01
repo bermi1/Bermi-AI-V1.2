@@ -133,9 +133,12 @@ export async function awardStudy(userId, topic, masteredLabels) {
   }
 }
 
-// Parses the tutor's own "Mastered:" markers out of a reply — the only
-// signal that grants XP. Matches "✅ **Mastered:** <name>" on its own line.
-const MASTERED_RE = /✅\s*\*\*Mastered:\*\*\s*([^\n]+)/gi
+// Parses the assistant's own completion markers out of a reply — the only
+// signal that grants XP or records step progress. Matches "✅ **Mastered:**"
+// (courses, mastery-gated), "✅ **Completed:**" (programs/resources, a
+// lighter self-report confirmation) or "✅ **Done:**" on its own line — same
+// mechanism, wording that fits what's actually being tracked.
+const MASTERED_RE = /✅\s*\*\*(?:Mastered|Completed|Done):\*\*\s*([^\n]+)/gi
 
 export function parseMasteredSteps(text) {
   if (!text) return []

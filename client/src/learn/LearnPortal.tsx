@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { AuthUser, Course, Institution } from '../lib/types'
+import type { AuthUser, Course, Institution, OfferingKind } from '../lib/types'
 import { BermiMark } from '../components/Logo'
 import {
   EmptyState,
@@ -203,7 +203,7 @@ function MobileBar({
   navigate: (r: LearnRoute) => void
 }) {
   const title =
-    route.name === 'mylearning' ? 'Enrollments' : route.name === 'studio' ? 'Organization' : 'Bermi Learn'
+    route.name === 'mylearning' ? 'My activity' : route.name === 'studio' ? 'Organization' : 'Bermi Learn'
   return (
     <header className="flex items-center gap-2 border-b border-edge bg-surface-raised px-3 py-2.5 md:hidden">
       <button onClick={onMenu} className="rounded-lg p-2 text-ink-muted hover:bg-surface-sunken">
@@ -219,7 +219,10 @@ function MobileBar({
 
 // ---------- Landing (B2B / organization-first) ----------
 
+const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', event: 'Event', resource: 'Resource' }
+
 function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
+  const kind = course.kind || 'course'
   return (
     <button
       onClick={onOpen}
@@ -227,7 +230,7 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-3xl">{course.cover_emoji || '📘'}</div>
-        <Pill tone="muted">{course.level || 'All levels'}</Pill>
+        <Pill tone={kind === 'course' ? 'muted' : 'primary'}>{kind === 'course' ? course.level || 'All levels' : KIND_LABEL[kind]}</Pill>
       </div>
       <h3 className="text-[16px] font-semibold leading-snug text-ink group-hover:text-primary">{course.title}</h3>
       {course.summary && <p className="mt-1.5 line-clamp-2 text-[13px] text-ink-muted">{course.summary}</p>}
@@ -306,7 +309,7 @@ function InstitutionLibrary({ slug, navigate }: { slug: string; navigate: (r: Le
                 {institution.about && <p className="mt-1 max-w-2xl text-[14px] text-ink-muted">{institution.about}</p>}
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <Pill tone="primary"><Library size={12} /> Digital library</Pill>
-                  <Pill tone="muted"><BookOpen size={12} /> {courses.length} {courses.length === 1 ? 'class' : 'classes'}</Pill>
+                  <Pill tone="muted"><BookOpen size={12} /> {courses.length} {courses.length === 1 ? 'item' : 'items'}</Pill>
                   {institution.website && (
                     <a href={institution.website} target="_blank" rel="noreferrer" className="text-[12.5px] font-medium text-primary hover:underline">
                       Website ↗
@@ -331,7 +334,7 @@ function InstitutionLibrary({ slug, navigate }: { slug: string; navigate: (r: Le
       {/* Shelves grouped by level — reads like classes/lectures on a shelf */}
       <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
         {shelves.length === 0 ? (
-          <EmptyState icon={<Library size={28} />} title={query ? 'No classes match your search' : 'No published classes yet'} />
+          <EmptyState icon={<Library size={28} />} title={query ? 'Nothing matches your search' : 'Nothing published yet'} />
         ) : (
           <div className="space-y-10">
             {shelves.map((shelf) => (

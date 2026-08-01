@@ -89,13 +89,14 @@ learnRouter.get('/learn/courses/:id', async (req, res, next) => {
     const enrolled = Boolean(enrollment)
     res.json({
       course,
-      institution: inst ? { name: inst.name, slug: inst.slug, about: inst.about } : null,
+      institution: inst ? { name: inst.name, slug: inst.slug, about: inst.about, org_type: inst.org_type } : null,
       lessons: lessons.map((l) => ({
         id: l.id,
         ordinal: l.ordinal,
         title: l.title,
         content: enrolled ? l.content : '',
         video_url: enrolled ? l.video_url || '' : '',
+        attachment_url: enrolled ? l.attachment_url || '' : '',
       })),
       enrollment,
     })
@@ -116,9 +117,22 @@ learnRouter.get('/learn/my/institutions', async (req, res, next) => {
   }
 })
 
+// Any kind of organization can set up a workspace here — not just schools.
+// org_type only tailors language and the AI's default offering kind; every
+// type can still publish courses, programs, events, or resources.
+const ORG_TYPES = ['education', 'business', 'nonprofit', 'government', 'community', 'media', 'other']
+
+// What an organization can publish. "course" keeps the existing lesson +
+// mastery-quiz flow. The other three cover organizations that have no
+// curriculum to teach but still want to reach and engage the public:
+// a bank's loan-application walkthrough or an NGO's onboarding ("program"),
+// a briefing/workshop/AGM with a date ("event"), or a document/policy/report
+// the public should be able to get and understand ("resource").
+const OFFERING_KINDS = ['course', 'program', 'event', 'resource']
+
 learnRouter.post('/learn/institutions', async (req, res, next) => {
   try {
-    const { name, about = '', website = '' } = req.body ?? {}
+    const { name, about = '', website = '', org_type = 'education' } = req.body ?? {}
     if (!name?.trim()) return res.status(400).json({ error: 'Institution name is required' })
     let slug = slugify(name)
     if (await storage.getInstitutionBySlug(slug)) slug = `${slug}-${randomBytes(2).toString('hex')}`
@@ -131,6 +145,7 @@ learnRouter.post('/learn/institutions', async (req, res, next) => {
       website,
       logo_url: null,
       published: true,
+      org_type: ORG_TYPES.includes(org_type) ? org_type : 'education',
       created_at: new Date().toISOString(),
     })
     res.status(201).json(inst)
@@ -159,6 +174,95 @@ learnRouter.get('/learn/my/courses', async (req, res, next) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// AI drafting, generalized across offering kinds. A "course" is taught and
+// quiz-gated; a "program" walks someone through a structured process (a
+// bank's loan application, an NGO's volunteer onboarding); an "event" is a
+// dated thing to register for (a briefing, AGM, workshop); a "resource" is
+// something the public should be able to get and understand (a report,
+// policy explainer, guide). All four reuse the same lessons/steps storage —
+// only the language and structure of what's drafted changes.
+// ---------------------------------------------------------------------------
+
+function offeringSystemPrompt(kind) {
+  const jsonShape =
+    'Respond with ONLY a JSON object shaped exactly as:\n' +
+    '{"title":string,"cover_emoji":string,"summary":string,"description":string(markdown),' +
+    '"objectives":string(one per line),"evaluation":string,' +
+    (kind === 'event' ? '"event_location":string,"event_at":string(ISO 8601 date-time, best guess, or ""),' : '') +
+    '"lessons":[{"title":string,"content":string(markdown)},...]}\n'
+
+  if (kind === 'program') {
+    return (
+      'You are a program designer for an organization (a bank, NGO, company, government body, or similar) ' +
+      'guiding the public or its members through a structured process — not a school course. Given a brief ' +
+      '(what the program is for, who it is for, the outcome, optional source material), design a COMPLETE ' +
+      'step-by-step program and write it in full. ' +
+      jsonShape +
+      'Rules: cover_emoji is one relevant emoji. summary is one sentence stating what someone gets from following ' +
+      'this program. description is a short markdown overview of the program and who should join. objectives ' +
+      'lists 3-6 concrete things a participant will have done or understood by the end, one per line. evaluation ' +
+      'describes how to tell someone has genuinely engaged with each step — plain confirmation of understanding ' +
+      'or completion, not a school quiz. Produce 3-8 lessons, each a clearly numbered STEP of the program, fully ' +
+      'written (what to do, why it matters, what "done" looks like) — never a placeholder or one-line stub. If ' +
+      'source material was given, ground the steps in it directly. Output ONLY the JSON object.'
+    )
+  }
+  if (kind === 'event') {
+    return (
+      'You are helping an organization (a company, NGO, bank, government body, community group, or similar) ' +
+      'publish an EVENT the public or its members can register for — a briefing, workshop, AGM, webinar, or ' +
+      'fundraiser. Given a brief (what the event is, who it is for, when/where if known, optional source ' +
+      'material), write a COMPLETE event listing. ' +
+      jsonShape +
+      'Rules: cover_emoji is one relevant emoji. summary is one sentence pitching why to attend. description is a ' +
+      'short markdown overview (what happens, who it is for, what to expect). event_location is an address or a ' +
+      'link (e.g. a video-call URL); use "" if unknown. event_at is your best-guess ISO 8601 date-time parsed from ' +
+      'the brief, or "" if no date was given — never invent a date that was not implied. objectives lists 2-5 ' +
+      'things an attendee gets out of it. evaluation should simply state "Attendance/registration" since events ' +
+      'are not graded. Produce 1-5 lessons, each a distinct AGENDA ITEM or piece of practical information (what ' +
+      'to bring, how to join, session breakdown), fully written — never a placeholder. Output ONLY the JSON object.'
+    )
+  }
+  if (kind === 'resource') {
+    return (
+      'You are helping an organization (a company, NGO, bank, government body, or similar) publish a RESOURCE ' +
+      'the public should be able to get and understand — a report, policy explainer, guide, FAQ, or downloadable ' +
+      'material. Given a brief (what it covers, who it is for, optional source material), write a COMPLETE ' +
+      'resource. ' +
+      jsonShape +
+      'Rules: cover_emoji is one relevant emoji. summary is one sentence stating what the resource gives the ' +
+      'reader. description is a short markdown overview. objectives lists 2-5 things a reader will know or be ' +
+      'able to do after reading it. evaluation should simply state "Read/understood" since resources are not ' +
+      'graded. Produce 1-4 lessons, each a clearly written SECTION of the resource, fully written — never a ' +
+      'placeholder. If source material was given, ground it directly in that material. Output ONLY the JSON object.'
+    )
+  }
+  return (
+    'You are a curriculum designer. Given a brief (topic, audience/level, objectives, optional source material), ' +
+    'design a COMPLETE course and write it in full — not an outline. ' +
+    jsonShape +
+    'Rules: cover_emoji is one relevant emoji. summary is one sentence. description is a short markdown overview ' +
+    '(## headings ok). objectives lists 3-6 concrete, testable outcomes, one per line. evaluation states what to ' +
+    'test and what mastery looks like. Produce 4-6 lessons that progress in order; each lesson\'s content is a ' +
+    'FULLY WRITTEN lesson (several paragraphs, headings, a worked example, and a short "Key takeaways" list) — ' +
+    'never a placeholder or a one-line stub. If source material was given, ground the lessons in it directly. ' +
+    'Tailor depth and vocabulary to the stated audience/level. Output ONLY the JSON object.'
+  )
+}
+
+async function draftOfferingPlan(kind, brief) {
+  const raw = await complete({
+    model: 'bermi-core',
+    maxTokens: 5500,
+    messages: [
+      { role: 'system', content: offeringSystemPrompt(kind) },
+      { role: 'user', content: brief },
+    ],
+  })
+  return JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+}
+
 // The guided intake: a short series of answers (what to teach, who it's for,
 // what they should be able to do after, optional source material) becomes a
 // FULL course — real drafted lesson content grounded in those answers, not
@@ -170,51 +274,34 @@ learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
       topic,
       audience = '',
       level = 'All levels',
+      kind: rawKind = 'course',
       objectives = '',
       material = '',
       avoid = '',
+      event_at: eventAtInput = '',
+      event_location: eventLocationInput = '',
       title: titleOverride,
     } = req.body ?? {}
-    if (!topic?.trim()) return res.status(400).json({ error: 'Tell Bermi what this course should teach' })
+    const kind = OFFERING_KINDS.includes(rawKind) ? rawKind : 'course'
+    if (!topic?.trim()) return res.status(400).json({ error: `Tell Bermi what this ${kind} should be about` })
 
     const brief =
       `Topic: ${topic}\n` +
       (audience ? `Who it's for / their current level: ${audience}\n` : '') +
       (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
       (avoid ? `Skip or avoid: ${avoid}\n` : '') +
-      (material ? `\nSource material to ground the course in:\n${material.slice(0, 12000)}` : '')
+      (eventAtInput ? `Date/time: ${eventAtInput}\n` : '') +
+      (eventLocationInput ? `Location/link: ${eventLocationInput}\n` : '') +
+      (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
 
     let plan = null
     try {
-      const raw = await complete({
-        model: 'bermi-core',
-        maxTokens: 5500,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a curriculum designer. Given a brief (topic, audience/level, objectives, optional source ' +
-              'material), design a COMPLETE course and write it in full — not an outline. Respond with ONLY a ' +
-              'JSON object shaped exactly as:\n' +
-              '{"title":string,"cover_emoji":string,"summary":string,"description":string(markdown),' +
-              '"objectives":string(one per line),"evaluation":string,"lessons":[{"title":string,"content":string(markdown)},...]}\n' +
-              'Rules: cover_emoji is one relevant emoji. summary is one sentence. description is a short markdown ' +
-              'overview (## headings ok). objectives lists 3-6 concrete, testable outcomes, one per line. ' +
-              'evaluation states what to test and what mastery looks like. Produce 4-6 lessons that progress in ' +
-              'order; each lesson\'s content is a FULLY WRITTEN lesson (several paragraphs, headings, a worked ' +
-              'example, and a short "Key takeaways" list) — never a placeholder or a one-line stub. If source ' +
-              'material was given, ground the lessons in it directly. Tailor depth and vocabulary to the stated ' +
-              'audience/level. Output ONLY the JSON object.',
-          },
-          { role: 'user', content: brief },
-        ],
-      })
-      plan = JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+      plan = await draftOfferingPlan(kind, brief)
     } catch (err) {
-      return res.status(502).json({ error: `Could not draft the course: ${err.message}` })
+      return res.status(502).json({ error: `Could not draft this: ${err.message}` })
     }
     if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
-      return res.status(502).json({ error: 'Could not draft a complete course from those answers — try adding more detail.' })
+      return res.status(502).json({ error: 'Could not draft a complete plan from those answers — try adding more detail.' })
     }
 
     const workspace = await personalWorkspace(req.user)
@@ -231,6 +318,9 @@ learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
       level,
       published: false,
       enrollment: 'open',
+      kind,
+      event_at: eventAtInput || plan.event_at || null,
+      event_location: eventLocationInput || plan.event_location || '',
       objectives: String(plan.objectives || objectives || ''),
       evaluation: String(plan.evaluation || ''),
       tracking: '',
@@ -254,8 +344,8 @@ learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
       )
     }
 
-    // Auto-enroll the creator in their own course so it shows up immediately
-    // in "My learning" and can be studied right here in Bermi AI — no portal
+    // Auto-enroll the creator in their own offering so it shows up immediately
+    // in "My Activity" and can be picked up right here in Bermi AI — no portal
     // visit, no separate enroll step required.
     const enrollment = await storage.createEnrollment({
       id: randomUUID(),
@@ -277,8 +367,17 @@ learnRouter.put('/learn/institutions/:id', async (req, res, next) => {
   try {
     if (!(await ownsInstitution(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Institution not found' })
-    const { name, about, website, published, logo_url } = req.body ?? {}
-    res.json(await storage.updateInstitution(req.params.id, { name, about, website, published, logo_url }))
+    const { name, about, website, published, logo_url, org_type } = req.body ?? {}
+    res.json(
+      await storage.updateInstitution(req.params.id, {
+        name,
+        about,
+        website,
+        published,
+        logo_url,
+        org_type: org_type && ORG_TYPES.includes(org_type) ? org_type : undefined,
+      }),
+    )
   } catch (err) {
     next(err)
   }
@@ -307,6 +406,9 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
       cover_emoji = '📘',
       level = 'All levels',
       category = '',
+      kind = 'course',
+      event_at = null,
+      event_location = '',
       objectives = '',
       evaluation = '',
       tracking = '',
@@ -325,6 +427,9 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
       category,
       published: false,
       enrollment: 'open',
+      kind: OFFERING_KINDS.includes(kind) ? kind : 'course',
+      event_at,
+      event_location,
       objectives,
       evaluation,
       tracking,
@@ -337,12 +442,14 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
   }
 })
 
-// AI-generated full course for an organization: staff just say what to teach
-// and the objective, and Bermi drafts the whole thing — full lesson content,
-// objectives, evaluation/teaching guidelines, and (via /learn/lessons/:id/quiz,
-// generated on demand) a quiz per lesson — instead of building it lesson by
-// lesson by hand. Mirrors POST /learn/my/courses/quick but is institution-owned
-// and never auto-enrolls anyone.
+// AI-generated full offering for an organization of ANY kind — a school
+// drafting a course, a bank drafting a loan-application program, an NGO
+// drafting a volunteer onboarding program, a company or government body
+// publishing an event or a public resource. Staff just describe what it's
+// for; Bermi drafts the whole thing — full lesson/step content, objectives,
+// evaluation/teaching guidelines — instead of building it by hand. Mirrors
+// POST /learn/my/courses/quick but is institution-owned and never
+// auto-enrolls anyone.
 learnRouter.post('/learn/institutions/:id/courses/quick', async (req, res, next) => {
   try {
     if (!(await ownsInstitution(req.user.id, req.params.id)))
@@ -352,55 +459,34 @@ learnRouter.post('/learn/institutions/:id/courses/quick', async (req, res, next)
       audience = '',
       level = 'All levels',
       category = '',
+      kind: rawKind = 'course',
       objectives = '',
       material = '',
       avoid = '',
+      event_at: eventAtInput = '',
+      event_location: eventLocationInput = '',
       title: titleOverride,
     } = req.body ?? {}
-    if (!topic?.trim()) return res.status(400).json({ error: 'Tell Bermi what this course should teach' })
+    const kind = OFFERING_KINDS.includes(rawKind) ? rawKind : 'course'
+    if (!topic?.trim()) return res.status(400).json({ error: `Tell Bermi what this ${kind} should be about` })
 
     const brief =
       `Topic: ${topic}\n` +
       (audience ? `Who it's for / their current level: ${audience}\n` : '') +
       (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
       (avoid ? `Skip or avoid: ${avoid}\n` : '') +
-      (material ? `\nSource material to ground the course in:\n${material.slice(0, 12000)}` : '')
+      (eventAtInput ? `Date/time: ${eventAtInput}\n` : '') +
+      (eventLocationInput ? `Location/link: ${eventLocationInput}\n` : '') +
+      (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
 
     let plan = null
     try {
-      const raw = await complete({
-        model: 'bermi-core',
-        maxTokens: 5500,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a curriculum designer building a course for an educational organization. Given a brief ' +
-              '(topic, audience/level, objectives, optional source material), design a COMPLETE course and write ' +
-              'it in full — not an outline. Respond with ONLY a JSON object shaped exactly as:\n' +
-              '{"title":string,"cover_emoji":string,"summary":string,"description":string(markdown),' +
-              '"objectives":string(one per line),"evaluation":string,"lessons":[{"title":string,"content":string(markdown)},...]}\n' +
-              'Rules: cover_emoji is one relevant emoji. summary is one sentence. description is a short markdown ' +
-              'overview (## headings ok). objectives lists 3-6 concrete, testable outcomes, one per line. ' +
-              'evaluation is a guidelines block combining: what to test and what mastery looks like, prerequisites ' +
-              'or assumed background, recommended pacing, and any tone/approach notes for the AI tutor teaching ' +
-              'this course — the tutor reads this directly, so make it concrete and actionable, not vague advice. ' +
-              'Produce 4-8 lessons that progress in order; each lesson\'s content is a FULLY WRITTEN lesson ' +
-              '(several paragraphs, headings, a worked example, and a short "Key takeaways" list) — never a ' +
-              'placeholder or a one-line stub. Each lesson is later paired with an auto-generated quiz, so make ' +
-              'sure the content clearly states discrete, testable facts and steps. If source material was given, ' +
-              'ground the lessons in it directly. Tailor depth and vocabulary to the stated audience/level. ' +
-              'Output ONLY the JSON object.',
-          },
-          { role: 'user', content: brief },
-        ],
-      })
-      plan = JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+      plan = await draftOfferingPlan(kind, brief)
     } catch (err) {
-      return res.status(502).json({ error: `Could not draft the course: ${err.message}` })
+      return res.status(502).json({ error: `Could not draft this: ${err.message}` })
     }
     if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
-      return res.status(502).json({ error: 'Could not draft a complete course from those answers — try adding more detail.' })
+      return res.status(502).json({ error: 'Could not draft a complete plan from those answers — try adding more detail.' })
     }
 
     const now = new Date().toISOString()
@@ -417,6 +503,9 @@ learnRouter.post('/learn/institutions/:id/courses/quick', async (req, res, next)
       category,
       published: false,
       enrollment: 'open',
+      kind,
+      event_at: eventAtInput || plan.event_at || null,
+      event_location: eventLocationInput || plan.event_location || '',
       objectives: String(plan.objectives || objectives || ''),
       evaluation: String(plan.evaluation || ''),
       tracking: '',
@@ -459,8 +548,22 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
   try {
     if (!(await ownsCourse(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Course not found' })
-    const { title, summary, description, cover_emoji, level, category, published, enrollment, objectives, evaluation, tracking } =
-      req.body ?? {}
+    const {
+      title,
+      summary,
+      description,
+      cover_emoji,
+      level,
+      category,
+      published,
+      enrollment,
+      kind,
+      event_at,
+      event_location,
+      objectives,
+      evaluation,
+      tracking,
+    } = req.body ?? {}
     res.json(
       await storage.updateCourse(req.params.id, {
         title,
@@ -471,6 +574,9 @@ learnRouter.put('/learn/courses/:id', async (req, res, next) => {
         category,
         published,
         enrollment,
+        kind: kind && OFFERING_KINDS.includes(kind) ? kind : undefined,
+        event_at,
+        event_location,
         objectives,
         evaluation,
         tracking,
@@ -508,7 +614,7 @@ learnRouter.post('/learn/courses/:id/lessons', async (req, res, next) => {
   try {
     if (!(await ownsCourse(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Course not found' })
-    const { title, content = '', material = '', video_url = '' } = req.body ?? {}
+    const { title, content = '', material = '', video_url = '', attachment_url = '' } = req.body ?? {}
     if (!title?.trim()) return res.status(400).json({ error: 'Lesson title is required' })
     const existing = await storage.listLessons(req.params.id)
     const lesson = await storage.createLesson({
@@ -519,6 +625,7 @@ learnRouter.post('/learn/courses/:id/lessons', async (req, res, next) => {
       content,
       material,
       video_url,
+      attachment_url,
       created_at: new Date().toISOString(),
     })
     res.status(201).json(lesson)
@@ -532,13 +639,14 @@ learnRouter.put('/learn/lessons/:id', async (req, res, next) => {
     const lesson = await storage.getLesson(req.params.id)
     if (!lesson || !(await ownsCourse(req.user.id, lesson.course_id)))
       return res.status(404).json({ error: 'Lesson not found' })
-    const { title, content, material, video_url, ordinal } = req.body ?? {}
+    const { title, content, material, video_url, attachment_url, ordinal } = req.body ?? {}
     res.json(
       await storage.updateLesson(req.params.id, {
         title: title ?? lesson.title,
         content: content ?? lesson.content,
         material: material ?? lesson.material,
         video_url: video_url ?? lesson.video_url,
+        attachment_url: attachment_url ?? lesson.attachment_url,
         ordinal: ordinal ?? lesson.ordinal,
       }),
     )

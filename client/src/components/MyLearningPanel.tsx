@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, FileText, GraduationCap, Loader2, Plus, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarClock, FileText, GraduationCap, Loader2, Plus, Sparkles, X } from 'lucide-react'
 import * as api from '../lib/api'
-import type { Attachment, Enrollment } from '../lib/types'
+import type { Attachment, Enrollment, OfferingKind } from '../lib/types'
 
-export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: string) => void }) {
+// Not every enrollment is a "course" being studied: a bank/NGO program is
+// guided, an event is attended, a resource is just read. Same widget, four
+// vocabularies, so the dashboard reflects what actually happened.
+const KIND_META: Record<OfferingKind, { section: string; doneWord: string; cta: string }> = {
+  course: { section: 'Courses', doneWord: 'lessons done', cta: 'Study →' },
+  program: { section: 'Programs', doneWord: 'steps done', cta: 'Continue →' },
+  event: { section: 'Events', doneWord: '', cta: 'View →' },
+  resource: { section: 'Resources', doneWord: '', cta: 'Open →' },
+}
+
+function formatEventWhen(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: string, kind?: OfferingKind) => void }) {
   const [enrollments, setEnrollments] = useState<Enrollment[] | null>(null)
   const [buildOpen, setBuildOpen] = useState(false)
 
@@ -18,11 +35,12 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
       <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-5 shadow-sm">
         <div className="mb-1 flex items-center gap-2">
           <GraduationCap size={17} className="text-primary" />
-          <h2 className="text-[15px] font-semibold tracking-tight">My learning</h2>
+          <h2 className="text-[15px] font-semibold tracking-tight">My activity</h2>
         </div>
         <p className="mb-3 text-[13.5px] text-ink-muted">
-          Ask Bermi to enroll you in a course, or build your own — answer a few quick questions and Bermi drafts a
-          full course for you. You learn entirely here in Bermi AI.
+          Ask Bermi to enroll you in a course, register for an event, walk you through an organization's program,
+          or hand you a resource — or build your own course, answer a few quick questions and Bermi drafts it. It
+          all happens right here in Bermi AI.
         </p>
         <button
           onClick={() => setBuildOpen(true)}
@@ -44,12 +62,21 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
     )
   }
 
+  const byKind = new Map<OfferingKind, Enrollment[]>()
+  for (const e of enrollments) {
+    if (!e.course) continue
+    const kind = e.course.kind || 'course'
+    if (!byKind.has(kind)) byKind.set(kind, [])
+    byKind.get(kind)!.push(e)
+  }
+  const order: OfferingKind[] = ['course', 'program', 'event', 'resource']
+
   return (
     <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-5 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <GraduationCap size={17} className="text-primary" />
-          <h2 className="text-[15px] font-semibold tracking-tight">My learning</h2>
+          <h2 className="text-[15px] font-semibold tracking-tight">My activity</h2>
         </div>
         <button
           onClick={() => setBuildOpen(true)}
@@ -58,32 +85,56 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
           <Plus size={13} /> Build a course
         </button>
       </div>
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        {enrollments.map((e) => {
-          const course = e.course
-          if (!course) return null
-          const progress = e.progress || {}
-          const done = Object.values(progress).filter((p) => p.done).length
-          return (
-            <button
-              key={e.id}
-              onClick={() => onStudyCourse(course.title)}
-              className="flex items-start gap-3 rounded-xl border border-edge bg-surface p-3.5 text-left transition-colors hover:border-primary"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
-                {course.cover_emoji || '📘'}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-medium text-ink">{course.title}</span>
-                <span className="text-[11.5px] text-ink-faint">
-                  {e.status === 'completed' ? `Completed${e.score != null ? ` · ${e.score}%` : ''}` : `${done} lessons done`}
-                </span>
-              </span>
-              <span className="shrink-0 self-center text-[11.5px] font-semibold text-primary">Study →</span>
-            </button>
-          )
-        })}
+
+      <div className="space-y-4">
+        {order
+          .filter((k) => byKind.get(k)?.length)
+          .map((kind) => {
+            const meta = KIND_META[kind]
+            const items = byKind.get(kind)!
+            return (
+              <div key={kind}>
+                {order.filter((k) => byKind.get(k)?.length).length > 1 && (
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">{meta.section}</div>
+                )}
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  {items.map((e) => {
+                    const course = e.course!
+                    const progress = e.progress || {}
+                    const done = Object.values(progress).filter((p) => p.done).length
+                    const sub =
+                      kind === 'event'
+                        ? e.status === 'applied'
+                          ? 'Requested'
+                          : `Registered${course.event_at ? ` · ${formatEventWhen(course.event_at)}` : ''}`
+                        : kind === 'resource'
+                          ? 'Available'
+                          : e.status === 'completed'
+                            ? `Completed${e.score != null ? ` · ${e.score}%` : ''}`
+                            : `${done} ${meta.doneWord}`
+                    return (
+                      <button
+                        key={e.id}
+                        onClick={() => onStudyCourse(course.title, kind)}
+                        className="flex items-start gap-3 rounded-xl border border-edge bg-surface p-3.5 text-left transition-colors hover:border-primary"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
+                          {kind === 'event' ? <CalendarClock size={18} /> : course.cover_emoji || '📘'}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13.5px] font-medium text-ink">{course.title}</span>
+                          <span className="text-[11.5px] text-ink-faint">{sub}</span>
+                        </span>
+                        <span className="shrink-0 self-center text-[11.5px] font-semibold text-primary">{meta.cta}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
       </div>
+
       {buildOpen && (
         <BuildCourseWizard
           onClose={() => setBuildOpen(false)}

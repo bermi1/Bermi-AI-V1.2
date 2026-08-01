@@ -26,8 +26,42 @@ import {
   X,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { Course, Institution, InstitutionAnalytics, InstitutionLearner, Lesson } from '../lib/types'
+import type { Course, Institution, InstitutionAnalytics, InstitutionLearner, Lesson, OfferingKind, OrgType } from '../lib/types'
 import { Btn, EmptyState, ErrorNote, Field, inputClass, Pill, Spinner, type LearnRoute } from './ui'
+
+// Org types tailor language and AI defaults only — every type can still
+// publish any offering kind below.
+const ORG_TYPES: { value: OrgType; label: string }[] = [
+  { value: 'education', label: 'School / educational institution' },
+  { value: 'business', label: 'Business / company' },
+  { value: 'nonprofit', label: 'NGO / nonprofit' },
+  { value: 'government', label: 'Government / public body' },
+  { value: 'community', label: 'Community group / association' },
+  { value: 'media', label: 'Media outlet' },
+  { value: 'other', label: 'Other' },
+]
+
+// What this organization can publish — not every org has a curriculum to
+// teach, but every org has something to reach the public or its members
+// with.
+const OFFERING_KINDS: { value: OfferingKind; label: string; hint: string }[] = [
+  { value: 'course', label: 'Course', hint: 'Taught step by step, with a mastery check before advancing.' },
+  { value: 'program', label: 'Program', hint: 'A structured process to guide someone through — an application, onboarding, initiative.' },
+  { value: 'event', label: 'Event', hint: 'Something to register/RSVP for — a briefing, workshop, AGM, webinar.' },
+  { value: 'resource', label: 'Resource', hint: 'A report, guide, or policy explainer the public should get and understand.' },
+]
+const KIND_STEP_LABEL: Record<OfferingKind, string> = {
+  course: 'Lessons',
+  program: 'Steps',
+  event: 'Agenda',
+  resource: 'Sections',
+}
+const KIND_STEP_SINGULAR: Record<OfferingKind, string> = {
+  course: 'Lesson',
+  program: 'Step',
+  event: 'Agenda item',
+  resource: 'Section',
+}
 
 export function InstitutionStudio({ navigate }: { navigate: (r: LearnRoute) => void }) {
   const [institutions, setInstitutions] = useState<Institution[] | null>(null)
@@ -107,6 +141,7 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('')
   const [about, setAbout] = useState('')
   const [website, setWebsite] = useState('')
+  const [orgType, setOrgType] = useState<OrgType>('education')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -115,7 +150,7 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
     setBusy(true)
     setError(null)
     try {
-      await api.learnCreateInstitution({ name, about, website })
+      await api.learnCreateInstitution({ name, about, website, org_type: orgType })
       onCreated()
     } catch (e) {
       setError((e as Error).message)
@@ -131,14 +166,21 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
       </div>
       <h1 className="text-[20px] font-bold text-ink">Set up your organization</h1>
       <p className="mb-5 mt-1 text-[13.5px] text-ink-muted">
-        Publish courses the public can learn from, evaluate learners with AI, and issue certificates of completion.
+        Any organization can use this — a school publishing courses, a bank or NGO walking people through a
+        program, a company or public body running an event, or anyone with a resource the public should have.
+        Bermi AI teaches, guides, informs, or delivers it — whichever fits — and evaluates engagement for you.
       </p>
       <div className="space-y-4">
+        <Field label="What kind of organization is this?" hint="Tailors the language and AI defaults — every type can still publish any kind of offering.">
+          <select className={inputClass} value={orgType} onChange={(e) => setOrgType(e.target.value as OrgType)}>
+            {ORG_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </Field>
         <Field label="Organization name">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Riverside Institute of Design" />
         </Field>
         <Field label="About" hint="Shown on your public page.">
-          <textarea className={`${inputClass} min-h-[80px] resize-y`} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="What your organization teaches and who it's for." />
+          <textarea className={`${inputClass} min-h-[80px] resize-y`} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="What your organization does and who it's for." />
         </Field>
         <Field label="Website (optional)">
           <input className={inputClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
@@ -393,6 +435,7 @@ function SettingsTab({ institution, onUpdated }: { institution: Institution; onU
   const [about, setAbout] = useState(institution.about || '')
   const [website, setWebsite] = useState(institution.website || '')
   const [logoUrl, setLogoUrl] = useState(institution.logo_url || '')
+  const [orgType, setOrgType] = useState<OrgType>(institution.org_type || 'education')
   const [published, setPublished] = useState(institution.published)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -403,7 +446,7 @@ function SettingsTab({ institution, onUpdated }: { institution: Institution; onU
     setBusy(true)
     setError(null)
     try {
-      await api.learnUpdateInstitution(institution.id, { name, about, website, logo_url: logoUrl, published })
+      await api.learnUpdateInstitution(institution.id, { name, about, website, logo_url: logoUrl, published, org_type: orgType })
       setSavedAt(Date.now())
       onUpdated()
     } catch (e) {
@@ -415,6 +458,11 @@ function SettingsTab({ institution, onUpdated }: { institution: Institution; onU
 
   return (
     <div className="max-w-xl space-y-4 rounded-3xl border border-edge bg-surface-raised p-5 md:p-6">
+      <Field label="What kind of organization is this?">
+        <select className={inputClass} value={orgType} onChange={(e) => setOrgType(e.target.value as OrgType)}>
+          {ORG_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
       <Field label="Organization name">
         <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
@@ -457,6 +505,7 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
   const [creating, setCreating] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [title, setTitle] = useState('')
+  const [kind, setKind] = useState<OfferingKind>('course')
   const [busy, setBusy] = useState(false)
 
   const refresh = () => api.learnInstitutionCourses(institution.id).then(setCourses).catch(() => setCourses([]))
@@ -466,7 +515,7 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
     if (!title.trim()) return
     setBusy(true)
     try {
-      const c = await api.learnCreateCourse(institution.id, { title })
+      const c = await api.learnCreateCourse(institution.id, { title, kind })
       setTitle('')
       setCreating(false)
       await refresh()
@@ -481,13 +530,13 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[15px] font-semibold text-ink">Courses</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Offerings</h2>
         <div className="flex gap-2">
           <Btn size="sm" variant="outline" onClick={() => setGenerating(true)}>
             <Sparkles size={15} /> Generate with AI
           </Btn>
           <Btn size="sm" onClick={() => setCreating((v) => !v)}>
-            <Plus size={15} /> New course
+            <Plus size={15} /> New
           </Btn>
         </div>
       </div>
@@ -505,21 +554,36 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
       )}
 
       {creating && (
-        <div className="mb-4 flex gap-2 rounded-2xl border border-edge bg-surface-raised p-3">
-          <input
-            autoFocus
-            className={inputClass}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-            placeholder="Course title"
-          />
-          <Btn size="sm" onClick={create} loading={busy} disabled={!title.trim()}>Create</Btn>
+        <div className="mb-4 space-y-2 rounded-2xl border border-edge bg-surface-raised p-3">
+          <div className="flex flex-wrap gap-1.5">
+            {OFFERING_KINDS.map((k) => (
+              <button
+                key={k.value}
+                onClick={() => setKind(k.value)}
+                className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
+                  kind === k.value ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              className={inputClass}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && create()}
+              placeholder={`${OFFERING_KINDS.find((k) => k.value === kind)?.label} title`}
+            />
+            <Btn size="sm" onClick={create} loading={busy} disabled={!title.trim()}>Create</Btn>
+          </div>
         </div>
       )}
 
       {courses.length === 0 && !creating ? (
-        <EmptyState icon={<Layers size={28} />} title="No courses yet" body="Create your first course, add lessons, then publish it to the catalog." />
+        <EmptyState icon={<Layers size={28} />} title="Nothing published yet" body="Create a course, program, event, or resource, fill it in, then publish it to the catalog." />
       ) : (
         <div className="space-y-2">
           {courses.map((c) => (
@@ -531,8 +595,9 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-xl">{c.cover_emoji || '📘'}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14.5px] font-semibold text-ink">{c.title}</span>
-                <span className="text-[12px] text-ink-faint">{c.level}</span>
+                <span className="text-[12px] text-ink-faint">{c.kind && c.kind !== 'course' ? OFFERING_KINDS.find((k) => k.value === c.kind)?.label : c.level}</span>
               </span>
+              {c.kind && c.kind !== 'course' && <Pill tone="primary">{OFFERING_KINDS.find((k) => k.value === c.kind)?.label}</Pill>}
               {c.published ? <Pill tone="green"><Eye size={11} /> Published</Pill> : <Pill tone="amber"><EyeOff size={11} /> Draft</Pill>}
             </button>
           ))}
@@ -544,11 +609,30 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
 
 const QUICK_LEVELS = ['All levels', 'Beginner', 'Intermediate', 'Advanced']
 
-// Institution-side "build a full course with AI": staff describe what to
-// teach and its objective in one form, and Bermi drafts the whole course —
-// full lesson content plus evaluation/teaching guidelines that a per-lesson
-// quiz is generated from once learners are enrolled. Left as a draft so the
-// organization can review (and add videos) before publishing.
+const KIND_TOPIC_LABEL: Record<OfferingKind, string> = {
+  course: 'What should this course teach?',
+  program: 'What is this program for?',
+  event: 'What is this event?',
+  resource: 'What does this resource cover?',
+}
+const KIND_TOPIC_HINT: Record<OfferingKind, string> = {
+  course: 'A topic or subject — as specific as you like.',
+  program: 'e.g. a loan application walkthrough, volunteer onboarding, a member benefits process.',
+  event: 'e.g. an AGM, a public briefing, a workshop, a fundraiser.',
+  resource: 'e.g. an annual report explainer, a policy FAQ, a how-to guide.',
+}
+const KIND_OUTCOME_LABEL: Record<OfferingKind, string> = {
+  course: 'What should learners be able to do after finishing?',
+  program: 'What will someone have done or understood by the end?',
+  event: 'What does an attendee get out of it?',
+  resource: 'What will a reader know or be able to do after reading it?',
+}
+
+// Institution-side "build a full offering with AI": staff describe what it's
+// for in one form, and Bermi drafts the whole thing — a course's full lesson
+// content and quiz-ready evaluation, a program's steps, an event's agenda,
+// or a resource's sections. Left as a draft so the organization can review
+// before publishing.
 function InstitutionQuickCourseModal({
   institutionId,
   onClose,
@@ -558,6 +642,7 @@ function InstitutionQuickCourseModal({
   onClose: () => void
   onCreated: (course: Course) => void
 }) {
+  const [kind, setKind] = useState<OfferingKind>('course')
   const [topic, setTopic] = useState('')
   const [audience, setAudience] = useState('')
   const [level, setLevel] = useState('All levels')
@@ -565,6 +650,8 @@ function InstitutionQuickCourseModal({
   const [objectives, setObjectives] = useState('')
   const [material, setMaterial] = useState('')
   const [avoid, setAvoid] = useState('')
+  const [eventAt, setEventAt] = useState('')
+  const [eventLocation, setEventLocation] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -578,9 +665,12 @@ function InstitutionQuickCourseModal({
         audience,
         level,
         category,
+        kind,
         objectives,
         material,
         avoid,
+        event_at: eventAt || undefined,
+        event_location: eventLocation || undefined,
       })
       onCreated(res.course)
     } catch (e) {
@@ -598,7 +688,7 @@ function InstitutionQuickCourseModal({
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-            <Sparkles size={16} className="text-primary" /> Generate a full course with AI
+            <Sparkles size={16} className="text-primary" /> Generate with AI
           </h3>
           <button onClick={onClose} className="rounded-lg p-1 text-ink-muted hover:bg-surface-sunken">
             <X size={16} />
@@ -606,17 +696,45 @@ function InstitutionQuickCourseModal({
         </div>
 
         <div className="space-y-3.5">
-          <Field label="What should this course teach?" hint="A topic or subject — as specific as you like.">
+          <Field label="What are you publishing?">
+            <div className="grid grid-cols-2 gap-1.5">
+              {OFFERING_KINDS.map((k) => (
+                <button
+                  key={k.value}
+                  onClick={() => setKind(k.value)}
+                  className={`rounded-xl border px-3 py-2 text-left text-[12.5px] font-medium transition-colors ${
+                    kind === k.value ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                  }`}
+                >
+                  <span className="block font-semibold">{k.label}</span>
+                  <span className="block text-[11px] font-normal opacity-80">{k.hint}</span>
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field label={KIND_TOPIC_LABEL[kind]} hint={KIND_TOPIC_HINT[kind]}>
             <textarea
               autoFocus
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g. Introduction to bookkeeping for small businesses"
+              placeholder={kind === 'course' ? 'e.g. Introduction to bookkeeping for small businesses' : 'Describe it in a sentence or two'}
               className="min-h-[70px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
             />
           </Field>
 
-          <Field label="What should learners be able to do after finishing?" hint="The objective — concrete outcomes to teach and test toward. Optional, Bermi can infer them.">
+          {kind === 'event' && (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label="Date & time" hint="Leave blank if not yet decided.">
+                <input type="datetime-local" value={eventAt} onChange={(e) => setEventAt(e.target.value)} className={inputClass} />
+              </Field>
+              <Field label="Location" hint="An address, or a video-call link.">
+                <input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder="e.g. Head office, or https://…" className={inputClass} />
+              </Field>
+            </div>
+          )}
+
+          <Field label={KIND_OUTCOME_LABEL[kind]} hint="Optional — Bermi can infer this.">
             <textarea
               value={objectives}
               onChange={(e) => setObjectives(e.target.value)}
@@ -626,11 +744,11 @@ function InstitutionQuickCourseModal({
           </Field>
 
           <div className="grid gap-3.5 sm:grid-cols-2">
-            <Field label="Audience / starting level">
+            <Field label={kind === 'course' ? 'Audience / starting level' : 'Who is this for?'}>
               <input
                 value={audience}
                 onChange={(e) => setAudience(e.target.value)}
-                placeholder="e.g. new hires, no prior experience"
+                placeholder={kind === 'course' ? 'e.g. new hires, no prior experience' : 'e.g. existing customers, the general public'}
                 className={inputClass}
               />
             </Field>
@@ -644,23 +762,25 @@ function InstitutionQuickCourseModal({
             </Field>
           </div>
 
-          <Field label="Level">
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_LEVELS.map((lv) => (
-                <button
-                  key={lv}
-                  onClick={() => setLevel(lv)}
-                  className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
-                    level === lv ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
-                  }`}
-                >
-                  {lv}
-                </button>
-              ))}
-            </div>
-          </Field>
+          {kind === 'course' && (
+            <Field label="Level">
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_LEVELS.map((lv) => (
+                  <button
+                    key={lv}
+                    onClick={() => setLevel(lv)}
+                    className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
+                      level === lv ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                    }`}
+                  >
+                    {lv}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
 
-          <Field label="Source material to ground it in" hint="Paste notes, a syllabus, or reference text. Optional.">
+          <Field label="Source material to ground it in" hint="Paste notes, a document, or reference text. Optional.">
             <textarea
               value={material}
               onChange={(e) => setMaterial(e.target.value)}
@@ -690,13 +810,12 @@ function InstitutionQuickCourseModal({
             disabled={busy || !topic.trim()}
             className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
           >
-            {busy && <Loader2 size={14} className="animate-spin" />} {busy ? 'Generating course…' : 'Generate full course'}
+            {busy && <Loader2 size={14} className="animate-spin" />} {busy ? 'Generating…' : `Generate full ${kind}`}
           </button>
         </div>
         <p className="mt-3 text-[11.5px] text-ink-faint">
-          Bermi writes full lessons and evaluation/teaching guidelines now; each lesson's quiz is generated the
-          first time a learner takes it. The course is saved as a draft — review it, add videos if you like, then
-          publish.
+          Bermi writes it out in full now — saved as a draft so you can review (and add videos or attachments) before
+          publishing to the catalog.
         </p>
       </div>
     </div>
@@ -797,6 +916,7 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const kind: OfferingKind = course.kind || 'course'
   const patch = (p: Partial<Course>) => setCourse((c) => ({ ...c, ...p }))
 
   const save = async (extra?: Partial<Course>) => {
@@ -813,6 +933,9 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         category: body.category,
         published: body.published,
         enrollment: body.enrollment,
+        kind: body.kind,
+        event_at: body.event_at,
+        event_location: body.event_location,
         objectives: body.objectives,
         evaluation: body.evaluation,
         tracking: body.tracking,
@@ -842,6 +965,7 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
+          <Pill tone="primary">{OFFERING_KINDS.find((k) => k.value === kind)?.label}</Pill>
           {course.published ? <Pill tone="green"><Eye size={11} /> Published</Pill> : <Pill tone="amber"><EyeOff size={11} /> Draft</Pill>}
           {savedAt && !saving && <span className="text-[12px] text-emerald-500">Saved</span>}
         </div>
@@ -874,40 +998,83 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         <Field label="Short summary" hint="One line shown on catalog cards.">
           <input className={inputClass} value={course.summary || ''} onChange={(e) => patch({ summary: e.target.value })} />
         </Field>
+
+        <Field label="Kind">
+          <div className="flex flex-wrap gap-1.5">
+            {OFFERING_KINDS.map((k) => (
+              <button
+                key={k.value}
+                onClick={() => patch({ kind: k.value })}
+                className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
+                  kind === k.value ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        {kind === 'event' && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Date & time">
+              <input
+                type="datetime-local"
+                className={inputClass}
+                value={toLocalDateTimeInput(course.event_at)}
+                onChange={(e) => patch({ event_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+              />
+            </Field>
+            <Field label="Location" hint="An address, or a video-call link.">
+              <input className={inputClass} value={course.event_location || ''} onChange={(e) => patch({ event_location: e.target.value })} placeholder="e.g. Head office, or https://…" />
+            </Field>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Level">
-            <select className={inputClass} value={course.level || 'All levels'} onChange={(e) => patch({ level: e.target.value })}>
-              {['All levels', 'Beginner', 'Intermediate', 'Advanced'].map((l) => <option key={l}>{l}</option>)}
-            </select>
+          {kind === 'course' && (
+            <Field label="Level">
+              <select className={inputClass} value={course.level || 'All levels'} onChange={(e) => patch({ level: e.target.value })}>
+                {['All levels', 'Beginner', 'Intermediate', 'Advanced'].map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label="Category" hint="Groups items on your library shelf (e.g. Finance, Compliance).">
+            <input className={inputClass} value={course.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder="e.g. Finance" />
           </Field>
-          <Field label="Category" hint="Groups classes on your library shelf (e.g. Mathematics, Design).">
-            <input className={inputClass} value={course.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder="e.g. Mathematics" />
-          </Field>
-          <Field label="Enrollment">
+          <Field label={kind === 'event' ? 'Registration' : 'Enrollment'}>
             <select className={inputClass} value={course.enrollment || 'open'} onChange={(e) => patch({ enrollment: e.target.value as 'open' | 'approval' })}>
               <option value="open">Open — anyone can join</option>
               <option value="approval">Requires approval</option>
             </select>
           </Field>
         </div>
-        <Field label="Full description" hint="Markdown supported. Shown on the course page.">
+        <Field label="Full description" hint={`Markdown supported. Shown on the ${kind} page.`}>
           <textarea className={`${inputClass} min-h-[120px] resize-y`} value={course.description || ''} onChange={(e) => patch({ description: e.target.value })} />
         </Field>
 
         <div className="rounded-2xl border border-edge bg-surface-sunken/40 p-4">
           <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink">
-            <Target size={15} className="text-primary" /> Teaching & evaluation plan
-            <span className="font-normal text-ink-faint">— guides how Bermi AI teaches and grades learners</span>
+            <Target size={15} className="text-primary" /> {kind === 'course' ? 'Teaching & evaluation plan' : kind === 'event' ? 'What to tell attendees' : 'Guidance plan'}
+            <span className="font-normal text-ink-faint">— guides how Bermi AI presents this and judges engagement</span>
           </div>
           <div className="space-y-3">
-            <Field label="Learning objectives" hint="What should a learner be able to do after this course? One per line.">
-              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.objectives || ''} onChange={(e) => patch({ objectives: e.target.value })} placeholder={'Explain the water cycle\nIdentify the stages of photosynthesis'} />
+            <Field
+              label={kind === 'course' ? 'Learning objectives' : kind === 'event' ? 'What attendees get out of it' : 'Outcomes'}
+              hint="What should someone be able to do or understand afterward? One per line."
+            >
+              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.objectives || ''} onChange={(e) => patch({ objectives: e.target.value })} placeholder={kind === 'course' ? 'Explain the water cycle\nIdentify the stages of photosynthesis' : 'One outcome per line'} />
             </Field>
-            <Field label="Areas to test & evaluation bases" hint="What to assess and how mastery is judged (e.g. quiz score thresholds, must-know concepts).">
-              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.evaluation || ''} onChange={(e) => patch({ evaluation: e.target.value })} placeholder={'Test recall of key terms and applied problem-solving.\nMastery = 70%+ on end-of-level quizzes.'} />
-            </Field>
-            <Field label="What to track" hint="Signals the institution wants on each learner (e.g. understanding per objective, quiz scores, AI-dependency).">
-              <textarea className={`${inputClass} min-h-[64px] resize-y`} value={course.tracking || ''} onChange={(e) => patch({ tracking: e.target.value })} placeholder={'Understanding per objective, quiz scores, how independently they solve vs. leaning on the AI.'} />
+            {kind !== 'event' && (
+              <Field
+                label={kind === 'course' ? 'Areas to test & evaluation bases' : 'How to judge real engagement'}
+                hint={kind === 'course' ? 'What to assess and how mastery is judged (e.g. quiz score thresholds, must-know concepts).' : 'What tells you someone genuinely engaged with each step — a plain confirmation is enough, no quiz needed.'}
+              >
+                <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.evaluation || ''} onChange={(e) => patch({ evaluation: e.target.value })} placeholder={kind === 'course' ? 'Test recall of key terms and applied problem-solving.\nMastery = 70%+ on end-of-level quizzes.' : 'What "understood" or "done" looks like for each step.'} />
+              </Field>
+            )}
+            <Field label="What to track" hint="Signals the organization wants on each person (e.g. understanding, how independently they engage).">
+              <textarea className={`${inputClass} min-h-[64px] resize-y`} value={course.tracking || ''} onChange={(e) => patch({ tracking: e.target.value })} placeholder={'Understanding per objective, how independently they engage vs. leaning on the AI.'} />
             </Field>
           </div>
         </div>
@@ -916,21 +1083,31 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         <div className="flex items-center gap-3">
           <Btn onClick={() => save()} loading={saving}>Save details</Btn>
           <button onClick={() => navigate({ name: 'course', id: course.id })} className="text-[13px] font-medium text-primary hover:underline">
-            Preview course page →
+            Preview page →
           </button>
         </div>
       </div>
 
-      <LessonsManager courseId={course.id} />
+      <LessonsManager courseId={course.id} kind={kind} />
     </div>
   )
 }
 
-function LessonsManager({ courseId }: { courseId: string }) {
+function toLocalDateTimeInput(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function LessonsManager({ courseId, kind }: { courseId: string; kind: OfferingKind }) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [busy, setBusy] = useState(false)
+  const stepLabel = KIND_STEP_LABEL[kind]
+  const stepSingular = KIND_STEP_SINGULAR[kind]
 
   const refresh = () => api.learnManageLessons(courseId).then(setLessons).catch(() => setLessons([]))
   useEffect(() => { refresh() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [courseId])
@@ -953,7 +1130,7 @@ function LessonsManager({ courseId }: { courseId: string }) {
   return (
     <div className="mt-6">
       <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-ink">
-        <Layers size={16} /> Lessons · {lessons.length}
+        <Layers size={16} /> {stepLabel} · {lessons.length}
       </h2>
 
       <div className="space-y-2">
@@ -963,6 +1140,7 @@ function LessonsManager({ courseId }: { courseId: string }) {
               key={l.id}
               lesson={l}
               index={i}
+              stepSingular={stepSingular}
               onClose={() => setOpenId(null)}
               onChanged={refresh}
             />
@@ -986,7 +1164,7 @@ function LessonsManager({ courseId }: { courseId: string }) {
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="New lesson title…"
+          placeholder={`New ${stepSingular.toLowerCase()} title…`}
         />
         <Btn size="sm" onClick={add} loading={busy} disabled={!newTitle.trim()}>
           <Plus size={15} /> Add
@@ -999,11 +1177,13 @@ function LessonsManager({ courseId }: { courseId: string }) {
 function LessonEditor({
   lesson: initial,
   index,
+  stepSingular = 'Lesson',
   onClose,
   onChanged,
 }: {
   lesson: Lesson
   index: number
+  stepSingular?: string
   onClose: () => void
   onChanged: () => void
 }) {
@@ -1042,6 +1222,7 @@ function LessonEditor({
         content: lesson.content,
         material: lesson.material,
         video_url: lesson.video_url,
+        attachment_url: lesson.attachment_url,
       })
       onChanged()
       onClose()
@@ -1086,12 +1267,12 @@ function LessonEditor({
         />
       </div>
 
-      <Field label="Source material" hint="Paste text, or upload a PPT, PDF, Word doc or image — Bermi reads it and turns it into a polished lesson.">
+      <Field label="Source material" hint={`Paste text, or upload a PPT, PDF, Word doc or image — Bermi reads it and turns it into a polished ${stepSingular.toLowerCase()}.`}>
         <textarea
           className={`${inputClass} min-h-[90px] resize-y`}
           value={lesson.material || ''}
           onChange={(e) => patch({ material: e.target.value })}
-          placeholder="Paste your teaching material, or upload a file below…"
+          placeholder="Paste your material, or upload a file below…"
         />
       </Field>
 
@@ -1111,7 +1292,7 @@ function LessonEditor({
           <Upload size={14} /> Upload PPT / PDF / doc
         </Btn>
         <Btn size="sm" variant="outline" onClick={aiDraft} loading={drafting} disabled={!lesson.material?.trim()}>
-          <Wand2 size={14} /> {lesson.content ? 'Redraft with AI' : 'Draft lesson with AI'}
+          <Wand2 size={14} /> {lesson.content ? 'Redraft with AI' : `Draft ${stepSingular.toLowerCase()} with AI`}
         </Btn>
         {uploading && (
           <span className="inline-flex items-center gap-1 text-[12px] text-ink-faint">
@@ -1120,28 +1301,44 @@ function LessonEditor({
         )}
       </div>
 
-      <Field label="Lesson content" hint="What learners read. Markdown supported.">
+      <Field label={`${stepSingular} content`} hint="What the AI presents/teaches from. Markdown supported.">
         <textarea
           className={`${inputClass} min-h-[160px] resize-y font-mono text-[13px]`}
           value={lesson.content || ''}
           onChange={(e) => patch({ content: e.target.value })}
-          placeholder="Write the lesson, or generate it from your material above."
+          placeholder={`Write it, or generate it from your material above.`}
         />
       </Field>
 
       <Field
         label={
           <span className="inline-flex items-center gap-1.5">
-            <Video size={13} /> Lesson video (optional)
+            <Video size={13} /> Video (optional)
           </span>
         }
-        hint="A YouTube link or direct video file URL. Learners can ask Bermi AI to play it right in chat, with captions when available, and to summarize it."
+        hint="A YouTube link or direct video file URL. Users can ask Bermi AI to play it right in chat, with captions when available, and to summarize it."
       >
         <input
           className={inputClass}
           value={lesson.video_url || ''}
           onChange={(e) => patch({ video_url: e.target.value })}
           placeholder="https://youtube.com/watch?v=... or a direct .mp4 link"
+        />
+      </Field>
+
+      <Field
+        label={
+          <span className="inline-flex items-center gap-1.5">
+            <Download size={13} /> Downloadable attachment (optional)
+          </span>
+        }
+        hint="A hosted file link (PDF, report, form) Bermi AI can hand the user in chat."
+      >
+        <input
+          className={inputClass}
+          value={lesson.attachment_url || ''}
+          onChange={(e) => patch({ attachment_url: e.target.value })}
+          placeholder="https://…/document.pdf"
         />
       </Field>
 
@@ -1152,7 +1349,7 @@ function LessonEditor({
         <div className="flex items-center gap-2">
           <Btn size="sm" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn size="sm" onClick={save} loading={saving}>
-            <Sparkles size={14} /> Save lesson
+            <Sparkles size={14} /> Save {stepSingular.toLowerCase()}
           </Btn>
         </div>
       </div>

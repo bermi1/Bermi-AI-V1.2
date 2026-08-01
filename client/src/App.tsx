@@ -308,7 +308,13 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
           // The system just enrolled the learner in a course from this very
           // message — switch Study Mode on automatically so teaching/XP
           // tracking kicks in right away, no separate manual toggle needed.
-          onEnrolled: () => setStudy(true),
+          // Programs/events/resources are guided in ordinary chat instead —
+          // Study Mode's gamified "lesson mastery" framing doesn't fit a
+          // bank's application steps or an event RSVP, so only courses
+          // trigger it. Progress still records either way (see chat.js).
+          onEnrolled: (info) => {
+            if (!info.kind || info.kind === 'course') setStudy(true)
+          },
           onToken: (token) => {
             setChatSteps([])
             setMessages((prev) => {
@@ -362,14 +368,20 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
     setChatSteps([])
   }, [])
 
-  // Resume/continue a course entirely inside Bermi AI chat — never the portal.
+  // Resume/continue anything from "My activity" entirely inside Bermi AI
+  // chat — never the portal. Only a course forces Study Mode's gamified
+  // teaching UI; a program/event/resource is guided in ordinary chat.
   const studyCourse = useCallback(
-    (title: string) => {
-      setStudy(true)
+    (title: string, kind: 'course' | 'program' | 'event' | 'resource' = 'course') => {
       setView('chat')
-      send(`Let's continue the course "${title}". Pick up where I left off and teach me the next objective.`, {
-        study: true,
-      })
+      const prompt =
+        kind === 'event'
+          ? `Tell me more about the event "${title}" and confirm my registration status.`
+          : kind === 'resource'
+            ? `Show me the resource "${title}" again.`
+            : `Let's continue the ${kind} "${title}". Pick up where I left off and guide me through the next part.`
+      if (kind === 'course') setStudy(true)
+      send(prompt, { study: kind === 'course' })
     },
     [send],
   )

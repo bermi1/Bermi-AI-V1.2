@@ -95,6 +95,7 @@ export class SqliteStorage {
         id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL,
         slug TEXT NOT NULL UNIQUE, about TEXT DEFAULT '', logo_url TEXT, website TEXT,
         published INTEGER NOT NULL DEFAULT 1, personal INTEGER NOT NULL DEFAULT 0,
+        org_type TEXT NOT NULL DEFAULT 'education',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS courses (
@@ -102,12 +103,14 @@ export class SqliteStorage {
         summary TEXT DEFAULT '', description TEXT DEFAULT '', cover_emoji TEXT DEFAULT '📘',
         level TEXT DEFAULT 'All levels', category TEXT DEFAULT '', published INTEGER NOT NULL DEFAULT 0,
         enrollment TEXT NOT NULL DEFAULT 'open',
+        kind TEXT NOT NULL DEFAULT 'course', event_at TEXT, event_location TEXT DEFAULT '',
         objectives TEXT DEFAULT '', evaluation TEXT DEFAULT '', tracking TEXT DEFAULT '',
         created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS lessons (
         id TEXT PRIMARY KEY, course_id TEXT NOT NULL, ordinal INTEGER NOT NULL DEFAULT 0,
         title TEXT NOT NULL, content TEXT DEFAULT '', material TEXT DEFAULT '', video_url TEXT DEFAULT '',
+        attachment_url TEXT DEFAULT '',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS enrollments (
@@ -137,6 +140,11 @@ export class SqliteStorage {
       'ALTER TABLE enrollments ADD COLUMN dependency REAL',
       "ALTER TABLE lessons ADD COLUMN video_url TEXT DEFAULT ''",
       "ALTER TABLE courses ADD COLUMN category TEXT DEFAULT ''",
+      "ALTER TABLE institutions ADD COLUMN org_type TEXT NOT NULL DEFAULT 'education'",
+      "ALTER TABLE courses ADD COLUMN kind TEXT NOT NULL DEFAULT 'course'",
+      'ALTER TABLE courses ADD COLUMN event_at TEXT',
+      "ALTER TABLE courses ADD COLUMN event_location TEXT DEFAULT ''",
+      "ALTER TABLE lessons ADD COLUMN attachment_url TEXT DEFAULT ''",
     ]
     for (const sql of migrations) {
       try {
@@ -414,14 +422,15 @@ export class SqliteStorage {
   }
   async createInstitution(r) {
     this.db.prepare(
-      `INSERT INTO institutions (id, owner_id, name, slug, about, logo_url, website, published, personal, created_at)
-       VALUES (@id,@owner_id,@name,@slug,@about,@logo_url,@website,@published,@personal,@created_at)`,
+      `INSERT INTO institutions (id, owner_id, name, slug, about, logo_url, website, published, personal, org_type, created_at)
+       VALUES (@id,@owner_id,@name,@slug,@about,@logo_url,@website,@published,@personal,@org_type,@created_at)`,
     ).run({
       about: '',
       logo_url: null,
       website: null,
       published: 1,
       personal: 0,
+      org_type: 'education',
       ...r,
       published: r.published ? 1 : 0,
       personal: r.personal ? 1 : 0,
@@ -452,16 +461,17 @@ export class SqliteStorage {
       logo_url: patch.logo_url ?? cur.logo_url,
       website: patch.website ?? cur.website,
       published: (patch.published ?? cur.published) ? 1 : 0,
+      org_type: patch.org_type ?? cur.org_type ?? 'education',
     }
-    this.db.prepare('UPDATE institutions SET name=@name, about=@about, logo_url=@logo_url, website=@website, published=@published WHERE id=@id').run(m)
+    this.db.prepare('UPDATE institutions SET name=@name, about=@about, logo_url=@logo_url, website=@website, published=@published, org_type=@org_type WHERE id=@id').run(m)
     return this.getInstitution(id)
   }
 
   async createCourse(r) {
     this.db.prepare(
-      `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, category, published, enrollment, objectives, evaluation, tracking, created_at, updated_at)
-       VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@category,@published,@enrollment,@objectives,@evaluation,@tracking,@created_at,@updated_at)`,
-    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', category: '', enrollment: 'open', objectives: '', evaluation: '', tracking: '', ...r, published: r.published ? 1 : 0 })
+      `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, category, published, enrollment, kind, event_at, event_location, objectives, evaluation, tracking, created_at, updated_at)
+       VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@category,@published,@enrollment,@kind,@event_at,@event_location,@objectives,@evaluation,@tracking,@created_at,@updated_at)`,
+    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', category: '', enrollment: 'open', kind: 'course', event_at: null, event_location: '', objectives: '', evaluation: '', tracking: '', ...r, published: r.published ? 1 : 0 })
     return this.getCourse(r.id)
   }
   async getCourse(id) {
@@ -485,12 +495,15 @@ export class SqliteStorage {
       category: patch.category ?? cur.category ?? '',
       published: (patch.published ?? cur.published) ? 1 : 0,
       enrollment: patch.enrollment ?? cur.enrollment,
+      kind: patch.kind ?? cur.kind ?? 'course',
+      event_at: patch.event_at ?? cur.event_at ?? null,
+      event_location: patch.event_location ?? cur.event_location ?? '',
       objectives: patch.objectives ?? cur.objectives ?? '',
       evaluation: patch.evaluation ?? cur.evaluation ?? '',
       tracking: patch.tracking ?? cur.tracking ?? '',
       updated_at: new Date().toISOString(),
     }
-    this.db.prepare('UPDATE courses SET title=@title, summary=@summary, description=@description, cover_emoji=@cover_emoji, level=@level, category=@category, published=@published, enrollment=@enrollment, objectives=@objectives, evaluation=@evaluation, tracking=@tracking, updated_at=@updated_at WHERE id=@id').run(m)
+    this.db.prepare('UPDATE courses SET title=@title, summary=@summary, description=@description, cover_emoji=@cover_emoji, level=@level, category=@category, published=@published, enrollment=@enrollment, kind=@kind, event_at=@event_at, event_location=@event_location, objectives=@objectives, evaluation=@evaluation, tracking=@tracking, updated_at=@updated_at WHERE id=@id').run(m)
     return this.getCourse(id)
   }
   async deleteCourse(id) {
@@ -500,8 +513,8 @@ export class SqliteStorage {
   }
 
   async createLesson(r) {
-    this.db.prepare('INSERT INTO lessons (id, course_id, ordinal, title, content, material, video_url, created_at) VALUES (@id,@course_id,@ordinal,@title,@content,@material,@video_url,@created_at)')
-      .run({ ordinal: 0, content: '', material: '', video_url: '', ...r })
+    this.db.prepare('INSERT INTO lessons (id, course_id, ordinal, title, content, material, video_url, attachment_url, created_at) VALUES (@id,@course_id,@ordinal,@title,@content,@material,@video_url,@attachment_url,@created_at)')
+      .run({ ordinal: 0, content: '', material: '', video_url: '', attachment_url: '', ...r })
     return this.getLesson(r.id)
   }
   async getLesson(id) {
@@ -518,9 +531,10 @@ export class SqliteStorage {
       content: patch.content ?? cur.content,
       material: patch.material ?? cur.material,
       video_url: patch.video_url ?? cur.video_url,
+      attachment_url: patch.attachment_url ?? cur.attachment_url ?? '',
       ordinal: patch.ordinal ?? cur.ordinal,
     }
-    this.db.prepare('UPDATE lessons SET title=@title, content=@content, material=@material, video_url=@video_url, ordinal=@ordinal WHERE id=@id').run(m)
+    this.db.prepare('UPDATE lessons SET title=@title, content=@content, material=@material, video_url=@video_url, attachment_url=@attachment_url, ordinal=@ordinal WHERE id=@id').run(m)
     return this.getLesson(id)
   }
   async deleteLesson(id) {

@@ -193,7 +193,14 @@ export interface StudyAward {
   newBadges: { id: string; label: string }[]
 }
 
-// ---------- Bermi Learn (LMS) ----------
+// ---------- Bermi Learn ----------
+// Not education-only: an "institution" here can be a school, but just as
+// easily a bank, NGO, company, government body, or event host — org_type
+// only tailors language and AI defaults. A "course" can be a taught course,
+// or a program/event/resource — see OfferingKind below.
+
+export type OrgType = 'education' | 'business' | 'nonprofit' | 'government' | 'community' | 'media' | 'other'
+export type OfferingKind = 'course' | 'program' | 'event' | 'resource'
 
 export interface Institution {
   id: string
@@ -204,6 +211,7 @@ export interface Institution {
   website?: string
   logo_url?: string | null
   published: boolean
+  org_type?: OrgType
   created_at: string
 }
 
@@ -219,10 +227,13 @@ export interface Course {
   category?: string
   published: boolean
   enrollment: 'open' | 'approval'
+  kind?: OfferingKind
+  event_at?: string | null
+  event_location?: string
   objectives?: string
   evaluation?: string
   tracking?: string
-  institution?: { name: string; slug: string } | null
+  institution?: { name: string; slug: string; org_type?: OrgType } | null
 }
 
 export interface InstitutionLearner {
@@ -260,6 +271,7 @@ export interface Lesson {
   content: string
   material?: string
   video_url?: string
+  attachment_url?: string
 }
 
 export interface Enrollment {

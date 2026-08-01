@@ -24,6 +24,7 @@ import type {
   Conversation,
   DocumentSummary,
   GmailMessage,
+  OfferingKind,
   Profile,
 } from '../lib/types'
 import * as api from '../lib/api'
@@ -50,7 +51,7 @@ interface DashboardPageProps {
   onOpenProfile: () => void
   onOpenNiche: () => void
   onStartStudy: () => void
-  onStudyCourse: (title: string) => void
+  onStudyCourse: (title: string, kind?: OfferingKind) => void
 }
 
 function timeAgo(iso: string): string {

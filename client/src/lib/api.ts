@@ -21,6 +21,8 @@ import type {
   ModelOption,
   NicheQuestion,
   NicheReport,
+  OfferingKind,
+  OrgType,
   Profile,
   QuizQuestion,
   SettingsInfo,
@@ -374,7 +376,7 @@ export interface ChatStreamCallbacks {
   onStatus?: (label: string | null) => void
   onCitations?: (items: Citation[]) => void
   onStudy?: (award: StudyAwardEvent) => void
-  onEnrolled?: (info: { courseId: string; courseTitle: string }) => void
+  onEnrolled?: (info: { courseId: string; courseTitle: string; kind?: string }) => void
   onDone: (fullText: string) => void
   onError: (message: string) => void
 }
@@ -447,6 +449,7 @@ export async function streamChat(
           newBadges?: { id: string; label: string }[]
           courseId?: string
           courseTitle?: string
+          kind?: string
         }
         try {
           parsed = JSON.parse(payload)
@@ -467,7 +470,7 @@ export async function streamChat(
             newBadges: parsed.newBadges ?? [],
           })
         } else if (parsed.type === 'enrolled' && parsed.courseId && parsed.courseTitle) {
-          callbacks.onEnrolled?.({ courseId: parsed.courseId, courseTitle: parsed.courseTitle })
+          callbacks.onEnrolled?.({ courseId: parsed.courseId, courseTitle: parsed.courseTitle, kind: parsed.kind })
         } else if (parsed.type === 'token' && parsed.token != null) {
           full += parsed.token
           callbacks.onToken(parsed.token)
@@ -647,6 +650,7 @@ export const learnCreateInstitution = (input: {
   name: string
   about?: string
   website?: string
+  org_type?: OrgType
 }) =>
   apiFetch('/api/learn/institutions', {
     method: 'POST',
@@ -664,9 +668,12 @@ export const learnQuickCreateCourse = (input: {
   topic: string
   audience?: string
   level?: string
+  kind?: OfferingKind
   objectives?: string
   material?: string
   avoid?: string
+  event_at?: string
+  event_location?: string
   title?: string
 }) =>
   apiFetch(
@@ -681,7 +688,7 @@ export const learnQuickCreateCourse = (input: {
 
 export const learnUpdateInstitution = (
   id: string,
-  patch: Partial<{ name: string; about: string; website: string; logo_url: string; published: boolean }>,
+  patch: Partial<{ name: string; about: string; website: string; logo_url: string; published: boolean; org_type: OrgType }>,
 ) =>
   apiFetch(`/api/learn/institutions/${id}`, {
     method: 'PUT',
@@ -692,9 +699,9 @@ export const learnUpdateInstitution = (
 export const learnInstitutionCourses = (institutionId: string) =>
   apiFetch(`/api/learn/institutions/${institutionId}/courses`).then((r) => json<Course[]>(r))
 
-// AI-generated full course for an organization — just say what to teach and
-// its objective; Bermi drafts the whole course (lessons + evaluation
-// guidelines a quiz is generated from per lesson).
+// AI-generated full offering for an organization — say what it's for; Bermi
+// drafts the whole thing (course lessons + quiz-ready evaluation, or a
+// program's steps, an event's agenda, or a resource's sections).
 export const learnInstitutionQuickCreateCourse = (
   institutionId: string,
   input: {
@@ -702,9 +709,12 @@ export const learnInstitutionQuickCreateCourse = (
     audience?: string
     level?: string
     category?: string
+    kind?: OfferingKind
     objectives?: string
     material?: string
     avoid?: string
+    event_at?: string
+    event_location?: string
     title?: string
   },
 ) =>
@@ -727,6 +737,9 @@ export const learnCreateCourse = (
     cover_emoji?: string
     level?: string
     category?: string
+    kind?: OfferingKind
+    event_at?: string
+    event_location?: string
     objectives?: string
     evaluation?: string
     tracking?: string
@@ -749,6 +762,9 @@ export const learnUpdateCourse = (
     category: string
     published: boolean
     enrollment: 'open' | 'approval'
+    kind: OfferingKind
+    event_at: string | null
+    event_location: string
     objectives: string
     evaluation: string
     tracking: string
@@ -769,7 +785,7 @@ export const learnManageLessons = (courseId: string) =>
 
 export const learnCreateLesson = (
   courseId: string,
-  input: { title: string; content?: string; material?: string; video_url?: string },
+  input: { title: string; content?: string; material?: string; video_url?: string; attachment_url?: string },
 ) =>
   apiFetch(`/api/learn/courses/${courseId}/lessons`, {
     method: 'POST',
@@ -779,7 +795,7 @@ export const learnCreateLesson = (
 
 export const learnUpdateLesson = (
   id: string,
-  patch: Partial<{ title: string; content: string; material: string; video_url: string; ordinal: number }>,
+  patch: Partial<{ title: string; content: string; material: string; video_url: string; attachment_url: string; ordinal: number }>,
 ) =>
   apiFetch(`/api/learn/lessons/${id}`, {
     method: 'PUT',
