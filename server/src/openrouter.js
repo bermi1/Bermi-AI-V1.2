@@ -178,6 +178,30 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
   throw lastErr ?? new Error('No model available')
 }
 
+/**
+ * Live capacity snapshot for the admin dashboard: which providers are
+ * configured, how many keys each has, and how many of those keys are
+ * currently cooling down (recently hit a quota/auth error). Lets an admin
+ * watching a launch see quota pressure building in real time instead of
+ * only finding out when users start reporting broken chats.
+ */
+export async function providerHealth() {
+  const providers = await listProviders()
+  const now = Date.now()
+  return providers.map((p) => {
+    const retries = p.keys
+      .map((k) => cooldown.get(cooldownKey(p.id, k)) ?? 0)
+      .filter((until) => until > now)
+      .map((until) => Math.ceil((until - now) / 1000))
+    return {
+      id: p.id,
+      totalKeys: p.keys.length,
+      coolingKeys: retries.length,
+      nextRetryInSeconds: retries.length ? Math.min(...retries) : null,
+    }
+  })
+}
+
 /** Live model listing from OpenRouter, used to augment the configured list. */
 export async function fetchLiveModels() {
   const res = await fetch('https://openrouter.ai/api/v1/models')

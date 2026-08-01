@@ -8,14 +8,16 @@ import {
   KeyRound,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Search,
   ShieldAlert,
   Trash2,
   Users,
   X,
+  Zap,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { AdminStats, AdminUser } from '../lib/api'
+import type { AdminStats, AdminUser, ProviderHealth } from '../lib/api'
 import { BermiMark } from '../components/Logo'
 
 export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; selfEmail: string }) {
@@ -117,6 +119,8 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
           ))}
           {!stats && <div className="col-span-full py-6 text-center text-ink-faint"><Loader2 size={18} className="mx-auto animate-spin" /></div>}
         </div>
+
+        <ProviderHealthPanel />
 
         {/* Users */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -222,6 +226,85 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
 
       {resetFor && <ResetPasswordModal user={resetFor} onClose={() => setResetFor(null)} />}
     </Shell>
+  )
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  openrouter: 'OpenRouter',
+  groq: 'Groq',
+  cerebras: 'Cerebras',
+  local: 'On-device (local)',
+}
+
+// Watch this during a launch: "cooling" keys mean that provider/key just hit
+// a quota or auth error and is being skipped for ~60s while the others carry
+// load. If every key on every provider is cooling at once, the shared
+// free-tier pool is genuinely exhausted — that's the signal to add more
+// provider keys, not a bug to chase.
+function ProviderHealthPanel() {
+  const [providers, setProviders] = useState<ProviderHealth[] | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const load = () => {
+    setRefreshing(true)
+    api
+      .adminProviders()
+      .then(setProviders)
+      .catch(() => setProviders([]))
+      .finally(() => setRefreshing(false))
+  }
+  useEffect(load, [])
+
+  return (
+    <div className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap size={15} className="text-primary" />
+          <h2 className="text-[14px] font-semibold text-ink">AI provider capacity</h2>
+        </div>
+        <button onClick={load} className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-sunken" title="Refresh">
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+        </button>
+      </div>
+      {!providers ? (
+        <div className="py-4 text-center text-ink-faint"><Loader2 size={16} className="mx-auto animate-spin" /></div>
+      ) : providers.length === 0 ? (
+        <p className="text-[13px] text-rose-500">No AI provider is configured on the server at all — chat will fail for every user.</p>
+      ) : (
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          {providers.map((p) => {
+            const allCooling = p.coolingKeys >= p.totalKeys && p.totalKeys > 0
+            return (
+              <div key={p.id} className="rounded-xl border border-edge bg-surface px-3.5 py-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[13px] font-semibold text-ink">{PROVIDER_LABEL[p.id] || p.id}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                      allCooling
+                        ? 'bg-rose-500/12 text-rose-600 dark:text-rose-400'
+                        : p.coolingKeys > 0
+                          ? 'bg-amber-500/12 text-amber-600 dark:text-amber-400'
+                          : 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    {allCooling ? 'Exhausted' : p.coolingKeys > 0 ? 'Under pressure' : 'Healthy'}
+                  </span>
+                </div>
+                <p className="text-[12px] text-ink-faint">
+                  {p.totalKeys} key{p.totalKeys === 1 ? '' : 's'} configured
+                  {p.coolingKeys > 0 ? ` · ${p.coolingKeys} cooling down` : ''}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <p className="mt-3 text-[11.5px] text-ink-faint">
+        A key "cools down" for ~60s right after it returns a quota/auth error, so requests route to a healthy key
+        instead. If a provider shows "Exhausted" often, add another key for it (env vars support up to 4 OpenRouter
+        keys and 2 Groq keys) or enable Cerebras for another independent free quota pool.
+      </p>
+    </div>
   )
 }
 

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { storage } from '../storage/index.js'
 import { hashPassword } from '../auth.js'
+import { providerHealth } from '../openrouter.js'
 
 export const adminRouter = Router()
 
@@ -30,6 +31,16 @@ adminRouter.get('/admin/overview', requireAdmin, async (_req, res, next) => {
   try {
     const [stats, users] = await Promise.all([storage.adminStats(), storage.listUsers()])
     res.json({ stats, users })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// AI provider/quota capacity — watch this during a launch to see pressure
+// building on the shared free-tier pool before users start hitting errors.
+adminRouter.get('/admin/providers', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json(await providerHealth())
   } catch (err) {
     next(err)
   }

@@ -6,6 +6,7 @@ import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress, title
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
+import { rateLimit } from '../rateLimit.js'
 
 export const chatRouter = Router()
 
@@ -352,7 +353,14 @@ function sse(res, payload) {
  * POST /api/chat  { conversationId?, message, model }
  * Streams back SSE: `conversation`, then `token` events, then [DONE].
  */
-chatRouter.post('/chat', async (req, res, next) => {
+chatRouter.post(
+  '/chat',
+  rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    message: "You're sending messages a bit fast — take a breath and try again in a few seconds.",
+  }),
+  async (req, res, next) => {
   try {
     const { conversationId, message, model, web = false, study = false, attachments } = req.body ?? {}
     if (typeof message !== 'string' || !message.trim()) {

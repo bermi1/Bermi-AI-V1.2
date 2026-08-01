@@ -583,6 +583,16 @@ export const adminResetPassword = (id: string, password: string) =>
 export const adminDeleteUser = (id: string) =>
   apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
 
+export interface ProviderHealth {
+  id: string
+  totalKeys: number
+  coolingKeys: number
+  nextRetryInSeconds: number | null
+}
+
+export const adminProviders = () =>
+  apiFetch('/api/admin/providers').then((r) => json<ProviderHealth[]>(r))
+
 // ---------- Bermi Learn (LMS) ----------
 
 // Public catalog + course browsing

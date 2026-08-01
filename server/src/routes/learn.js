@@ -5,6 +5,17 @@ import { complete } from '../openrouter.js'
 import { renderDocument } from '../doc-render.js'
 import { requireAuth } from '../auth.js'
 import { applyLessonCompletion } from '../study.js'
+import { rateLimit } from '../rateLimit.js'
+
+// AI drafting is the most expensive call in the app (full course/program
+// content in one shot) — cap it separately from ordinary chat so a script or
+// an impatient double-click storm can't burn through the shared free-tier
+// quota on its own.
+const draftLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  max: 6,
+  message: 'Give the AI a moment — try generating again in a few minutes.',
+})
 
 export const learnRouter = Router()
 
@@ -268,7 +279,7 @@ async function draftOfferingPlan(kind, brief) {
 // FULL course — real drafted lesson content grounded in those answers, not
 // empty stubs — in one step. This is what "build your own course" actually
 // runs after asking its questions; no institutional setup required.
-learnRouter.post('/learn/my/courses/quick', async (req, res, next) => {
+learnRouter.post('/learn/my/courses/quick', draftLimiter, async (req, res, next) => {
   try {
     const {
       topic,
@@ -450,7 +461,7 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
 // evaluation/teaching guidelines — instead of building it by hand. Mirrors
 // POST /learn/my/courses/quick but is institution-owned and never
 // auto-enrolls anyone.
-learnRouter.post('/learn/institutions/:id/courses/quick', async (req, res, next) => {
+learnRouter.post('/learn/institutions/:id/courses/quick', draftLimiter, async (req, res, next) => {
   try {
     if (!(await ownsInstitution(req.user.id, req.params.id)))
       return res.status(404).json({ error: 'Institution not found' })
@@ -668,7 +679,7 @@ learnRouter.delete('/learn/lessons/:id', async (req, res, next) => {
 })
 
 // AI co-author: turn a lesson's material into a structured lesson body.
-learnRouter.post('/learn/lessons/:id/ai-draft', async (req, res, next) => {
+learnRouter.post('/learn/lessons/:id/ai-draft', draftLimiter, async (req, res, next) => {
   try {
     const lesson = await storage.getLesson(req.params.id)
     if (!lesson || !(await ownsCourse(req.user.id, lesson.course_id)))
