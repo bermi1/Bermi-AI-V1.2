@@ -305,6 +305,10 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             setStudyToast(award)
             setTimeout(() => setStudyToast(null), 4000)
           },
+          // The system just enrolled the learner in a course from this very
+          // message — switch Study Mode on automatically so teaching/XP
+          // tracking kicks in right away, no separate manual toggle needed.
+          onEnrolled: () => setStudy(true),
           onToken: (token) => {
             setChatSteps([])
             setMessages((prev) => {

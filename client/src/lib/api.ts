@@ -374,6 +374,7 @@ export interface ChatStreamCallbacks {
   onStatus?: (label: string | null) => void
   onCitations?: (items: Citation[]) => void
   onStudy?: (award: StudyAwardEvent) => void
+  onEnrolled?: (info: { courseId: string; courseTitle: string }) => void
   onDone: (fullText: string) => void
   onError: (message: string) => void
 }
@@ -444,6 +445,8 @@ export async function streamChat(
           gained?: number
           leveledUp?: boolean
           newBadges?: { id: string; label: string }[]
+          courseId?: string
+          courseTitle?: string
         }
         try {
           parsed = JSON.parse(payload)
@@ -463,6 +466,8 @@ export async function streamChat(
             leveledUp: Boolean(parsed.leveledUp),
             newBadges: parsed.newBadges ?? [],
           })
+        } else if (parsed.type === 'enrolled' && parsed.courseId && parsed.courseTitle) {
+          callbacks.onEnrolled?.({ courseId: parsed.courseId, courseTitle: parsed.courseTitle })
         } else if (parsed.type === 'token' && parsed.token != null) {
           full += parsed.token
           callbacks.onToken(parsed.token)
@@ -684,6 +689,32 @@ export const learnUpdateInstitution = (
 
 export const learnInstitutionCourses = (institutionId: string) =>
   apiFetch(`/api/learn/institutions/${institutionId}/courses`).then((r) => json<Course[]>(r))
+
+// AI-generated full course for an organization — just say what to teach and
+// its objective; Bermi drafts the whole course (lessons + evaluation
+// guidelines a quiz is generated from per lesson).
+export const learnInstitutionQuickCreateCourse = (
+  institutionId: string,
+  input: {
+    topic: string
+    audience?: string
+    level?: string
+    category?: string
+    objectives?: string
+    material?: string
+    avoid?: string
+    title?: string
+  },
+) =>
+  apiFetch(
+    `/api/learn/institutions/${institutionId}/courses/quick`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    90_000,
+  ).then((r) => json<{ course: Course; lessons: Lesson[] }>(r))
 
 export const learnCreateCourse = (
   institutionId: string,

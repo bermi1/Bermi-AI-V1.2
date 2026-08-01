@@ -39,10 +39,18 @@ export function CoursePage({
     setError(null)
     try {
       await api.learnEnroll(courseId)
-      await load()
+      // Drop straight into Study Mode — no separate "Study in Bermi AI"
+      // click required after enrolling.
+      handoffToStudy({
+        title: data?.course.title || '',
+        prompt:
+          `I'm enrolled in the course "${data?.course.title}"` +
+          (data?.institution ? ` by ${data.institution.name}` : '') +
+          `. Be my tutor and take me through it. Start with the first lesson and teach me step by step.` +
+          (data?.course.summary ? `\n\nCourse overview: ${data.course.summary}` : ''),
+      })
     } catch (e) {
       setError((e as Error).message)
-    } finally {
       setEnrolling(false)
     }
   }

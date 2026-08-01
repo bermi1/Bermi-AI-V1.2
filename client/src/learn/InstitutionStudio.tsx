@@ -23,6 +23,7 @@ import {
   Users,
   Video,
   Wand2,
+  X,
 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Course, Institution, InstitutionAnalytics, InstitutionLearner, Lesson } from '../lib/types'
@@ -454,6 +455,7 @@ function SettingsTab({ institution, onUpdated }: { institution: Institution; onU
 function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit: (c: Course) => void }) {
   const [courses, setCourses] = useState<Course[] | null>(null)
   const [creating, setCreating] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -480,10 +482,27 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-ink">Courses</h2>
-        <Btn size="sm" onClick={() => setCreating((v) => !v)}>
-          <Plus size={15} /> New course
-        </Btn>
+        <div className="flex gap-2">
+          <Btn size="sm" variant="outline" onClick={() => setGenerating(true)}>
+            <Sparkles size={15} /> Generate with AI
+          </Btn>
+          <Btn size="sm" onClick={() => setCreating((v) => !v)}>
+            <Plus size={15} /> New course
+          </Btn>
+        </div>
       </div>
+
+      {generating && (
+        <InstitutionQuickCourseModal
+          institutionId={institution.id}
+          onClose={() => setGenerating(false)}
+          onCreated={async (c) => {
+            setGenerating(false)
+            await refresh()
+            onEdit(c)
+          }}
+        />
+      )}
 
       {creating && (
         <div className="mb-4 flex gap-2 rounded-2xl border border-edge bg-surface-raised p-3">
@@ -519,6 +538,167 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+const QUICK_LEVELS = ['All levels', 'Beginner', 'Intermediate', 'Advanced']
+
+// Institution-side "build a full course with AI": staff describe what to
+// teach and its objective in one form, and Bermi drafts the whole course —
+// full lesson content plus evaluation/teaching guidelines that a per-lesson
+// quiz is generated from once learners are enrolled. Left as a draft so the
+// organization can review (and add videos) before publishing.
+function InstitutionQuickCourseModal({
+  institutionId,
+  onClose,
+  onCreated,
+}: {
+  institutionId: string
+  onClose: () => void
+  onCreated: (course: Course) => void
+}) {
+  const [topic, setTopic] = useState('')
+  const [audience, setAudience] = useState('')
+  const [level, setLevel] = useState('All levels')
+  const [category, setCategory] = useState('')
+  const [objectives, setObjectives] = useState('')
+  const [material, setMaterial] = useState('')
+  const [avoid, setAvoid] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!topic.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await api.learnInstitutionQuickCreateCourse(institutionId, {
+        topic,
+        audience,
+        level,
+        category,
+        objectives,
+        material,
+        avoid,
+      })
+      onCreated(res.course)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-edge bg-surface-raised p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+            <Sparkles size={16} className="text-primary" /> Generate a full course with AI
+          </h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-ink-muted hover:bg-surface-sunken">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-3.5">
+          <Field label="What should this course teach?" hint="A topic or subject — as specific as you like.">
+            <textarea
+              autoFocus
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. Introduction to bookkeeping for small businesses"
+              className="min-h-[70px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
+            />
+          </Field>
+
+          <Field label="What should learners be able to do after finishing?" hint="The objective — concrete outcomes to teach and test toward. Optional, Bermi can infer them.">
+            <textarea
+              value={objectives}
+              onChange={(e) => setObjectives(e.target.value)}
+              placeholder="One outcome per line (optional)"
+              className="min-h-[70px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
+            />
+          </Field>
+
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="Audience / starting level">
+              <input
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+                placeholder="e.g. new hires, no prior experience"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Category">
+              <input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="e.g. Finance, Compliance"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <Field label="Level">
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_LEVELS.map((lv) => (
+                <button
+                  key={lv}
+                  onClick={() => setLevel(lv)}
+                  className={`rounded-full border px-3 py-1 text-[12px] font-medium ${
+                    level === lv ? 'border-primary bg-primary-soft text-primary' : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                  }`}
+                >
+                  {lv}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field label="Source material to ground it in" hint="Paste notes, a syllabus, or reference text. Optional.">
+            <textarea
+              value={material}
+              onChange={(e) => setMaterial(e.target.value)}
+              placeholder="Optional"
+              className="min-h-[70px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
+            />
+          </Field>
+
+          <Field label="Anything to skip or avoid?">
+            <textarea
+              value={avoid}
+              onChange={(e) => setAvoid(e.target.value)}
+              placeholder="Optional"
+              className="min-h-[50px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
+            />
+          </Field>
+        </div>
+
+        {error && <p className="mt-3 text-[12px] text-rose-500">{error}</p>}
+
+        <div className="mt-4 flex items-center justify-between">
+          <button onClick={onClose} className="rounded-xl px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-surface-sunken">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy || !topic.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />} {busy ? 'Generating course…' : 'Generate full course'}
+          </button>
+        </div>
+        <p className="mt-3 text-[11.5px] text-ink-faint">
+          Bermi writes full lessons and evaluation/teaching guidelines now; each lesson's quiz is generated the
+          first time a learner takes it. The course is saved as a draft — review it, add videos if you like, then
+          publish.
+        </p>
+      </div>
     </div>
   )
 }

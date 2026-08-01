@@ -113,9 +113,11 @@ async function learningContext(userId, message) {
     .map((c) => {
       const inst = instById.get(c.institution_id)
       const obj = (c.objectives || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+      const evalGuide = (c.evaluation || '').replace(/\s+/g, ' ').trim().slice(0, 200)
       return (
         `- "${c.title}" (${c.level || 'All levels'}) by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}` +
-        (obj ? `\n    Objectives: ${obj}` : '')
+        (obj ? `\n    Objectives: ${obj}` : '') +
+        (evalGuide ? `\n    Evaluation/teaching guidelines: ${evalGuide}` : '')
       )
     })
     .join('\n')
@@ -165,6 +167,7 @@ async function learningContext(userId, message) {
     'Bermi AI — never tell the learner to go to the portal (the portal is for institutions only).'
 
   let note = ''
+  let enrolled = null
   if (ENROLL_RE.test(message)) {
     const lower = message.toLowerCase()
     let best = courses.find((c) => lower.includes(c.title.toLowerCase()))
@@ -196,6 +199,7 @@ async function learningContext(userId, message) {
           })
           const inst = instById.get(best.institution_id)
           note = `Live action: you HAVE NOW enrolled the user in "${best.title}"${inst ? ` by ${inst.name}` : ''}. Confirm warmly, briefly say what it covers, then immediately begin teaching the first lesson right here in this chat. State only what actually happened.`
+          enrolled = { courseId: best.id, courseTitle: best.title }
         }
       } catch (e) {
         note = `Live action: enrollment failed (${e.message}). Apologize briefly and offer to try again right here in chat.`
@@ -231,7 +235,7 @@ async function learningContext(userId, message) {
     }
   }
 
-  return { block, note }
+  return { block, note, enrolled }
 }
 
 function sse(res, payload) {
@@ -301,6 +305,9 @@ chatRouter.post('/chat', async (req, res, next) => {
     let systemPrompt = systemPromptBase
     if (learn.block) systemPrompt += `\n\n${learn.block}`
     if (learn.note) systemPrompt += `\n\n# Live action (already performed by the system)\n${learn.note}`
+    // A fresh enrollment just happened — tell the client so it can switch the
+    // learner straight into Study Mode without a separate manual step.
+    if (learn.enrolled) sse(res, { type: 'enrolled', ...learn.enrolled })
 
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')

@@ -336,6 +336,117 @@ learnRouter.post('/learn/institutions/:id/courses', async (req, res, next) => {
   }
 })
 
+// AI-generated full course for an organization: staff just say what to teach
+// and the objective, and Bermi drafts the whole thing — full lesson content,
+// objectives, evaluation/teaching guidelines, and (via /learn/lessons/:id/quiz,
+// generated on demand) a quiz per lesson — instead of building it lesson by
+// lesson by hand. Mirrors POST /learn/my/courses/quick but is institution-owned
+// and never auto-enrolls anyone.
+learnRouter.post('/learn/institutions/:id/courses/quick', async (req, res, next) => {
+  try {
+    if (!(await ownsInstitution(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Institution not found' })
+    const {
+      topic,
+      audience = '',
+      level = 'All levels',
+      category = '',
+      objectives = '',
+      material = '',
+      avoid = '',
+      title: titleOverride,
+    } = req.body ?? {}
+    if (!topic?.trim()) return res.status(400).json({ error: 'Tell Bermi what this course should teach' })
+
+    const brief =
+      `Topic: ${topic}\n` +
+      (audience ? `Who it's for / their current level: ${audience}\n` : '') +
+      (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
+      (avoid ? `Skip or avoid: ${avoid}\n` : '') +
+      (material ? `\nSource material to ground the course in:\n${material.slice(0, 12000)}` : '')
+
+    let plan = null
+    try {
+      const raw = await complete({
+        model: 'bermi-core',
+        maxTokens: 5500,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a curriculum designer building a course for an educational organization. Given a brief ' +
+              '(topic, audience/level, objectives, optional source material), design a COMPLETE course and write ' +
+              'it in full — not an outline. Respond with ONLY a JSON object shaped exactly as:\n' +
+              '{"title":string,"cover_emoji":string,"summary":string,"description":string(markdown),' +
+              '"objectives":string(one per line),"evaluation":string,"lessons":[{"title":string,"content":string(markdown)},...]}\n' +
+              'Rules: cover_emoji is one relevant emoji. summary is one sentence. description is a short markdown ' +
+              'overview (## headings ok). objectives lists 3-6 concrete, testable outcomes, one per line. ' +
+              'evaluation is a guidelines block combining: what to test and what mastery looks like, prerequisites ' +
+              'or assumed background, recommended pacing, and any tone/approach notes for the AI tutor teaching ' +
+              'this course — the tutor reads this directly, so make it concrete and actionable, not vague advice. ' +
+              'Produce 4-8 lessons that progress in order; each lesson\'s content is a FULLY WRITTEN lesson ' +
+              '(several paragraphs, headings, a worked example, and a short "Key takeaways" list) — never a ' +
+              'placeholder or a one-line stub. Each lesson is later paired with an auto-generated quiz, so make ' +
+              'sure the content clearly states discrete, testable facts and steps. If source material was given, ' +
+              'ground the lessons in it directly. Tailor depth and vocabulary to the stated audience/level. ' +
+              'Output ONLY the JSON object.',
+          },
+          { role: 'user', content: brief },
+        ],
+      })
+      plan = JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+    } catch (err) {
+      return res.status(502).json({ error: `Could not draft the course: ${err.message}` })
+    }
+    if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
+      return res.status(502).json({ error: 'Could not draft a complete course from those answers — try adding more detail.' })
+    }
+
+    const now = new Date().toISOString()
+    const finalTitle = (titleOverride || plan.title || topic).trim()
+    const course = await storage.createCourse({
+      id: randomUUID(),
+      institution_id: req.params.id,
+      title: finalTitle,
+      slug: slugify(finalTitle),
+      summary: String(plan.summary || '').slice(0, 300),
+      description: String(plan.description || ''),
+      cover_emoji: String(plan.cover_emoji || '📘').slice(0, 8),
+      level,
+      category,
+      published: false,
+      enrollment: 'open',
+      objectives: String(plan.objectives || objectives || ''),
+      evaluation: String(plan.evaluation || ''),
+      tracking: '',
+      created_at: now,
+      updated_at: now,
+    })
+
+    const lessons = []
+    for (let i = 0; i < plan.lessons.length; i++) {
+      const l = plan.lessons[i]
+      lessons.push(
+        await storage.createLesson({
+          id: randomUUID(),
+          course_id: course.id,
+          ordinal: i,
+          title: String(l.title || `Lesson ${i + 1}`).slice(0, 120),
+          content: String(l.content || ''),
+          material: '',
+          created_at: now,
+        }),
+      )
+    }
+
+    // Left unpublished — the organization reviews the AI draft (and can add
+    // videos, edit lessons, etc.) before it appears in the public catalog.
+    res.status(201).json({ course, lessons })
+  } catch (err) {
+    next(err)
+  }
+})
+
 async function ownsCourse(userId, courseId) {
   const course = await storage.getCourse(courseId)
   if (!course) return null
