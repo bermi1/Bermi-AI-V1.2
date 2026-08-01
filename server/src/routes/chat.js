@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
 import { streamCompletion } from '../openrouter.js'
-import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress } from '../study.js'
+import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress, titleSimilarity } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
@@ -92,8 +92,12 @@ const VIDEO_PLAY_RE = /\b(play|watch|show|open)\b.{0,25}\bvideo\b/i
  * when they ask. Returns a context block (the catalog) and an action note
  * (what the system already did) to append to the system prompt.
  */
-async function learningContext(userId, message) {
-  if (!LEARN_RE.test(message)) return { block: '', note: '' }
+async function learningContext(userId, message, conversationTitle, study) {
+  // Keep computing this every turn once a Study Mode session is under way
+  // (not just when the user's own wording happens to mention "course" or
+  // "lesson"), so the real curriculum below stays grounded throughout —
+  // not just on the turn that kicked it off.
+  if (!LEARN_RE.test(message) && !study) return { block: '', note: '', enrolled: null }
   let courses = []
   let instById = new Map()
   try {
@@ -127,10 +131,18 @@ async function learningContext(userId, message) {
   // "play the video" / "summarize the video" request can be resolved to an
   // actual video_url the institution attached, without the learner naming it.
   let progressBlock = ''
+  let curriculumBlock = ''
   const videoLessons = [] // { course, lesson, nextUp }
   try {
     const enrollments = await storage.listEnrollmentsByUser(userId)
     const rows = []
+    // Which enrolled course THIS conversation is actually about, so the
+    // tutor teaches from its real, authored lessons instead of inventing a
+    // parallel curriculum — the mismatch between an invented breakdown and
+    // the stored lesson titles is exactly why progress used to silently fail
+    // to record. Matched against the conversation's own (stable) title.
+    let curriculumCourse = null
+    let curriculumSim = 0
     for (const e of (enrollments || []).slice(0, 15)) {
       const course = await storage.getCourse(e.course_id)
       if (!course) continue
@@ -146,9 +158,29 @@ async function learningContext(userId, message) {
           (e.score != null ? `, average score ${e.score}%` : '') +
           (withVideo.length ? `. Has video for: ${withVideo.map((l) => `"${l.title}"`).join(', ')}` : ''),
       )
+      if (e.status !== 'completed' && lessons.length) {
+        const sim = titleSimilarity(conversationTitle || message, course.title)
+        if (sim > curriculumSim) {
+          curriculumSim = sim
+          curriculumCourse = { course, lessons, progress }
+        }
+      }
     }
     if (rows.length) {
       progressBlock = `\n\n# This learner's progress\n${rows.join('\n')}`
+    }
+    if (curriculumCourse && curriculumSim >= 0.4) {
+      const { course, lessons, progress } = curriculumCourse
+      const ordered = [...lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
+      const nextLesson = ordered.find((l) => !progress[l.id]?.done)
+      const checklist = ordered.map((l, i) => `${progress[l.id]?.done ? '[x]' : '[ ]'} ${i + 1}. ${l.title}`).join('\n')
+      curriculumBlock =
+        `\n\n# Real curriculum for "${course.title}" — TEACH FROM THIS, do not invent a different lesson breakdown\n${checklist}\n` +
+        (nextLesson
+          ? `\nNext up: "${nextLesson.title}". Its actual material to teach from:\n---\n` +
+            `${(nextLesson.content || nextLesson.material || '(no written content yet — teach from the objectives/evaluation above)').slice(0, 6000)}\n---\n` +
+            `When the learner has demonstrated mastery of it, your "✅ **Mastered:**" line MUST use this EXACT title: ${nextLesson.title}`
+          : '\nEvery lesson in this course is already marked done — if there is more to cover, teach it as enrichment, not as new required lessons.')
     }
   } catch {
     /* progress optional */
@@ -157,6 +189,7 @@ async function learningContext(userId, message) {
   const block =
     `# Bermi Learn — courses available right now (you can discuss, recommend and enroll the user in these)\n${list}` +
     progressBlock +
+    curriculumBlock +
     '\n\nGuidance: If the user asks to enroll/apply, the system enrolls them directly (see any Live action below), ' +
     'then start teaching them right here, in this chat, immediately. ' +
     'For "show my progress", summarize their progress above clearly. ' +
@@ -300,14 +333,11 @@ chatRouter.post('/chat', async (req, res, next) => {
     const [systemPromptBase, history, learn] = await Promise.all([
       buildSystemPrompt(req.user.id, study),
       storage.listMessages(conversation.id),
-      learningContext(req.user.id, message),
+      learningContext(req.user.id, message, conversation.title, study),
     ])
     let systemPrompt = systemPromptBase
     if (learn.block) systemPrompt += `\n\n${learn.block}`
     if (learn.note) systemPrompt += `\n\n# Live action (already performed by the system)\n${learn.note}`
-    // A fresh enrollment just happened — tell the client so it can switch the
-    // learner straight into Study Mode without a separate manual step.
-    if (learn.enrolled) sse(res, { type: 'enrolled', ...learn.enrolled })
 
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
@@ -315,6 +345,11 @@ chatRouter.post('/chat', async (req, res, next) => {
     res.flushHeaders()
 
     sse(res, { type: 'conversation', conversation: { ...conversation, model } })
+    // A fresh enrollment just happened — tell the client so it can switch the
+    // learner straight into Study Mode and refresh "My learning" without a
+    // separate manual step. Must fire AFTER the SSE headers above, or this
+    // write would send its own (wrong) headers and corrupt the whole stream.
+    if (learn.enrolled) sse(res, { type: 'enrolled', ...learn.enrolled })
 
     // Abort the upstream call if the client disconnects mid-stream. This must
     // watch the response: req 'close' fires as soon as the body is consumed.

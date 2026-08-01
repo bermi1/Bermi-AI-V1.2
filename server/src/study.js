@@ -256,7 +256,7 @@ const normalizeTitle = (s) =>
 // specific stored lesson title. Direct containment is a strong signal;
 // otherwise fall back to how much of the shorter title's meaningful words
 // appear in the other.
-function titleSimilarity(a, b) {
+export function titleSimilarity(a, b) {
   const na = normalizeTitle(a)
   const nb = normalizeTitle(b)
   if (!na || !nb) return 0
@@ -275,9 +275,17 @@ function titleSimilarity(a, b) {
  * enrollment/lesson records that power "My learning", institution analytics,
  * and certificates — so progress shown there reflects lessons the learner
  * actually demonstrated understanding of in chat, not just conversation
- * turns going by. Only writes when a mastered label confidently matches a
- * specific not-yet-done lesson in one of the learner's active enrollments;
- * an ambiguous or unmatched label is left alone rather than guessed at.
+ * turns going by.
+ *
+ * Two tiers, in order:
+ * 1. Exact/near-exact match — when the tutor is following an enrolled
+ *    course's real curriculum (chat.js feeds it the actual lesson titles for
+ *    exactly this reason), its "Mastered:" label should name a lesson title
+ *    almost verbatim. Match against ANY active enrollment.
+ * 2. Sequential fallback — for the ONE enrolled course whose title clearly
+ *    matches this conversation's own topic, advance its next not-yet-done
+ *    lesson. Covers looser phrasing without guessing at the wrong course.
+ * No confident course match at all → left alone rather than guessed at.
  */
 export async function syncLessonProgress(user, topicTitle, masteredLabels) {
   if (!masteredLabels?.length) return
@@ -288,23 +296,41 @@ export async function syncLessonProgress(user, topicTitle, masteredLabels) {
     const withCourses = []
     for (const enr of enrollments) {
       const course = await storage.getCourse(enr.course_id)
-      if (course) withCourses.push({ enr, course })
+      if (course) withCourses.push({ enr, course, lessons: await storage.listLessons(course.id) })
     }
-    // Try the enrollment whose course best matches the conversation's own
-    // topic first, so a shared lesson-name word doesn't match the wrong course.
-    withCourses.sort((a, b) => titleSimilarity(topicTitle, b.course.title) - titleSimilarity(topicTitle, a.course.title))
+    if (!withCourses.length) return
 
     for (const label of masteredLabels) {
+      // Tier 1: exact/near-exact lesson-title match, any active enrollment.
       let best = null
-      for (const { enr, course } of withCourses) {
-        const lessons = await storage.listLessons(course.id)
-        for (const lesson of lessons) {
-          if (enr.progress?.[lesson.id]?.done) continue
+      for (const entry of withCourses) {
+        for (const lesson of entry.lessons) {
+          if (entry.enr.progress?.[lesson.id]?.done) continue
           const sim = titleSimilarity(label, lesson.title)
-          if (sim >= 0.5 && (!best || sim > best.sim)) best = { lesson, sim }
+          if (sim >= 0.8 && (!best || sim > best.sim)) best = { entry, lesson, sim }
         }
       }
-      if (best) await applyLessonCompletion(user, best.lesson.id, 100)
+      if (best) {
+        const result = await applyLessonCompletion(user, best.lesson.id, 100)
+        if (result) best.entry.enr = result.enrollment // keep in-memory progress fresh for later labels
+        continue
+      }
+
+      // Tier 2: the course this conversation is clearly about, advanced by one.
+      const ranked = [...withCourses].sort(
+        (a, b) => titleSimilarity(topicTitle, b.course.title) - titleSimilarity(topicTitle, a.course.title),
+      )
+      const top = ranked[0]
+      if (top && titleSimilarity(topicTitle, top.course.title) >= 0.4) {
+        const next = top.lessons
+          .slice()
+          .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
+          .find((l) => !top.enr.progress?.[l.id]?.done)
+        if (next) {
+          const result = await applyLessonCompletion(user, next.id, 100)
+          if (result) top.enr = result.enrollment
+        }
+      }
     }
   } catch {
     /* best-effort — a sync miss must never affect the chat response */
