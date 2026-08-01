@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BookOpen, Building2, CheckCircle2, Lock, PlayCircle, Wand2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Building2, CheckCircle2, MessageSquare, Wand2 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Course, Enrollment, Lesson } from '../lib/types'
 import { Btn, ErrorNote, Pill, Spinner, handoffToStudy, type LearnRoute } from './ui'
@@ -19,41 +19,15 @@ export function CoursePage({
     enrollment: Enrollment | null
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [enrolling, setEnrolling] = useState(false)
-
-  const load = () =>
-    api
-      .learnCourse(courseId)
-      .then(setData)
-      .catch((e) => setError((e as Error).message))
 
   useEffect(() => {
     setData(null)
     setError(null)
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    api
+      .learnCourse(courseId)
+      .then(setData)
+      .catch((e) => setError((e as Error).message))
   }, [courseId])
-
-  const enroll = async () => {
-    setEnrolling(true)
-    setError(null)
-    try {
-      await api.learnEnroll(courseId)
-      // Drop straight into Study Mode — no separate "Study in Bermi AI"
-      // click required after enrolling.
-      handoffToStudy({
-        title: data?.course.title || '',
-        prompt:
-          `I'm enrolled in the course "${data?.course.title}"` +
-          (data?.institution ? ` by ${data.institution.name}` : '') +
-          `. Be my tutor and take me through it. Start with the first lesson and teach me step by step.` +
-          (data?.course.summary ? `\n\nCourse overview: ${data.course.summary}` : ''),
-      })
-    } catch (e) {
-      setError((e as Error).message)
-      setEnrolling(false)
-    }
-  }
 
   if (error && !data) return <div className="mx-auto max-w-3xl px-4 py-10"><ErrorNote>{error}</ErrorNote></div>
   if (!data) return <Spinner label="Loading course…" />
@@ -63,6 +37,21 @@ export function CoursePage({
   const progress = enrollment?.progress || {}
   const doneCount = lessons.filter((l) => progress[l.id]?.done).length
   const pct = lessons.length ? Math.round((doneCount / lessons.length) * 100) : 0
+
+  // Everything past "browse the catalog" happens in Bermi AI chat — enrolling,
+  // teaching, evaluating. This portal never enrolls anyone itself; it just
+  // hands the request to chat, which enrolls (if needed) and starts teaching
+  // in the same message.
+  const continuePrompt = enrolled
+    ? `Let's continue the course "${course.title}". Pick up where I left off and teach me the next objective.`
+    : `I'd like to enroll in the course "${course.title}"` +
+      (institution ? ` by ${institution.name}` : '') +
+      `. Please enroll me and be my tutor — start with the first lesson and teach me step by step.` +
+      (course.summary ? `\n\nCourse overview: ${course.summary}` : '')
+
+  const lessonPrompt = (lesson: Lesson) =>
+    (enrolled ? '' : `I'd like to enroll in the course "${course.title}". `) +
+    `Teach me the lesson "${lesson.title}" from "${course.title}" right now.`
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 md:py-10">
@@ -110,39 +99,9 @@ export function CoursePage({
         )}
 
         <div className="mt-6 flex flex-wrap gap-3">
-          {!enrolled ? (
-            <Btn onClick={enroll} loading={enrolling}>
-              <PlayCircle size={17} /> Enroll — it's free
-            </Btn>
-          ) : (
-            <>
-              <Btn
-                onClick={() =>
-                  handoffToStudy({
-                    title: course.title,
-                    prompt:
-                      `I'm enrolled in the course "${course.title}"` +
-                      (institution ? ` by ${institution.name}` : '') +
-                      `. Be my tutor and take me through it. Start with the first lesson and teach me step by step.` +
-                      (course.summary ? `\n\nCourse overview: ${course.summary}` : ''),
-                  })
-                }
-                disabled={!lessons.length}
-              >
-                <Wand2 size={17} /> Study in Bermi AI
-              </Btn>
-              <Btn
-                variant="outline"
-                onClick={() => {
-                  const next = lessons.find((l) => !progress[l.id]?.done) || lessons[0]
-                  if (next) navigate({ name: 'study', courseId: course.id, lessonId: next.id })
-                }}
-                disabled={!lessons.length}
-              >
-                <PlayCircle size={16} /> {doneCount ? 'Continue in portal' : 'Open lessons'}
-              </Btn>
-            </>
-          )}
+          <Btn onClick={() => handoffToStudy({ title: course.title, prompt: continuePrompt })} disabled={!lessons.length}>
+            <Wand2 size={17} /> {enrolled ? 'Continue in Bermi AI' : 'Enroll in Bermi AI'}
+          </Btn>
         </div>
 
         {error && <div className="mt-4"><ErrorNote>{error}</ErrorNote></div>}
@@ -165,11 +124,8 @@ export function CoursePage({
             return (
               <button
                 key={l.id}
-                disabled={!enrolled}
-                onClick={() => navigate({ name: 'study', courseId: course.id, lessonId: l.id })}
-                className={`flex w-full items-center gap-3 rounded-2xl border border-edge bg-surface-raised px-4 py-3.5 text-left transition-colors ${
-                  enrolled ? 'hover:border-primary hover:bg-primary-soft/40' : 'cursor-default'
-                }`}
+                onClick={() => handoffToStudy({ title: course.title, prompt: lessonPrompt(l) })}
+                className="flex w-full items-center gap-3 rounded-2xl border border-edge bg-surface-raised px-4 py-3.5 text-left transition-colors hover:border-primary hover:bg-primary-soft/40"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[13px] font-semibold text-ink-muted">
                   {done ? <CheckCircle2 size={16} className="text-emerald-500" /> : i + 1}
@@ -177,11 +133,7 @@ export function CoursePage({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-medium text-ink">{l.title}</span>
                 </span>
-                {enrolled ? (
-                  <PlayCircle size={17} className="shrink-0 text-ink-faint" />
-                ) : (
-                  <Lock size={15} className="shrink-0 text-ink-faint" />
-                )}
+                <MessageSquare size={16} className="shrink-0 text-ink-faint" />
               </button>
             )
           })}
@@ -191,9 +143,9 @@ export function CoursePage({
             </p>
           )}
         </div>
-        {!enrolled && lessons.length > 0 && (
+        {lessons.length > 0 && (
           <p className="mt-3 text-center text-[12.5px] text-ink-faint">
-            <Lock size={12} className="mr-1 inline" /> Enroll to unlock lesson content, AI tutoring, and your certificate.
+            <MessageSquare size={12} className="mr-1 inline" /> Every lesson opens and teaches inside Bermi AI chat.
           </p>
         )}
       </div>
