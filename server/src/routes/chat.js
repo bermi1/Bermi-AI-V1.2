@@ -172,6 +172,12 @@ async function learningContext(userId, message, conversationTitle, study) {
   // request can be resolved to an actual video_url, without naming it.
   let progressBlock = ''
   let curriculumBlock = ''
+  // The real name of whatever this conversation is actually about, once
+  // confidently known — used in place of the raw conversation title (which
+  // is just the user's first message, verbatim) when recording study
+  // progress, so "topics studied" shows "Introduction to Bookkeeping"
+  // instead of "i'd like to enroll in the course introduction to...".
+  let topicTitle = null
   const videoLessons = [] // { course, lesson, nextUp }
   try {
     const enrollments = await storage.listEnrollmentsByUser(userId)
@@ -215,6 +221,7 @@ async function learningContext(userId, message, conversationTitle, study) {
     }
     if (curriculumEntry && curriculumSim >= 0.4) {
       const { course, lessons, progress, kind, stepNoun } = curriculumEntry
+      topicTitle = course.title
       const ordered = [...lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
       const nextLesson = ordered.find((l) => !progress[l.id]?.done)
       const checklist = ordered.map((l, i) => `${progress[l.id]?.done ? '[x]' : '[ ]'} ${i + 1}. ${l.title}`).join('\n')
@@ -273,10 +280,16 @@ async function learningContext(userId, message, conversationTitle, study) {
       const kind = best.kind || 'course'
       const noun = KIND_NOUN[kind] || 'course'
       const verbPast = KIND_VERB_PAST[kind] || 'enrolled'
+      topicTitle = best.title
       try {
         const existing = await storage.getEnrollment(best.id, userId)
         if (existing) {
           note = `Live action: the user is ALREADY ${verbPast} in the ${noun} "${best.title}". Confirm briefly, then continue right here in this chat from where they left off.`
+          // Re-stating "enroll me" on something already joined should still
+          // drop the learner straight into Study Mode (for courses) instead
+          // of requiring them to notice nothing happened and toggle it
+          // manually — same signal the client acts on for a fresh enrollment.
+          enrolled = { courseId: best.id, courseTitle: best.title, kind }
         } else {
           await storage.createEnrollment({
             id: randomUUID(),
@@ -342,7 +355,7 @@ async function learningContext(userId, message, conversationTitle, study) {
     }
   }
 
-  return { block, note, enrolled }
+  return { block, note, enrolled, topicTitle }
 }
 
 function sse(res, payload) {
@@ -569,15 +582,20 @@ chatRouter.post(
       try {
         const mastered = parseMasteredSteps(assistantText)
         if (mastered.length) {
+          // Prefer the real course/program title (resolved above) over the
+          // raw conversation title — the conversation title is just the
+          // user's first message verbatim, which is exactly why "topics
+          // studied" used to show a sentence instead of a real subject.
+          const topic = learn.topicTitle || conversation.title
           if (study) {
-            const result = await awardStudy(req.user.id, conversation.title, mastered)
+            const result = await awardStudy(req.user.id, topic, mastered)
             if (result) sse(res, { type: 'study', ...result })
           }
           // Bridge the mastery/completion signal into the user's actual
           // enrollment/lesson records, so "My Activity" and institution
           // analytics reflect real, demonstrated progress — not just that
           // the conversation moved on.
-          await syncLessonProgress(req.user, conversation.title, mastered)
+          await syncLessonProgress(req.user, topic, mastered)
         }
       } catch {
         /* non-fatal */
