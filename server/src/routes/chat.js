@@ -2,9 +2,9 @@ import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
 import { streamCompletion } from '../openrouter.js'
-import { STUDY_PROMPT, awardStudy, parseMasteredSteps } from '../study.js'
+import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
-import { getMemory, remember } from '../memory.js'
+import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
 
 export const chatRouter = Router()
@@ -435,6 +435,12 @@ chatRouter.post('/chat', async (req, res, next) => {
       // it — never blocks or affects the response already sent.
       remember(req.user.id, message, assistantText)
 
+      // Fire-and-forget: at most once every 24h, fold this person's broader
+      // learning activity (courses, mastered topics, level/streak) into a
+      // deeper memory consolidation than the lightweight per-message merge
+      // above can see — never blocks or affects the response already sent.
+      maybeDeepConsolidate(req.user.id)
+
       // Gamify Study Mode — but only for real progress: XP is granted solely
       // when the tutor's own reply just confirmed mastery of a lesson (its
       // "✅ **Mastered:** …" marker), never for the act of exchanging a
@@ -445,6 +451,11 @@ chatRouter.post('/chat', async (req, res, next) => {
           if (mastered.length) {
             const result = await awardStudy(req.user.id, conversation.title, mastered)
             if (result) sse(res, { type: 'study', ...result })
+            // Bridge the same mastery signal into the learner's actual
+            // enrollment/lesson records, so "My learning" and institution
+            // analytics reflect real, demonstrated progress — not just that
+            // the conversation moved on to another topic.
+            await syncLessonProgress(req.user, conversation.title, mastered)
           }
         } catch {
           /* non-fatal */

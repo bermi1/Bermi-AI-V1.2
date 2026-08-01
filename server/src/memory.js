@@ -1,5 +1,6 @@
 import { storage } from './storage/index.js'
 import { complete } from './openrouter.js'
+import { getStudyStats } from './study.js'
 
 // Cross-conversation memory: a compact, running summary of who this person
 // is and what they care about, carried into EVERY conversation — not just
@@ -46,6 +47,77 @@ export function remember(userId, userMessage, assistantMessage) {
             content:
               `Current memory:\n${current || '(empty — nothing remembered yet)'}\n\n` +
               `Latest exchange:\nUser: ${userMessage.slice(0, 2000)}\nAssistant: ${(assistantMessage || '').slice(0, 2000)}`,
+          },
+        ],
+      })
+      const updated = (raw || '').trim().slice(0, MAX_MEMORY_CHARS)
+      if (updated) await storage.setSetting(memoryKey(userId), updated)
+    } catch {
+      /* best-effort — never surfaces to the user */
+    }
+  })()
+}
+
+// "Hyper memory": the per-exchange merge above only ever sees ONE message at
+// a time, so it can miss the bigger picture — what someone is actually
+// learning, how far they've gotten, what they've mastered. At most once
+// every 24h, fold in a snapshot of their broader learning activity (enrolled
+// courses, real mastered topics, level/streak) so the profile stays current
+// with what Bermi has genuinely learned about them lately, not just chat
+// small talk. Self-paced by a stored timestamp rather than a cron job, since
+// it only needs to happen the next time an active user shows up anyway.
+const deepConsolidationKey = (userId) => `u:${userId}:memory_deep_at`
+const DEEP_CONSOLIDATION_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+export function maybeDeepConsolidate(userId) {
+  ;(async () => {
+    try {
+      const lastRaw = await storage.getSetting(deepConsolidationKey(userId))
+      const last = lastRaw ? Number(lastRaw) : 0
+      if (Date.now() - last < DEEP_CONSOLIDATION_INTERVAL_MS) return
+      // Claim the slot immediately so concurrent requests from the same user
+      // can't both trigger a run before this one finishes.
+      await storage.setSetting(deepConsolidationKey(userId), String(Date.now()))
+
+      const [current, stats, enrollments] = await Promise.all([
+        getMemory(userId),
+        getStudyStats(userId),
+        storage.listEnrollmentsByUser(userId),
+      ])
+
+      const courseLines = []
+      for (const e of enrollments.slice(0, 20)) {
+        const course = await storage.getCourse(e.course_id)
+        if (course) courseLines.push(`- "${course.title}": ${e.status}${e.score != null ? `, avg ${e.score}%` : ''}`)
+      }
+      const topicLines = Object.entries(stats.topics || {})
+        .slice(0, 15)
+        .map(([topic, t]) => `- ${topic}: ${t.count} step(s) mastered`)
+
+      if (!courseLines.length && !topicLines.length) return // nothing new to fold in
+
+      const raw = await complete({
+        model: 'bermi-fast',
+        maxTokens: 900,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You maintain a persistent, evolving profile of one person across everything they do in this app — ' +
+              'not just chat, but their learning activity too. Given the CURRENT PROFILE and a snapshot of their ' +
+              'recent learning activity, output an UPDATED profile: fold in durable new patterns (what they are ' +
+              'learning, how far they have gotten, what they have genuinely mastered, how they learn), quietly ' +
+              'drop anything stale or superseded, and never just append. Plain factual notes, under 450 words. ' +
+              'Output ONLY the updated profile text. If nothing here changes the picture, output the current ' +
+              'profile unchanged.',
+          },
+          {
+            role: 'user',
+            content:
+              `Current profile:\n${current || '(empty — nothing remembered yet)'}\n\n` +
+              `Learning snapshot:\nLevel ${stats.level}, ${stats.xp} XP, ${stats.streak}-day streak.\n\n` +
+              `Enrolled courses:\n${courseLines.join('\n') || '(none)'}\n\n` +
+              `Recently mastered:\n${topicLines.join('\n') || '(none)'}`,
           },
         ],
       })

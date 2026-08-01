@@ -617,9 +617,11 @@ export const learnLessonStudy = (lessonId: string) =>
     json<{ lesson: Lesson; enrollment: Enrollment }>(r),
   )
 
+// Correct answers are never sent to the client — grading happens server-side
+// via applyLessonCompletion.
 export const learnLessonQuiz = (lessonId: string) =>
   apiFetch(`/api/learn/lessons/${lessonId}/quiz`, undefined, 45_000).then((r) =>
-    json<{ questions: QuizQuestion[]; key: number[] }>(r),
+    json<{ questions: QuizQuestion[] }>(r),
   )
 
 export const learnCompleteLesson = (lessonId: string, score?: number) =>

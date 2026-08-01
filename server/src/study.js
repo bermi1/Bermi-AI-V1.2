@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { storage } from './storage/index.js'
 
 const KEY = (userId) => `u:${userId}:study_stats`
@@ -198,3 +199,114 @@ Gamified style:
 Always end your turn with a question or a task so the learner stays active.`
 
 export const BADGE_LABELS = Object.fromEntries(BADGES.map((b) => [b.id, b.label]))
+
+// ---------------------------------------------------------------------------
+// Real evaluation, not just "moved on": marking a structured lesson complete
+// (score + progress + certificate) lives here, shared by the explicit
+// /learn/lessons/:id/complete endpoint AND the Study Mode chat bridge below —
+// one honest completion path instead of two.
+// ---------------------------------------------------------------------------
+
+export async function applyLessonCompletion(user, lessonId, score) {
+  const lesson = await storage.getLesson(lessonId)
+  if (!lesson) return null
+  const enrollment = await storage.getEnrollment(lesson.course_id, user.id)
+  if (!enrollment) return null
+  if (enrollment.progress?.[lessonId]?.done) return { enrollment, certificate: null }
+
+  const progress = { ...(enrollment.progress || {}) }
+  progress[lessonId] = { done: true, score: typeof score === 'number' ? Math.round(score) : undefined }
+
+  const lessons = await storage.listLessons(lesson.course_id)
+  const allDone = lessons.length > 0 && lessons.every((l) => progress[l.id]?.done)
+  const scores = lessons.map((l) => progress[l.id]?.score).filter((s) => typeof s === 'number')
+  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+
+  const patch = { status: allDone ? 'completed' : 'enrolled', progress, score: avg }
+  if (allDone) patch.completed_at = new Date().toISOString()
+  const updated = await storage.updateEnrollment(enrollment.id, patch)
+
+  let certificate = null
+  if (allDone) {
+    const course = await storage.getCourse(lesson.course_id)
+    const inst = await storage.getInstitution(course.institution_id)
+    const code = 'BC-' + randomBytes(5).toString('hex').toUpperCase()
+    certificate = await storage.createCertificate({
+      code,
+      course_id: course.id,
+      user_id: user.id,
+      learner_name: user.name,
+      course_title: course.title,
+      institution_name: inst?.name || 'Bermi',
+      score: avg,
+      issued_at: new Date().toISOString(),
+    })
+  }
+  return { enrollment: updated, certificate }
+}
+
+const normalizeTitle = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+// How confidently a mastered-step label (the tutor's own free text) names a
+// specific stored lesson title. Direct containment is a strong signal;
+// otherwise fall back to how much of the shorter title's meaningful words
+// appear in the other.
+function titleSimilarity(a, b) {
+  const na = normalizeTitle(a)
+  const nb = normalizeTitle(b)
+  if (!na || !nb) return 0
+  if (na === nb) return 1
+  if (na.includes(nb) || nb.includes(na)) return 0.85
+  const wa = new Set(na.split(' ').filter((w) => w.length > 2))
+  const wb = new Set(nb.split(' ').filter((w) => w.length > 2))
+  if (!wa.size || !wb.size) return 0
+  let overlap = 0
+  for (const w of wa) if (wb.has(w)) overlap++
+  return overlap / Math.min(wa.size, wb.size)
+}
+
+/**
+ * Bridges Study Mode's freeform mastery signal into the structured
+ * enrollment/lesson records that power "My learning", institution analytics,
+ * and certificates — so progress shown there reflects lessons the learner
+ * actually demonstrated understanding of in chat, not just conversation
+ * turns going by. Only writes when a mastered label confidently matches a
+ * specific not-yet-done lesson in one of the learner's active enrollments;
+ * an ambiguous or unmatched label is left alone rather than guessed at.
+ */
+export async function syncLessonProgress(user, topicTitle, masteredLabels) {
+  if (!masteredLabels?.length) return
+  try {
+    const enrollments = (await storage.listEnrollmentsByUser(user.id)).filter((e) => e.status !== 'completed')
+    if (!enrollments.length) return
+
+    const withCourses = []
+    for (const enr of enrollments) {
+      const course = await storage.getCourse(enr.course_id)
+      if (course) withCourses.push({ enr, course })
+    }
+    // Try the enrollment whose course best matches the conversation's own
+    // topic first, so a shared lesson-name word doesn't match the wrong course.
+    withCourses.sort((a, b) => titleSimilarity(topicTitle, b.course.title) - titleSimilarity(topicTitle, a.course.title))
+
+    for (const label of masteredLabels) {
+      let best = null
+      for (const { enr, course } of withCourses) {
+        const lessons = await storage.listLessons(course.id)
+        for (const lesson of lessons) {
+          if (enr.progress?.[lesson.id]?.done) continue
+          const sim = titleSimilarity(label, lesson.title)
+          if (sim >= 0.5 && (!best || sim > best.sim)) best = { lesson, sim }
+        }
+      }
+      if (best) await applyLessonCompletion(user, best.lesson.id, 100)
+    }
+  } catch {
+    /* best-effort — a sync miss must never affect the chat response */
+  }
+}

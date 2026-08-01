@@ -4,6 +4,7 @@ import { storage } from '../storage/index.js'
 import { complete } from '../openrouter.js'
 import { renderDocument } from '../doc-render.js'
 import { requireAuth } from '../auth.js'
+import { applyLessonCompletion } from '../study.js'
 
 export const learnRouter = Router()
 
@@ -681,52 +682,25 @@ learnRouter.get('/learn/lessons/:id/quiz', async (req, res, next) => {
         { q: `What is the main focus of "${lesson.title}"?`, options: ['The core topic of this lesson', 'An unrelated subject', 'None of these', 'Not covered'], answer: 0 },
       ]
     }
-    // Strip answers before sending to the client; keep them server-side via index echo.
-    res.json({ questions: questions.map((x) => ({ q: x.q, options: x.options })), key: questions.map((x) => x.answer) })
+    // Never send correct answers to the client — that would make the quiz
+    // provable by nothing but reading the response. Grading happens
+    // server-side against a lesson's stored content whenever completion is
+    // recorded (see applyLessonCompletion / Study Mode's chat evaluation).
+    res.json({ questions: questions.map((x) => ({ q: x.q, options: x.options })) })
   } catch (err) {
     next(err)
   }
 })
 
 // Mark a lesson complete (optionally with a quiz score), and issue a certificate
-// when every lesson is done.
+// when every lesson is done. Shared logic lives in study.js so Study Mode's
+// chat-based evaluation records the exact same way.
 learnRouter.post('/learn/lessons/:id/complete', async (req, res, next) => {
   try {
-    const lesson = await storage.getLesson(req.params.id)
-    if (!lesson) return res.status(404).json({ error: 'Lesson not found' })
-    const enrollment = await storage.getEnrollment(lesson.course_id, req.user.id)
-    if (!enrollment) return res.status(403).json({ error: 'Enroll first' })
-
-    const score = typeof req.body?.score === 'number' ? Math.round(req.body.score) : undefined
-    const progress = { ...(enrollment.progress || {}) }
-    progress[lesson.id] = { done: true, score }
-
-    const lessons = await storage.listLessons(lesson.course_id)
-    const allDone = lessons.length > 0 && lessons.every((l) => progress[l.id]?.done)
-    const scores = lessons.map((l) => progress[l.id]?.score).filter((s) => typeof s === 'number')
-    const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
-
-    const patch = { status: allDone ? 'completed' : 'enrolled', progress, score: avg }
-    if (allDone) patch.completed_at = new Date().toISOString()
-    const updated = await storage.updateEnrollment(enrollment.id, patch)
-
-    let certificate = null
-    if (allDone) {
-      const course = await storage.getCourse(lesson.course_id)
-      const inst = await storage.getInstitution(course.institution_id)
-      const code = 'BC-' + randomBytes(5).toString('hex').toUpperCase()
-      certificate = await storage.createCertificate({
-        code,
-        course_id: course.id,
-        user_id: req.user.id,
-        learner_name: req.user.name,
-        course_title: course.title,
-        institution_name: inst?.name || 'Bermi',
-        score: avg,
-        issued_at: new Date().toISOString(),
-      })
-    }
-    res.json({ enrollment: updated, certificate })
+    const score = typeof req.body?.score === 'number' ? req.body.score : undefined
+    const result = await applyLessonCompletion(req.user, req.params.id, score)
+    if (!result) return res.status(403).json({ error: 'Enroll first' })
+    res.json(result)
   } catch (err) {
     next(err)
   }
