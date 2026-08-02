@@ -19,6 +19,15 @@ function parseKeys(raw) {
     .filter(Boolean)
 }
 
+// Numbered env var slots (BASE, BASE_2, BASE_3, ...) rather than a fixed
+// count — adding another free-tier account's key to widen the quota pool
+// should never require a code change, just one more Vercel env var.
+function numberedEnvKeys(base, max = 20) {
+  const names = [base]
+  for (let i = 2; i <= max; i++) names.push(`${base}_${i}`)
+  return names
+}
+
 async function envOrSetting(envKeys, settingKey) {
   const keys = envKeys.flatMap((k) => parseKeys(process.env[k]))
   if (keys.length) return keys
@@ -64,10 +73,7 @@ const CEREBRAS_MODELS = {
 }
 
 async function openrouterProvider() {
-  const keys = await envOrSetting(
-    ['OPENROUTER_API_KEY', 'OPENROUTER_API_KEY_2', 'OPENROUTER_API_KEY_3', 'OPENROUTER_API_KEY_4'],
-    'openrouter_api_key',
-  )
+  const keys = await envOrSetting(numberedEnvKeys('OPENROUTER_API_KEY'), 'openrouter_api_key')
   if (!keys.length) return null
   return {
     id: 'openrouter',
@@ -92,7 +98,7 @@ async function openrouterProvider() {
 }
 
 async function groqProvider() {
-  const keys = await envOrSetting(['GROQ_API_KEY', 'GROQ_API_KEY_2'], 'groq_api_key')
+  const keys = await envOrSetting(numberedEnvKeys('GROQ_API_KEY'), 'groq_api_key')
   if (!keys.length) return null
   return {
     id: 'groq',
@@ -111,7 +117,7 @@ async function groqProvider() {
 }
 
 async function cerebrasProvider() {
-  const keys = await envOrSetting(['CEREBRAS_API_KEY'], 'cerebras_api_key')
+  const keys = await envOrSetting(numberedEnvKeys('CEREBRAS_API_KEY'), 'cerebras_api_key')
   if (!keys.length) return null
   return {
     id: 'cerebras',

@@ -41,7 +41,11 @@ const BASE_PROMPT =
   'Optionally set the range with a first line like `# x: -10..10`. ' +
   'To play a course video, add a fenced code block with the language `video` containing `url: <link>` and ' +
   'optionally `title: <text>` on their own lines — Bermi renders it as an inline player with captions when ' +
-  'available. Only ever use a real video_url given to you in context; never fabricate one.'
+  'available. Only ever do this when a real video_url for the CURRENT lesson is explicitly given to you in ' +
+  "context below; never fabricate one. Most lessons have no video at all — this is completely normal, especially " +
+  "for a self-built/AI-generated course, which never has one. Do not mention, offer, or ask about a video unless " +
+  "one is actually present in context for what's being discussed right now; a lesson with no video is a non-issue, " +
+  'not something to bring up or apologize for.'
 
 /**
  * System prompt = base + user personalization + enabled brains. The company
@@ -366,14 +370,29 @@ async function learningContext(user, message, conversationTitle, study) {
   if (!enrolled && !ENROLL_RE.test(message) && BUILD_RE.test(message)) {
     const kind = guessOfferingKind(message)
     const stepNoun = KIND_STEP_NOUN[kind]
-    if (!checkRateLimit(`chat-build:${userId}`, { windowMs: 10 * 60_000, max: 6 })) {
+    // Building blind from "build me a course" alone produces something
+    // generic and unmoored — the learner should first say what it should be
+    // about and what they actually want to achieve by it, the same way the
+    // guided wizard asks for a topic and objectives before drafting anything.
+    // Only skip that question when the request already carries real content
+    // beyond the bare trigger phrase (a topic, and ideally a goal).
+    const substance = message.replace(BUILD_RE, ' ').replace(/\b(a|an|the|me|please|for|to|i|want|would|like)\b/gi, ' ').trim()
+    if (substance.length < 15) {
+      note =
+        `Live action: the user wants you to build a ${kind} but hasn't said what it should be about or what they want ` +
+        `to achieve from it. Do NOT build anything yet. Ask directly: what should it cover, and what's their aim — ` +
+        `what do they want to be able to do or understand by the end? Build it only once they answer.`
+    } else if (!checkRateLimit(`chat-build:${userId}`, { windowMs: 10 * 60_000, max: 6 })) {
       note = `Live action: the user wants to build a ${kind}, but they've hit the AI-generation limit for the next few minutes. Tell them plainly and ask them to try again shortly.`
     } else {
       try {
         const result = await quickBuildPersonalOffering(user, { topic: message, kind })
+        const objectives = (result.course.objectives || '').trim()
         note =
           `Live action: you HAVE NOW built a brand-new ${kind} called "${result.course.title}" from the user's own request, written it out in full (${result.lessons.length} ${stepNoun}${result.lessons.length === 1 ? '' : 's'}), and enrolled them in it immediately — it is already saved in their "My Activity", no dashboard or portal step needed. ` +
-          `Confirm warmly, briefly describe what it covers, then immediately begin with the first ${stepNoun} right here in this chat. State only what actually happened.`
+          (objectives ? `Its drafted aim/objectives:\n${objectives}\n` : '') +
+          `Confirm warmly, clearly state what it aims to help them achieve (from the objectives above), briefly ` +
+          `describe what it covers, then immediately begin with the first ${stepNoun} right here in this chat. State only what actually happened.`
         enrolled = { courseId: result.course.id, courseTitle: result.course.title, kind }
       } catch (e) {
         note = `Live action: could not build that ${kind} right now (${e.message}). Apologize briefly, ask for a little more detail on what it should cover, and offer to try again right here in chat.`
