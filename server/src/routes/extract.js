@@ -160,6 +160,15 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
     if (mimetype === 'application/pdf' || lower.endsWith('.pdf')) {
       await ensurePdfPolyfills()
       const { PDFParse } = await import('pdf-parse')
+      // pdfjs-dist's Node "fake worker" loads its message-handling code via a
+      // bare `import("./pdf.worker.mjs")` relative to pdf.mjs itself — a
+      // dynamically-computed specifier that Vercel's file tracer (@vercel/nft)
+      // doesn't follow, so the worker file was missing from the deployed
+      // bundle ("Cannot find module .../pdf.worker.mjs") even though the path
+      // resolution itself was correct. Pinning an absolute, explicitly
+      // resolved path removes any ambiguity; vercel.json's `includeFiles` is
+      // what actually ensures the file ships in the bundle.
+      PDFParse.setWorker(import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs'))
       const parser = new PDFParse({ data: new Uint8Array(buffer) })
       try {
         text = (await parser.getText()).text
