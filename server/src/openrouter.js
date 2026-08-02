@@ -40,6 +40,35 @@ const COOLDOWN_MS = 60_000
 const isExhausted = (status) => status === 401 || status === 402 || status === 403 || status === 429
 const cooldownKey = (providerId, key) => `${providerId}:${key}`
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * A single provider call, with ONE short-delay retry on a thrown (network-
+ * level: DNS, TLS, dropped connection) failure — genuinely transient, unlike
+ * an exhausted key or a real HTTP error, so it's worth catching before
+ * giving up on that attempt and burning through the rest of the fallback
+ * chain for something that likely would have worked a moment later anyway.
+ * HTTP error responses (res.ok === false) are returned as-is, not retried
+ * here — the caller's own fallback loop already moves on to the next
+ * provider/model/key for those.
+ */
+async function fetchAttempt(provider, key, realModel, messages, { stream, maxTokens, web }, signal) {
+  const doFetch = () =>
+    fetch(provider.url, {
+      method: 'POST',
+      headers: provider.headers(key),
+      body: JSON.stringify(provider.body(realModel, messages, { stream, maxTokens, web })),
+      signal,
+    })
+  try {
+    return await doFetch()
+  } catch (err) {
+    if (signal?.aborted) throw err
+    await sleep(300)
+    return doFetch()
+  }
+}
+
 async function errorDetail(res) {
   const fallback = `Model provider error (${res.status})`
   try {
@@ -145,7 +174,7 @@ export async function streamCompletion({ model, messages, signal, web = false })
   const attempts = await buildAttempts(model, { web })
   if (attempts.length === 0) {
     const err = new Error(
-      'No AI provider is configured. Add OPENROUTER_API_KEY, GROQ_API_KEY, GOOGLE_AI_API_KEY, or CEREBRAS_API_KEY on the server.',
+      'No AI provider is configured. Add OPENROUTER_API_KEY, GROQ_API_KEY, or CEREBRAS_API_KEY on the server, or add a key from Admin → AI Providers.',
     )
     err.status = 401
     throw err
@@ -161,17 +190,11 @@ export async function streamCompletion({ model, messages, signal, web = false })
     if (oversizedModels.has(realModel)) continue
     let res
     try {
-      res = await fetch(provider.url, {
-        method: 'POST',
-        headers: provider.headers(key),
-        body: JSON.stringify(provider.body(realModel, messages, { stream: true, web: useWeb })),
-        signal,
-      })
+      res = await fetchAttempt(provider, key, realModel, messages, { stream: true, web: useWeb }, signal)
     } catch (err) {
-      // Network-level failure (DNS, connection refused, timeout — e.g. no
-      // internet, or a local model server that hasn't finished starting up
-      // yet). Not an HTTP error, so there's no status to branch on; just
-      // move on to the next provider/model in the chain.
+      // Still failing after the one retry inside fetchAttempt — treat it as
+      // this attempt's problem, not a reason to give up on every other
+      // provider/model/key in the chain.
       if (signal?.aborted) throw err
       lastErr = err
       continue
@@ -206,11 +229,7 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
     if (oversizedModels.has(realModel)) continue
     let res
     try {
-      res = await fetch(provider.url, {
-        method: 'POST',
-        headers: provider.headers(key),
-        body: JSON.stringify(provider.body(realModel, messages, { stream: false, maxTokens })),
-      })
+      res = await fetchAttempt(provider, key, realModel, messages, { stream: false, maxTokens }, undefined)
     } catch (err) {
       lastErr = err
       continue
