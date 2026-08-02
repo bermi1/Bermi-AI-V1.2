@@ -279,97 +279,118 @@ async function draftOfferingPlan(kind, brief) {
 // FULL course — real drafted lesson content grounded in those answers, not
 // empty stubs — in one step. This is what "build your own course" actually
 // runs after asking its questions; no institutional setup required.
+//
+// Exported (not just used by the HTTP route below) because building your
+// own course was never meant to require the dashboard wizard — the chat
+// agent (chat.js) calls this exact same function when someone just asks
+// for a course/program in plain conversation, so "build me a course on X"
+// works identically whether it came from the guided form or from chat, and
+// lands in "My Activity" the same way either time.
+export async function quickBuildPersonalOffering(user, input = {}) {
+  const {
+    topic,
+    audience = '',
+    level = 'All levels',
+    kind: rawKind = 'course',
+    objectives = '',
+    material = '',
+    avoid = '',
+    event_at: eventAtInput = '',
+    event_location: eventLocationInput = '',
+    title: titleOverride,
+  } = input
+  const kind = OFFERING_KINDS.includes(rawKind) ? rawKind : 'course'
+  if (!topic?.trim()) {
+    const err = new Error(`Tell Bermi what this ${kind} should be about`)
+    err.status = 400
+    throw err
+  }
+
+  const brief =
+    `Topic: ${topic}\n` +
+    (audience ? `Who it's for / their current level: ${audience}\n` : '') +
+    (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
+    (avoid ? `Skip or avoid: ${avoid}\n` : '') +
+    (eventAtInput ? `Date/time: ${eventAtInput}\n` : '') +
+    (eventLocationInput ? `Location/link: ${eventLocationInput}\n` : '') +
+    (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
+
+  let plan = null
+  try {
+    plan = await draftOfferingPlan(kind, brief)
+  } catch (err) {
+    err.status = 502
+    err.message = `Could not draft this: ${err.message}`
+    throw err
+  }
+  if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
+    const err = new Error('Could not draft a complete plan from those answers — try adding more detail.')
+    err.status = 502
+    throw err
+  }
+
+  const workspace = await personalWorkspace(user)
+  const now = new Date().toISOString()
+  const finalTitle = (titleOverride || plan.title || topic).trim()
+  const course = await storage.createCourse({
+    id: randomUUID(),
+    institution_id: workspace.id,
+    title: finalTitle,
+    slug: slugify(finalTitle),
+    summary: String(plan.summary || '').slice(0, 300),
+    description: String(plan.description || ''),
+    cover_emoji: String(plan.cover_emoji || '📘').slice(0, 8),
+    level,
+    published: false,
+    enrollment: 'open',
+    kind,
+    event_at: eventAtInput || plan.event_at || null,
+    event_location: eventLocationInput || plan.event_location || '',
+    objectives: String(plan.objectives || objectives || ''),
+    evaluation: String(plan.evaluation || ''),
+    tracking: '',
+    created_at: now,
+    updated_at: now,
+  })
+
+  const lessons = []
+  for (let i = 0; i < plan.lessons.length; i++) {
+    const l = plan.lessons[i]
+    lessons.push(
+      await storage.createLesson({
+        id: randomUUID(),
+        course_id: course.id,
+        ordinal: i,
+        title: String(l.title || `Lesson ${i + 1}`).slice(0, 120),
+        content: String(l.content || ''),
+        material: '',
+        created_at: now,
+      }),
+    )
+  }
+
+  // Auto-enroll the creator in their own offering so it shows up immediately
+  // in "My Activity" and can be picked up right here in Bermi AI — no portal
+  // visit, no separate enroll step required.
+  const enrollment = await storage.createEnrollment({
+    id: randomUUID(),
+    course_id: course.id,
+    user_id: user.id,
+    status: 'enrolled',
+    progress: {},
+    score: null,
+    enrolled_at: now,
+  })
+
+  return { institution: workspace, course, lessons, enrollment }
+}
+
 learnRouter.post('/learn/my/courses/quick', draftLimiter, async (req, res, next) => {
   try {
-    const {
-      topic,
-      audience = '',
-      level = 'All levels',
-      kind: rawKind = 'course',
-      objectives = '',
-      material = '',
-      avoid = '',
-      event_at: eventAtInput = '',
-      event_location: eventLocationInput = '',
-      title: titleOverride,
-    } = req.body ?? {}
-    const kind = OFFERING_KINDS.includes(rawKind) ? rawKind : 'course'
-    if (!topic?.trim()) return res.status(400).json({ error: `Tell Bermi what this ${kind} should be about` })
-
-    const brief =
-      `Topic: ${topic}\n` +
-      (audience ? `Who it's for / their current level: ${audience}\n` : '') +
-      (objectives ? `What they should be able to do after finishing: ${objectives}\n` : '') +
-      (avoid ? `Skip or avoid: ${avoid}\n` : '') +
-      (eventAtInput ? `Date/time: ${eventAtInput}\n` : '') +
-      (eventLocationInput ? `Location/link: ${eventLocationInput}\n` : '') +
-      (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
-
-    let plan = null
-    try {
-      plan = await draftOfferingPlan(kind, brief)
-    } catch (err) {
-      return res.status(502).json({ error: `Could not draft this: ${err.message}` })
-    }
-    if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
-      return res.status(502).json({ error: 'Could not draft a complete plan from those answers — try adding more detail.' })
-    }
-
-    const workspace = await personalWorkspace(req.user)
-    const now = new Date().toISOString()
-    const finalTitle = (titleOverride || plan.title || topic).trim()
-    const course = await storage.createCourse({
-      id: randomUUID(),
-      institution_id: workspace.id,
-      title: finalTitle,
-      slug: slugify(finalTitle),
-      summary: String(plan.summary || '').slice(0, 300),
-      description: String(plan.description || ''),
-      cover_emoji: String(plan.cover_emoji || '📘').slice(0, 8),
-      level,
-      published: false,
-      enrollment: 'open',
-      kind,
-      event_at: eventAtInput || plan.event_at || null,
-      event_location: eventLocationInput || plan.event_location || '',
-      objectives: String(plan.objectives || objectives || ''),
-      evaluation: String(plan.evaluation || ''),
-      tracking: '',
-      created_at: now,
-      updated_at: now,
-    })
-
-    const lessons = []
-    for (let i = 0; i < plan.lessons.length; i++) {
-      const l = plan.lessons[i]
-      lessons.push(
-        await storage.createLesson({
-          id: randomUUID(),
-          course_id: course.id,
-          ordinal: i,
-          title: String(l.title || `Lesson ${i + 1}`).slice(0, 120),
-          content: String(l.content || ''),
-          material: '',
-          created_at: now,
-        }),
-      )
-    }
-
-    // Auto-enroll the creator in their own offering so it shows up immediately
-    // in "My Activity" and can be picked up right here in Bermi AI — no portal
-    // visit, no separate enroll step required.
-    const enrollment = await storage.createEnrollment({
-      id: randomUUID(),
-      course_id: course.id,
-      user_id: req.user.id,
-      status: 'enrolled',
-      progress: {},
-      score: null,
-      enrolled_at: now,
-    })
-
-    res.status(201).json({ institution: workspace, course, lessons, enrollment })
+    const result = await quickBuildPersonalOffering(req.user, req.body ?? {})
+    res.status(201).json(result)
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
     next(err)
   }
 })

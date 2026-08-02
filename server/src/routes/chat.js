@@ -6,7 +6,8 @@ import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress, title
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
-import { rateLimit } from '../rateLimit.js'
+import { rateLimit, checkRateLimit } from '../rateLimit.js'
+import { quickBuildPersonalOffering } from './learn.js'
 
 export const chatRouter = Router()
 
@@ -102,6 +103,18 @@ const ENROLL_RE =
   /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|registration|rsvp|join|subscribe|get (?:the|a|this) (?:resource|report|guide|material)|download|access (?:the|this))\b/i
 const VIDEO_SUMMARY_RE = /\b(summar(y|ize|ise)|tl;?dr|recap)\b.{0,25}\bvideo\b|\bvideo\b.{0,25}\b(summar(y|ize|ise)|tl;?dr|recap)\b/i
 const VIDEO_PLAY_RE = /\b(play|watch|show|open)\b.{0,25}\bvideo\b/i
+// Building your own course/program was never meant to require the dashboard
+// wizard — someone can just ask for it in plain conversation and Bermi drafts
+// and creates it right here, the same way the guided form does.
+const BUILD_RE = /\b(build|create|make|design|draft)\b.{0,25}\b(course|program|class|curriculum|training|lesson plan)\b/i
+
+function guessOfferingKind(message) {
+  const lower = message.toLowerCase()
+  if (/\b(event|workshop|webinar|briefing|seminar|conference|meetup)\b/.test(lower)) return 'event'
+  if (/\b(program|process|onboarding|walkthrough|initiative|application)\b/.test(lower)) return 'program'
+  if (/\b(resource|guide|report|explainer|faq)\b/.test(lower)) return 'resource'
+  return 'course'
+}
 
 const KIND_NOUN = { course: 'course', program: 'program', event: 'event', resource: 'resource' }
 const KIND_VERB_PAST = { course: 'enrolled', program: 'enrolled', event: 'registered', resource: 'given access to' }
@@ -127,7 +140,8 @@ function formatEventWhen(course) {
  * catalog) and an action note (what the system already did) to append to the
  * system prompt.
  */
-async function learningContext(userId, message, conversationTitle, study) {
+async function learningContext(user, message, conversationTitle, study) {
+  const userId = user.id
   // Keep computing this every turn once a Study Mode session is under way
   // (not just when the user's own wording happens to mention "course" or
   // "lesson"), so the real curriculum below stays grounded throughout —
@@ -269,7 +283,10 @@ async function learningContext(userId, message, conversationTitle, study) {
     '(no quiz needed, a plain confirmation is enough). An EVENT has no steps to teach — just confirm registration, ' +
     'state the date/location clearly, and answer questions about it. A RESOURCE is not stepped through — present ' +
     'its content directly and answer questions about it. Everything happens here in Bermi AI chat — never tell the ' +
-    'user to go to a separate portal (the portal is for organizations managing their offerings, not the public).'
+    'user to go to a separate portal (the portal is for organizations managing their offerings, not the public). ' +
+    'If nothing in the catalog above fits what the user wants, or they directly ask you to build/create/make them ' +
+    'a course or program, you can draft and create a brand-new one for them right here in chat — no dashboard or ' +
+    'form required (see any Live action below when this already happened). Feel free to offer this when relevant.'
 
   let note = ''
   let enrolled = null
@@ -338,6 +355,29 @@ async function learningContext(userId, message, conversationTitle, study) {
     } else {
       note =
         'Live action: the user wants to join/register/get something but did not name an item that matches the catalog. Ask which one, listing 2-3 relevant available items by name and kind.'
+    }
+  }
+
+  // Build-your-own, straight from chat — this was never meant to require the
+  // dashboard wizard. If the user just asks for a course/program to be built
+  // (and isn't already being handled as an enroll/register request above),
+  // draft it with AI and create it for real right now, the same function the
+  // guided form uses, so it lands in "My Activity" identically either way.
+  if (!enrolled && !ENROLL_RE.test(message) && BUILD_RE.test(message)) {
+    const kind = guessOfferingKind(message)
+    const stepNoun = KIND_STEP_NOUN[kind]
+    if (!checkRateLimit(`chat-build:${userId}`, { windowMs: 10 * 60_000, max: 6 })) {
+      note = `Live action: the user wants to build a ${kind}, but they've hit the AI-generation limit for the next few minutes. Tell them plainly and ask them to try again shortly.`
+    } else {
+      try {
+        const result = await quickBuildPersonalOffering(user, { topic: message, kind })
+        note =
+          `Live action: you HAVE NOW built a brand-new ${kind} called "${result.course.title}" from the user's own request, written it out in full (${result.lessons.length} ${stepNoun}${result.lessons.length === 1 ? '' : 's'}), and enrolled them in it immediately — it is already saved in their "My Activity", no dashboard or portal step needed. ` +
+          `Confirm warmly, briefly describe what it covers, then immediately begin with the first ${stepNoun} right here in this chat. State only what actually happened.`
+        enrolled = { courseId: result.course.id, courseTitle: result.course.title, kind }
+      } catch (e) {
+        note = `Live action: could not build that ${kind} right now (${e.message}). Apologize briefly, ask for a little more detail on what it should cover, and offer to try again right here in chat.`
+      }
     }
   }
 
@@ -413,9 +453,12 @@ chatRouter.post(
       return res.status(400).json({ error: 'message is required' })
     }
     // Hybrid RAG: honor an explicit toggle, but also auto-trigger live web
-    // retrieval for questions the trained model plainly can't answer from
-    // memory alone — see needsFreshInfo above.
-    const web = webRequested || needsFreshInfo(message)
+    // retrieval for (a) anything plainly time-sensitive (see needsFreshInfo),
+    // and (b) anything learning-related — deliberately generous here, since
+    // a course/topic being studied should be checked against current,
+    // real-world material rather than taught purely from the trained
+    // model's (dated) knowledge alone.
+    const web = webRequested || needsFreshInfo(message) || study || LEARN_RE.test(message)
 
     // Attached documents are read INTERNALLY: their (OCR'd / parsed) text is
     // folded into this turn's context for the model, but never stored or shown
@@ -464,7 +507,7 @@ chatRouter.post(
     const [systemPromptBase, history, learn] = await Promise.all([
       buildSystemPrompt(req.user.id, study),
       storage.listMessages(conversation.id),
-      learningContext(req.user.id, message, conversation.title, study),
+      learningContext(req.user, message, conversation.title, study),
     ])
     let systemPrompt = systemPromptBase
     if (learn.block) systemPrompt += `\n\n${learn.block}`
