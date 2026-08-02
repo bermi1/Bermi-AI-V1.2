@@ -12,6 +12,7 @@ import { StudioViewer } from './components/StudioViewer'
 import { NicheModal } from './components/NicheModal'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
+import { LandingPage } from './components/LandingPage'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
 import { LearnPortal } from './learn/LearnPortal'
 import { AdminDashboard } from './admin/AdminDashboard'
@@ -36,6 +37,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [verificationRequired, setVerificationRequired] = useState(false)
+  const [showAuth, setShowAuth] = useState(() => new URLSearchParams(window.location.search).has('auth_error'))
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
     try {
@@ -75,7 +77,13 @@ export default function App() {
     )
   }
 
-  if (!user) return <AuthPage onAuthed={checkAuth} />
+  if (!user) {
+    return showAuth ? (
+      <AuthPage onAuthed={checkAuth} onBack={() => setShowAuth(false)} />
+    ) : (
+      <LandingPage onSignIn={() => setShowAuth(true)} onGetStarted={() => setShowAuth(true)} />
+    )
+  }
 
   if (verificationRequired && !user.email_verified) {
     return <VerifyEmailPage user={user} onVerified={setUser} onSignOut={signOut} />

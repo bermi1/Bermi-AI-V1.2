@@ -332,13 +332,6 @@ export const disconnectConnector = (id: string) =>
 
 export const googleAuthUrl = () => '/api/connectors/google/auth'
 
-export const googleLoginUrl = () => '/api/auth/google'
-
-export const authProviders = () =>
-  apiFetch('/api/auth/providers').then((r) =>
-    json<{ provider: 'internal' | 'supabase'; google: boolean }>(r),
-  )
-
 export const resetVibeBrain = () =>
   apiFetch('/api/brains/vibecoding/reset', { method: 'POST' }).then((r) => json<Brain>(r))
 

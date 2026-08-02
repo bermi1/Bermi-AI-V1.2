@@ -201,3 +201,39 @@ body {
   animation: blink-cursor 1s infinite;
   margin-left: 1px;
 }
+
+/* ---------- Landing page ---------- */
+.bermi-dot-field {
+  background-image: radial-gradient(var(--edge-strong) 1px, transparent 1px);
+  background-size: 26px 26px;
+  animation: dot-pan 40s linear infinite;
+}
+@keyframes dot-pan {
+  from { background-position: 0 0; }
+  to { background-position: 260px 130px; }
+}
+
+@keyframes blob-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(2.5%, 4%) scale(1.08); }
+  66% { transform: translate(-3%, -2%) scale(0.95); }
+}
+.bermi-blob {
+  animation: blob-drift 18s ease-in-out infinite;
+}
+
+@keyframes bermi-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.bermi-float {
+  animation: bermi-float 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bermi-dot-field,
+  .bermi-blob,
+  .bermi-float {
+    animation: none;
+  }
+}
