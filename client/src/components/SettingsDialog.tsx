@@ -3,13 +3,17 @@ import {
   Check,
   Database,
   Download,
+  Loader2,
   LogOut,
+  Mic,
   Monitor,
   Moon,
   Palette,
   Plug,
   Plus,
+  ShieldCheck,
   Sparkles,
+  Square,
   Sun,
   Trash2,
   User,
@@ -18,10 +22,11 @@ import {
 } from 'lucide-react'
 import { inputCls, labelCls, primaryBtnCls } from './Modal'
 import { useTheme, type ThemePreference } from '../lib/theme'
+import { useVoiceRecorder } from '../lib/useVoiceRecorder'
 import * as api from '../lib/api'
 import type { Connector, ModelOption, Profile, SettingsInfo } from '../lib/types'
 
-type Tab = 'profile' | 'appearance' | 'models' | 'connectors' | 'data'
+type Tab = 'profile' | 'appearance' | 'models' | 'voice' | 'connectors' | 'data'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -38,6 +43,7 @@ const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'models', label: 'Models', icon: Cpu },
+  { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'connectors', label: 'Connectors', icon: Plug },
   { id: 'data', label: 'API & Data', icon: Database },
 ]
@@ -122,6 +128,7 @@ export function SettingsDialog({
               onModelsChanged={onModelsChanged}
             />
           )}
+          {tab === 'voice' && <VoiceTab />}
           {tab === 'connectors' && <ConnectorsTab />}
           {tab === 'data' && <DataTab />}
         </div>
@@ -384,6 +391,229 @@ function ModelsTab({
           </button>
         </div>
         {error && <p className="mt-2 text-[13px] text-red-500">{error}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ---------------- Voice cloning ----------------
+
+const ACTIVE_VOICE_KEY = 'bermi-tts-voice'
+
+function VoiceTab() {
+  const [voices, setVoices] = useState<api.VoiceClone[] | null>(null)
+  const [activeVoiceId, setActiveVoiceId] = useState(() => localStorage.getItem(ACTIVE_VOICE_KEY) || '')
+  const [phrase, setPhrase] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [consentBlob, setConsentBlob] = useState<Blob | null>(null)
+  const [title, setTitle] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = () => api.listVoiceClones().then(setVoices).catch(() => setVoices([]))
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  useEffect(() => {
+    if (!expiresAt) return
+    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [expiresAt])
+
+  const recorder = useVoiceRecorder(async (blob) => {
+    setConsentBlob(blob)
+  })
+
+  const getPhrase = async () => {
+    setError(null)
+    setConsentBlob(null)
+    try {
+      const r = await api.requestVoiceConsentPhrase()
+      setPhrase(r.phrase)
+      setExpiresAt(Date.now() + r.expiresInSeconds * 1000)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const create = async () => {
+    if (!consentBlob) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.createVoiceClone({ title: title.trim() || 'My voice', consent: consentBlob })
+      setPhrase(null)
+      setExpiresAt(null)
+      setConsentBlob(null)
+      setTitle('')
+      refresh()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    if (!confirm('Delete this cloned voice? This cannot be undone.')) return
+    await api.deleteVoiceClone(id)
+    if (activeVoiceId === id) {
+      localStorage.removeItem(ACTIVE_VOICE_KEY)
+      setActiveVoiceId('')
+    }
+    refresh()
+  }
+
+  const setActive = (id: string, fishModelId: string) => {
+    if (activeVoiceId === id) {
+      localStorage.removeItem(ACTIVE_VOICE_KEY)
+      setActiveVoiceId('')
+    } else {
+      localStorage.setItem(ACTIVE_VOICE_KEY, fishModelId)
+      setActiveVoiceId(id)
+    }
+  }
+
+  const expired = phrase != null && secondsLeft <= 0
+
+  return (
+    <div>
+      <SectionTitle
+        title="Voice"
+        subtitle="Clone your own voice so Bermi can speak replies as you — gated by a spoken consent check, since a cloned voice is powerful enough to misuse."
+      />
+
+      <div className="mb-6 flex items-start gap-2.5 rounded-xl bg-primary-soft/60 px-4 py-3.5 text-[12.5px] leading-relaxed text-ink-muted">
+        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
+        <span>
+          Only clone your own voice, or a voice you have explicit permission to use. Every clone requires you to
+          speak a fresh, random phrase out loud right before creation — Bermi verifies it was actually said, so a
+          clone can't be made from a recording of someone else found elsewhere.
+        </span>
+      </div>
+
+      <div className="rounded-2xl border border-edge bg-surface p-4">
+        <h4 className="mb-3 text-[13.5px] font-semibold">Create a cloned voice</h4>
+
+        {!phrase ? (
+          <button onClick={getPhrase} className={primaryBtnCls}>
+            Get a consent phrase
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-edge bg-surface-raised px-4 py-3">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-ink-faint">Read this out loud</p>
+              <p className="mt-1 text-[15px] font-medium text-ink">"{phrase}"</p>
+              <p className={`mt-1 text-[11.5px] ${expired ? 'text-rose-500' : 'text-ink-faint'}`}>
+                {expired ? 'Expired — get a new phrase.' : `Expires in ${secondsLeft}s`}
+              </p>
+            </div>
+
+            {expired ? (
+              <button onClick={getPhrase} className={primaryBtnCls}>
+                Get a new phrase
+              </button>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => (recorder.phase === 'recording' ? recorder.stop() : recorder.start())}
+                  disabled={recorder.phase === 'processing'}
+                  className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                    recorder.phase === 'recording'
+                      ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-900 dark:bg-rose-950/40'
+                      : 'border-edge text-ink-muted hover:bg-surface-sunken'
+                  }`}
+                >
+                  {recorder.phase === 'recording' ? <Square size={14} fill="currentColor" /> : <Mic size={14} />}
+                  {recorder.phase === 'recording' ? 'Stop' : consentBlob ? 'Record again' : 'Record myself saying it'}
+                </button>
+                {consentBlob && recorder.phase !== 'recording' && (
+                  <span className="text-[12.5px] text-emerald-600 dark:text-emerald-400">Recorded ✓</span>
+                )}
+              </div>
+            )}
+
+            {consentBlob && !expired && (
+              <div className="flex gap-2">
+                <input
+                  className={inputCls}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Name this voice — e.g. My voice"
+                />
+                <button
+                  onClick={create}
+                  disabled={busy}
+                  className={primaryBtnCls + ' flex shrink-0 items-center gap-1.5'}
+                >
+                  {busy && <Loader2 size={14} className="animate-spin" />}
+                  {busy ? 'Creating…' : 'Create voice'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {error && <p className="mt-3 text-[13px] text-red-500">{error}</p>}
+      </div>
+
+      <div className="mt-6">
+        <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Your cloned voices</h4>
+        {!voices ? (
+          <p className="text-[13px] text-ink-faint">Loading…</p>
+        ) : voices.length === 0 ? (
+          <p className="text-[13px] text-ink-faint">None yet — create one above to hear replies in your own voice.</p>
+        ) : (
+          <div className="space-y-2">
+            {voices.map((v) => {
+              const active = activeVoiceId === v.id
+              return (
+                <div
+                  key={v.id}
+                  className={`flex items-center justify-between rounded-xl border px-3.5 py-2.5 ${
+                    active ? 'border-primary bg-primary-soft' : 'border-edge bg-surface'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2 text-[13.5px] font-medium">
+                      {v.title}
+                      {active && (
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11.5px] text-ink-faint">
+                      Created {new Date(v.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setActive(v.id, v.fishModelId)}
+                      className={`rounded-lg px-2.5 py-1.5 text-[12px] font-medium ${
+                        active
+                          ? 'text-primary hover:bg-surface-raised'
+                          : 'text-ink-muted hover:bg-surface-sunken'
+                      }`}
+                    >
+                      {active ? 'In use' : 'Use for replies'}
+                    </button>
+                    <button
+                      onClick={() => remove(v.id)}
+                      className="rounded-lg p-1.5 text-ink-faint hover:text-red-500"
+                      aria-label={`Delete ${v.title}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

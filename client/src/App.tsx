@@ -3,6 +3,7 @@ import { LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-reac
 import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
+import { VoiceMode } from './components/VoiceMode'
 import { DashboardPage } from './components/DashboardPage'
 import { SettingsDialog } from './components/SettingsDialog'
 import { InvoiceForm } from './components/InvoiceForm'
@@ -142,7 +143,43 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [streaming, setStreaming] = useState(false)
   const [chatError, setChatError] = useState<{ message: string; retryAfter: number | null } | null>(null)
   const [quota, setQuota] = useState<api.ChatQuota | null>(null)
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false)
+  const [voiceSpeaking, setVoiceSpeaking] = useState(false)
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Voice Mode's spoken half: once a reply finishes streaming (see onDone in
+  // `send` below), read it aloud automatically — the whole point of hands-free
+  // mode is never touching the screen between turns. Strips Markdown/code
+  // fences first so the voice reads prose, not literal punctuation.
+  const playVoiceReply = useCallback(async (text: string) => {
+    const speakable = text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/[#*_`>~-]/g, ' ')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!speakable) return
+    try {
+      setVoiceSpeaking(true)
+      const voice = localStorage.getItem('bermi-tts-voice') || undefined
+      const blob = await api.synthesizeSpeech(speakable.slice(0, 2000), { voice })
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      voiceAudioRef.current = audio
+      audio.onended = () => setVoiceSpeaking(false)
+      audio.onerror = () => setVoiceSpeaking(false)
+      await audio.play()
+    } catch {
+      setVoiceSpeaking(false)
+    }
+  }, [])
+
+  const closeVoiceMode = useCallback(() => {
+    voiceAudioRef.current?.pause()
+    setVoiceSpeaking(false)
+    setVoiceModeOpen(false)
+  }, [])
 
   // The shared hourly AI-message pool this user is drawing from (see
   // server routes/chat.js#quotaGate) — refreshed after every send so the
@@ -350,11 +387,12 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               return next
             })
           },
-          onDone: () => {
+          onDone: (fullText) => {
             setStreaming(false)
             setChatSteps([])
             refreshConversations()
             refreshQuota()
+            if (voiceModeOpen && fullText.trim()) playVoiceReply(fullText)
           },
           onError: (message, retryAfter) => {
             setStreaming(false)
@@ -372,7 +410,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         abort.signal,
       )
     },
-    [activeId, selectedModel, refreshConversations, refreshQuota],
+    [activeId, selectedModel, refreshConversations, refreshQuota, voiceModeOpen, playVoiceReply],
   )
 
   const stop = useCallback(() => {
@@ -537,7 +575,19 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               study={study}
               onToggleStudy={setStudy}
               quota={quota}
+              onOpenVoiceMode={() => setVoiceModeOpen(true)}
             />
+            {voiceModeOpen && (
+              <VoiceMode
+                onClose={closeVoiceMode}
+                onTranscript={(text) => send(text)}
+                thinking={streaming}
+                speaking={voiceSpeaking}
+                lastAssistantText={
+                  messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : ''
+                }
+              />
+            )}
           </>
         ) : (
           <DashboardPage

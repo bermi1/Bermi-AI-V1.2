@@ -287,7 +287,8 @@ function MessageActions({
     }
     setSpeaking('loading')
     try {
-      const blob = await synthesizeSpeech(speakableText().slice(0, 2000))
+      const voice = localStorage.getItem('bermi-tts-voice') || undefined
+      const blob = await synthesizeSpeech(speakableText().slice(0, 2000), { voice })
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
       audioRef.current = audio

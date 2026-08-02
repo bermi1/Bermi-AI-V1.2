@@ -13,6 +13,58 @@ const MAX_CHARS = 24_000
 const TEXT_TYPES = /^(text\/|application\/(json|xml|csv|x-yaml))/
 const IMAGE_TYPES = /^image\/(png|jpe?g|webp|bmp|tiff?)/
 
+// pdf-parse pulls in pdfjs-dist's "legacy" (Node) build, which — at IMPORT
+// time, unconditionally — does `const SCALE_MATRIX = new DOMMatrix();` for
+// its canvas-rendering module. pdfjs tries to self-polyfill DOMMatrix/Path2D/
+// ImageData from the optional native `@napi-rs/canvas` package, but that's a
+// prebuilt binary; on a serverless platform (wrong arch/libc, or the
+// dependency tracer not bundling the .node file) it silently fails to load,
+// leaving those globals undefined — so just IMPORTING pdf-parse throws
+// "DOMMatrix is not defined" before a single byte of the PDF is read. We only
+// ever call getText() (never render to a real canvas), so correctness of the
+// polyfill doesn't matter — it only needs to exist so pdfjs's module-load-time
+// code and internal transform math don't crash.
+let pdfPolyfilled = false
+async function ensurePdfPolyfills() {
+  if (pdfPolyfilled || globalThis.DOMMatrix) {
+    pdfPolyfilled = true
+    return
+  }
+  try {
+    const canvas = await import('@napi-rs/canvas')
+    globalThis.DOMMatrix = canvas.DOMMatrix
+    globalThis.Path2D = canvas.Path2D
+    globalThis.ImageData = canvas.ImageData
+  } catch {
+    class StubDOMMatrix {
+      constructor(init) {
+        if (Array.isArray(init) && init.length >= 6) [this.a, this.b, this.c, this.d, this.e, this.f] = init
+        else Object.assign(this, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })
+      }
+      multiply() { return this }
+      multiplySelf() { return this }
+      preMultiplySelf() { return this }
+      invertSelf() { return this }
+      translate() { return this }
+      scale() { return this }
+      transformPoint(p) { return p }
+    }
+    class StubPath2D {
+      addPath() {}
+    }
+    class StubImageData {
+      constructor(width, height) {
+        this.width = width
+        this.height = height
+      }
+    }
+    globalThis.DOMMatrix = StubDOMMatrix
+    globalThis.Path2D = StubPath2D
+    globalThis.ImageData = StubImageData
+  }
+  pdfPolyfilled = true
+}
+
 const OCR_PROMPT =
   'You are a powerful OCR engine. Transcribe EVERYTHING in this document image, exactly, losing nothing. ' +
   'Preserve the reading order and structure. Output clean Markdown: use headings for headings, bullet/numbered ' +
@@ -106,6 +158,7 @@ extractRouter.post('/extract', upload.single('file'), async (req, res, next) => 
     const lower = originalname.toLowerCase()
     let ocr = false
     if (mimetype === 'application/pdf' || lower.endsWith('.pdf')) {
+      await ensurePdfPolyfills()
       const { PDFParse } = await import('pdf-parse')
       const parser = new PDFParse({ data: new Uint8Array(buffer) })
       try {

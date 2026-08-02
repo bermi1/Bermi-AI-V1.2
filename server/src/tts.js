@@ -37,6 +37,12 @@ export const MANAGED_TTS_PROVIDERS = [
   { id: 'elevenlabs', label: 'ElevenLabs', settingKey: 'elevenlabs_api_key', envBase: 'ELEVENLABS_API_KEY' },
 ]
 
+/** Shared with voices.js — voice cloning creates Fish Audio models using the
+ * same admin-managed key TTS already uses. */
+export async function fishAudioKey() {
+  return firstKey('FISH_AUDIO_API_KEY', 'fishaudio_api_key')
+}
+
 async function groqKeyForTts() {
   const providers = await listProviders()
   return providers.find((p) => p.id === 'groq')?.keys?.[0] || null

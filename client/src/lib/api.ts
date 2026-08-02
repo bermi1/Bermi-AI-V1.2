@@ -677,6 +677,46 @@ export async function synthesizeSpeech(text: string, opts?: { voice?: string; la
   return res.blob()
 }
 
+// ---------- Speech-to-text (voice input) ----------
+
+export const sttStatus = () => apiFetch('/api/stt/status').then((r) => json<{ available: boolean }>(r))
+
+export async function transcribeAudio(blob: Blob): Promise<string> {
+  const form = new FormData()
+  form.append('audio', blob, 'clip.webm')
+  const res = await apiFetch('/api/stt/transcribe', { method: 'POST', body: form }, 30_000)
+  const body = await json<{ text: string }>(res)
+  return body.text
+}
+
+// ---------- Voice cloning ----------
+
+export interface VoiceClone {
+  id: string
+  fishModelId: string
+  title: string
+  createdAt: string
+}
+
+export const listVoiceClones = () => apiFetch('/api/voices').then((r) => json<VoiceClone[]>(r))
+
+export const requestVoiceConsentPhrase = () =>
+  apiFetch('/api/voices/consent-phrase', { method: 'POST' }).then((r) =>
+    json<{ phrase: string; expiresInSeconds: number }>(r),
+  )
+
+export async function createVoiceClone(params: { title: string; consent: Blob; sample?: Blob }): Promise<VoiceClone> {
+  const form = new FormData()
+  form.append('title', params.title)
+  form.append('consent', params.consent, 'consent.webm')
+  if (params.sample) form.append('sample', params.sample, 'sample.webm')
+  const res = await apiFetch('/api/voices', { method: 'POST', body: form }, 60_000)
+  return json<VoiceClone>(res)
+}
+
+export const deleteVoiceClone = (id: string) =>
+  apiFetch(`/api/voices/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
 // ---------- Bermi Learn (LMS) ----------
 
 // Public catalog + course browsing
