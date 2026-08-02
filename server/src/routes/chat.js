@@ -149,7 +149,7 @@ async function generateConversationTitle(message, assistantText) {
 // or government body (events), or anyone with public material to hand out
 // (resources) — so the trigger words and verbs below cover all four.
 const LEARN_RE =
-  /\b(courses?|classes?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|initiative|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next|events?|register|registration|rsvp|attend\w*|resources?|materials?|download|briefing|workshop|webinar|service|services|shareholders?|update|announcement|offering)\b/i
+  /\b(courses?|class(es)?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|initiative|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next|events?|register|registration|rsvp|attend\w*|resources?|materials?|download|briefing|workshop|webinar|service|services|shareholders?|update|announcement|offering)\b/i
 const ENROLL_RE =
   /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|registration|rsvp|join|subscribe|get (?:the|a|this) (?:resource|report|guide|material)|download|access (?:the|this))\b/i
 const VIDEO_SUMMARY_RE = /\b(summar(y|ize|ise)|tl;?dr|recap)\b.{0,25}\bvideo\b|\bvideo\b.{0,25}\b(summar(y|ize|ise)|tl;?dr|recap)\b/i
@@ -208,9 +208,15 @@ async function learningContext(user, message, conversationTitle, study) {
     courses = cs || []
     instById = new Map((insts || []).map((i) => [i.id, i]))
   } catch {
-    return { block: '', note: '' }
+    return { block: '', note: '', enrolled: null }
   }
-  if (!courses.length) return { block: '', note: '' }
+  // NOTE: deliberately no early return when the institution catalog is
+  // empty. A personal, self-built course/program (see quickBuildPersonalOffering
+  // below) is created with published:false — it never appears in
+  // listPublishedCourses — so an account with no institution ever publishing
+  // anything would otherwise never reach the build-your-own logic further
+  // down, nor the user's own enrollment/curriculum lookups just below, both
+  // of which are keyed off this user's own data, not the catalog.
 
   // Grouped by kind so the model sees "Bank X's loan program" next to other
   // programs, not lumped in with unrelated school courses.
@@ -319,7 +325,9 @@ async function learningContext(user, message, conversationTitle, study) {
   }
 
   const block =
-    `# Bermi Learn — everything organizations have published, live right now (you can discuss, recommend, and act on any of it)\n${list}` +
+    (list
+      ? `# Bermi Learn — everything organizations have published, live right now (you can discuss, recommend, and act on any of it)\n${list}`
+      : '') +
     progressBlock +
     curriculumBlock +
     '\n\nGuidance: If the user asks to enroll/register/apply/subscribe/get access, the system already does it directly ' +
