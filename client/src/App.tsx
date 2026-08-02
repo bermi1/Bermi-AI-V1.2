@@ -145,7 +145,14 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [quota, setQuota] = useState<api.ChatQuota | null>(null)
   const [voiceModeOpen, setVoiceModeOpen] = useState(false)
   const [voiceSpeaking, setVoiceSpeaking] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  // One persistent <audio> element, reused for every reply instead of a
+  // fresh `new Audio()` each time — see unlockVoiceAudio below for why.
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
+  const getVoiceAudioEl = () => {
+    if (!voiceAudioRef.current) voiceAudioRef.current = new Audio()
+    return voiceAudioRef.current
+  }
   const abortRef = useRef<AbortController | null>(null)
   // A live mirror of voiceModeOpen for the streaming callbacks below: those
   // closures are created when send() is called and can outlive a state
@@ -158,10 +165,32 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
     voiceModeOpenRef.current = voiceModeOpen
   }, [voiceModeOpen])
 
+  // Mobile Safari (and, less strictly, other browsers) refuses to play audio
+  // triggered from an async callback (a fetch resolving, a stream ending)
+  // unless that exact <audio> element already played successfully once
+  // inside a direct user gesture — otherwise .play() silently rejects and
+  // the call just never talks back, with nothing visibly wrong. Call this
+  // SYNCHRONOUSLY from the click that opens Voice Mode: playing (and
+  // instantly pausing) one real, valid, silent clip on the SAME persistent
+  // element "unlocks" it so every later programmatic .play() on it succeeds.
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiUAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQEAAACA'
+  const unlockVoiceAudio = useCallback(() => {
+    const audio = getVoiceAudioEl()
+    audio.src = SILENT_WAV
+    audio.play().then(
+      () => audio.pause(),
+      () => {},
+    )
+  }, [])
+
   // Voice Mode's spoken half: once a reply finishes streaming (see onDone in
   // `send` below), read it aloud automatically — the whole point of hands-free
   // mode is never touching the screen between turns. Strips Markdown/code
-  // fences first so the voice reads prose, not literal punctuation.
+  // fences first so the voice reads prose, not literal punctuation. Errors
+  // (no TTS provider configured, playback blocked, network failure) are
+  // surfaced to Voice Mode instead of failing silently — a "call" that never
+  // talks back with no explanation looks broken even when it's just
+  // unconfigured.
   const playVoiceReply = useCallback(async (text: string) => {
     const speakable = text
       .replace(/```[\s\S]*?```/g, ' ')
@@ -170,24 +199,33 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
       .replace(/\s+/g, ' ')
       .trim()
     if (!speakable) return
+    setVoiceError(null)
     try {
       setVoiceSpeaking(true)
       const voice = localStorage.getItem('bermi-tts-voice') || undefined
       const blob = await api.synthesizeSpeech(speakable.slice(0, 2000), { voice })
       const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      voiceAudioRef.current = audio
-      audio.onended = () => setVoiceSpeaking(false)
-      audio.onerror = () => setVoiceSpeaking(false)
+      const audio = getVoiceAudioEl()
+      audio.src = url
+      audio.onended = () => {
+        setVoiceSpeaking(false)
+        URL.revokeObjectURL(url)
+      }
+      audio.onerror = () => {
+        setVoiceSpeaking(false)
+        setVoiceError('Could not play that reply — try again.')
+      }
       await audio.play()
-    } catch {
+    } catch (e) {
       setVoiceSpeaking(false)
+      setVoiceError((e as Error).message || 'Could not speak the reply.')
     }
   }, [])
 
   const closeVoiceMode = useCallback(() => {
     voiceAudioRef.current?.pause()
     setVoiceSpeaking(false)
+    setVoiceError(null)
     setVoiceModeOpen(false)
   }, [])
 
@@ -585,7 +623,12 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               study={study}
               onToggleStudy={setStudy}
               quota={quota}
-              onOpenVoiceMode={() => setVoiceModeOpen(true)}
+              onOpenVoiceMode={() => {
+                // Must run synchronously inside this click for the
+                // audio-unlock trick to count as a genuine user gesture.
+                unlockVoiceAudio()
+                setVoiceModeOpen(true)
+              }}
             />
             {voiceModeOpen && (
               <VoiceMode
@@ -593,6 +636,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
                 onTranscript={(text) => send(text)}
                 thinking={streaming}
                 speaking={voiceSpeaking}
+                voiceError={voiceError}
                 lastAssistantText={
                   messages[messages.length - 1]?.role === 'assistant' ? messages[messages.length - 1].content : ''
                 }

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, PhoneOff } from 'lucide-react'
 import { useLiveVoiceRecorder } from '../lib/useLiveVoiceRecorder'
-import { transcribeAudio } from '../lib/api'
+import { transcribeAudio, ttsStatus } from '../lib/api'
 import { BermiMark } from './Logo'
 
 interface VoiceModeProps {
@@ -12,6 +12,10 @@ interface VoiceModeProps {
   thinking: boolean
   /** True while the reply's synthesized speech is playing. */
   speaking: boolean
+  /** Set when the parent's attempt to speak the last reply failed — surfaced
+   * here instead of failing silently, since a "call" with no audible reply
+   * and no explanation just looks broken. */
+  voiceError: string | null
   lastAssistantText: string
 }
 
@@ -24,11 +28,22 @@ interface VoiceModeProps {
  * (manual stop, fills the composer for review) — this sends immediately by
  * design, since the whole point is never touching the screen mid-call.
  */
-export function VoiceMode({ onClose, onTranscript, thinking, speaking, lastAssistantText }: VoiceModeProps) {
+export function VoiceMode({ onClose, onTranscript, thinking, speaking, voiceError, lastAssistantText }: VoiceModeProps) {
   const mic = useLiveVoiceRecorder(async (blob) => {
     const text = await transcribeAudio(blob)
     if (text.trim()) onTranscript(text.trim())
   })
+
+  // Checked once up front so "Bermi never talks back" has an immediate,
+  // visible explanation instead of only surfacing after the first turn (via
+  // voiceError) — most likely to matter the very first time someone opens a
+  // call before any provider key has been configured for TTS.
+  const [ttsAvailable, setTtsAvailable] = useState<boolean | null>(null)
+  useEffect(() => {
+    ttsStatus()
+      .then((s) => setTtsAvailable(s.available))
+      .catch(() => setTtsAvailable(null))
+  }, [])
 
   // Answer the "call" immediately on open — no tap required to begin.
   const started = useRef(false)
@@ -91,6 +106,13 @@ export function VoiceMode({ onClose, onTranscript, thinking, speaking, lastAssis
           <p className="mt-3 line-clamp-4 text-[13px] leading-relaxed text-ink-faint">{lastAssistantText}</p>
         )}
         {mic.error && <p className="mt-2 text-[13px] text-rose-500">{mic.error}</p>}
+        {voiceError && <p className="mt-2 text-[13px] text-rose-500">{voiceError}</p>}
+        {ttsAvailable === false && (
+          <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-[12.5px] text-amber-600 dark:text-amber-400">
+            Bermi can still hear you, but can't talk back yet — no text-to-speech provider is set up. An admin can
+            add one in Admin → AI Providers (a Groq key enables free voices automatically).
+          </p>
+        )}
       </div>
 
       <div
