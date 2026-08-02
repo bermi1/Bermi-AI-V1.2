@@ -203,23 +203,19 @@ body {
 }
 
 /* ---------- Landing page ---------- */
-.bermi-dot-field {
-  background-image: radial-gradient(var(--edge-strong) 1px, transparent 1px);
-  background-size: 26px 26px;
-  animation: dot-pan 40s linear infinite;
-}
-@keyframes dot-pan {
-  from { background-position: 0 0; }
-  to { background-position: 260px 130px; }
+.bermi-star-field {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 3px 3px, 42px 42px;
+  background-position: 0 0;
+  mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 90%);
 }
 
-@keyframes blob-drift {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(2.5%, 4%) scale(1.08); }
-  66% { transform: translate(-3%, -2%) scale(0.95); }
+@keyframes bermi-orbit-spin {
+  from { transform: translateX(-50%) rotate(0deg); }
+  to { transform: translateX(-50%) rotate(360deg); }
 }
-.bermi-blob {
-  animation: blob-drift 18s ease-in-out infinite;
+.bermi-orbit-spin {
+  animation: bermi-orbit-spin 60s linear infinite;
 }
 
 @keyframes bermi-float {
@@ -230,9 +226,17 @@ body {
   animation: bermi-float 6s ease-in-out infinite;
 }
 
+/* Reusable glassmorphic surface for the landing page's dark theme */
+.bermi-glass {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: border-color 0.3s ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bermi-dot-field,
-  .bermi-blob,
+  .bermi-orbit-spin,
   .bermi-float {
     animation: none;
   }
