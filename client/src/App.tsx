@@ -147,6 +147,16 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [voiceSpeaking, setVoiceSpeaking] = useState(false)
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // A live mirror of voiceModeOpen for the streaming callbacks below: those
+  // closures are created when send() is called and can outlive a state
+  // change (e.g. the user hangs up mid-reply), so onDone must check current
+  // reality via this ref, not the value it happened to close over at call
+  // time — otherwise closing Voice Mode mid-response still auto-plays audio
+  // after the fact.
+  const voiceModeOpenRef = useRef(false)
+  useEffect(() => {
+    voiceModeOpenRef.current = voiceModeOpen
+  }, [voiceModeOpen])
 
   // Voice Mode's spoken half: once a reply finishes streaming (see onDone in
   // `send` below), read it aloud automatically — the whole point of hands-free
@@ -392,7 +402,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             setChatSteps([])
             refreshConversations()
             refreshQuota()
-            if (voiceModeOpen && fullText.trim()) playVoiceReply(fullText)
+            if (voiceModeOpenRef.current && fullText.trim()) playVoiceReply(fullText)
           },
           onError: (message, retryAfter) => {
             setStreaming(false)
@@ -410,7 +420,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         abort.signal,
       )
     },
-    [activeId, selectedModel, refreshConversations, refreshQuota, voiceModeOpen, playVoiceReply],
+    [activeId, selectedModel, refreshConversations, refreshQuota, playVoiceReply],
   )
 
   const stop = useCallback(() => {
