@@ -6,17 +6,15 @@ import { listProviders } from './providers.js'
 // so it gets its own small provider layer rather than being shoehorned into
 // providers.js. Preference order: a dedicated paid provider with real
 // multi-language coverage (Fish Audio, then ElevenLabs) if an admin has
-// added a key for one, otherwise Groq's free PlayAI voices (English/Arabic
+// added a key for one, otherwise Groq's free Orpheus voices (English/Arabic
 // only today) reusing the same key already configured for chat — genuinely
 // free, no extra signup, just more limited language coverage.
 //
-// Deliberately NOT implemented: voice cloning (uploading a sample to speak
-// in someone's voice). That's the one Fish Audio/ElevenLabs feature this
-// intentionally skips — cloning a real person's voice without their
-// verifiable consent is a live deepfake/impersonation risk, and this app
-// has no identity-verification flow to gate it safely. Multi-voice TTS
-// (reading content aloud in a catalog voice) covers the real majority use
-// case — accessibility and narration — without that risk.
+// Voice CLONING (as opposed to picking a stock catalog voice) is
+// deliberately NOT handled here — see voices.js, which gates it behind a
+// spoken, server-issued consent check before ever creating a Fish Audio
+// voice model, precisely because cloning a voice without real consent is a
+// live deepfake/impersonation risk.
 
 function parseKeys(raw) {
   return String(raw || '')
@@ -62,7 +60,7 @@ export async function ttsProviderStatus() {
     })
   }
   const groq = await groqKeyForTts()
-  out.push({ id: 'groq', label: 'Groq (PlayAI, free)', configured: Boolean(groq), managed: false, languages: 'English, Arabic only' })
+  out.push({ id: 'groq', label: 'Groq (Orpheus, free)', configured: Boolean(groq), managed: false, languages: 'English, Arabic only' })
   return out
 }
 
@@ -87,16 +85,19 @@ async function synthesizeElevenLabs(text, key, voice) {
   return { buffer: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg' }
 }
 
+// Groq deprecated playai-tts/playai-tts-arabic (Dec 2025) in favor of Canopy
+// Labs' Orpheus models — same endpoint and request shape, new model ids and
+// voice names.
 async function synthesizeGroq(text, key, voice, language) {
   const arabic = language === 'ar'
-  const model = arabic ? 'playai-tts-arabic' : 'playai-tts'
+  const model = arabic ? 'canopylabs/orpheus-arabic-saudi' : 'canopylabs/orpheus-v1-english'
   const res = await fetch('https://api.groq.com/openai/v1/audio/speech', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
       input: text.slice(0, 2000),
-      voice: voice || (arabic ? 'Amira-PlayAI' : 'Fritz-PlayAI'),
+      voice: voice || (arabic ? 'abdullah' : 'autumn'),
       response_format: 'wav',
     }),
   })

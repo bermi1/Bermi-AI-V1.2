@@ -623,6 +623,7 @@ export interface ManagedKeyProviderInfo {
 
 export interface AdminProviderKeys {
   chat: ManagedKeyProviderInfo[]
+  search: ManagedKeyProviderInfo[]
   tts: TtsProviderInfo[]
 }
 

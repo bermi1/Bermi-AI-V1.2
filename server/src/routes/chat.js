@@ -1,18 +1,25 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import { storage } from '../storage/index.js'
-import { streamCompletion } from '../openrouter.js'
+import { streamCompletion, complete } from '../openrouter.js'
 import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress, titleSimilarity } from '../study.js'
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
+import { webSearch } from '../websearch.js'
 import { rateLimit, checkRateLimit, peekRateLimit } from '../rateLimit.js'
 import { quickBuildPersonalOffering } from './learn.js'
 
 export const chatRouter = Router()
 
 const BASE_PROMPT =
-  'You are Bermi AI, a helpful, precise, highly capable assistant. ' +
+  'You are Bermi AI: a productivity and educational AI first — built to help someone get real work done and ' +
+  'genuinely learn, not just chat. Let that shape how you help by default: when relevant, favor the answer that ' +
+  'moves their actual work or learning forward (a usable draft, a clear next step, a taught concept) over a purely ' +
+  'conversational reply, and where it naturally fits, mention a concrete way Bermi itself can help further — ' +
+  'Study Mode to learn a topic properly, Discover your niche to find a focus/audience/content plan, building a ' +
+  'course or document, or teaching a knowledge base — without forcing it into unrelated answers or turning every ' +
+  'reply into a pitch. ' +
   'Before you answer, silently refine the request: work out the true intent, fill obvious gaps, and plan the ' +
   'clearest, most complete response — then reply with that improved understanding (never show this planning). ' +
   'STAY ON TOPIC: answer exactly what the user asked, directly and fully; do not drift into unrelated tangents, ' +
@@ -98,6 +105,41 @@ async function buildSystemPrompt(userId, study = false) {
     }
   }
   return parts.join('\n\n')
+}
+
+const TITLE_PROMPT =
+  'You write short conversation titles. Read the user message and assistant reply below and output ONLY a ' +
+  'specific, concrete title (3 to 6 words) capturing what this conversation is actually about — no quotes, no ' +
+  'trailing punctuation, no generic filler like "Chat" or "Conversation" or "Assistance". Output the title text ' +
+  'and nothing else.'
+
+function sanitizeTitle(raw) {
+  const cleaned = raw
+    .split('\n')[0]
+    .trim()
+    .replace(/^["'“‘]+|["'”’]+$/g, '')
+    .replace(/[.!?]+$/, '')
+    .trim()
+  return cleaned.length >= 2 && cleaned.length <= 80 ? cleaned : null
+}
+
+/**
+ * Replaces a brand-new conversation's placeholder title (the user's first
+ * message, verbatim — all that's known at creation time) with a real,
+ * specific title once the first exchange exists to summarize. Best-effort:
+ * on any failure the caller just keeps the placeholder, which is always a
+ * valid (if blunter) title on its own.
+ */
+async function generateConversationTitle(message, assistantText) {
+  const text = await complete({
+    model: 'bermi-fast',
+    maxTokens: 20,
+    messages: [
+      { role: 'system', content: TITLE_PROMPT },
+      { role: 'user', content: `User: ${message.slice(0, 500)}\n\nAssistant: ${assistantText.slice(0, 800)}` },
+    ],
+  })
+  return text ? sanitizeTitle(text) : null
 }
 
 // Only touch the LMS when the message is actually about learning/engaging
@@ -579,6 +621,7 @@ chatRouter.post(
     }
 
     const now = new Date().toISOString()
+    const isNewConversation = !conversationId
     let conversation
     if (conversationId) {
       conversation = await storage.getConversation(conversationId)
@@ -587,6 +630,9 @@ chatRouter.post(
       }
       await storage.updateConversation(conversation.id, { model, updated_at: now })
     } else {
+      // Placeholder until generateConversationTitle replaces it below with a
+      // real summary of what the conversation is actually about — this raw
+      // first-message text is only ever seen if that generation fails.
       const title = message.trim().slice(0, 60) + (message.trim().length > 60 ? '…' : '')
       conversation = await storage.createConversation({
         id: randomUUID(),
@@ -634,12 +680,29 @@ chatRouter.post(
       if (!res.writableEnded) abort.abort()
     })
 
-    // Show the work Bermi does before answering. For web search this is a real
-    // agentic loop: plan queries → search each → read sources → synthesize.
+    // Real web-search grounding, fetched ourselves (see websearch.js for why
+    // this replaced relying on OpenRouter's paid web plugin): searched BEFORE
+    // the model runs, so results land in the system prompt as plain context
+    // — grounding that works with every provider in the fallback chain, not
+    // just whichever one happens to support a plugin.
+    let webCitations = []
     if (web) {
-      // Keep this light — no extra pre-call — so answers start fast.
-      for (const label of ['Searching the web', 'Reading results', 'Writing the answer'])
-        sse(res, { type: 'status', label })
+      sse(res, { type: 'status', label: 'Searching the web' })
+      try {
+        const found = await webSearch(message)
+        if (found?.results?.length) {
+          webCitations = found.results.map((r) => ({ url: r.url, title: r.title }))
+          const resultsBlock = found.results.map((r, i) => `${i + 1}. **${r.title}** — ${r.url}\n${r.content}`).join('\n\n')
+          systemPrompt += `\n\n# Live web search results (just retrieved — current and reliable)\n${resultsBlock}\n\nCite these sources naturally in your answer.`
+        }
+      } catch {
+        // Search unavailable/over budget right now — proceed without it.
+        // The `web` flag passed to streamCompletion below is a last-resort
+        // fallback to the provider-side plugin, for accounts that do have
+        // OpenRouter credit funded.
+      }
+      sse(res, { type: 'status', label: 'Reading results' })
+      sse(res, { type: 'status', label: 'Writing the answer' })
     } else if (study) {
       for (const label of ['Assessing what you know', 'Planning the lesson', 'Preparing your next step'])
         sse(res, { type: 'status', label })
@@ -649,13 +712,15 @@ chatRouter.post(
     }
 
     let assistantText = ''
-    // Real, in-context web citations (the sources the grounded answer used).
-    const citations = []
+    // Real, in-context web citations (the sources the grounded answer used) —
+    // seeded from our own search above; the streaming loop below can still
+    // add more if a provider-side plugin also contributes annotations.
+    const citations = [...webCitations]
     try {
       const trimmedHistory = trimHistoryToBudget(history, MAX_HISTORY_CHARS)
       const upstream = await streamCompletion({
         model,
-        web,
+        web: web && webCitations.length === 0,
         messages: [
           { role: 'system', content: systemPrompt },
           ...trimmedHistory.map(({ role, content }, i, arr) => {
@@ -741,6 +806,23 @@ chatRouter.post(
         created_at: doneAt,
       })
       await storage.updateConversation(conversation.id, { updated_at: doneAt })
+
+      // Replace the placeholder (raw first-message) title with a real one
+      // now that there's an actual exchange to summarize. Only for brand-new
+      // conversations — an ongoing conversation's title was already set once
+      // and shouldn't keep changing underneath the user.
+      if (isNewConversation) {
+        try {
+          const niceTitle = await generateConversationTitle(message, assistantText)
+          if (niceTitle) {
+            await storage.updateConversation(conversation.id, { title: niceTitle })
+            conversation = { ...conversation, title: niceTitle }
+            sse(res, { type: 'conversation', conversation: { ...conversation, model } })
+          }
+        } catch {
+          /* keep the raw-message placeholder title — still a valid title */
+        }
+      }
 
       // Fire-and-forget: fold this exchange into the user's persistent,
       // cross-conversation memory so future chats (any of them) can draw on

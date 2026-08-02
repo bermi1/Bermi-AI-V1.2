@@ -256,7 +256,13 @@ function ProviderKeysPanel() {
     load()
   }, [])
 
-  const allProviders = data ? [...data.chat.map((p) => ({ id: p.id, label: p.label })), ...data.tts.filter((p) => p.managed).map((p) => ({ id: p.id, label: p.label }))] : []
+  const allProviders = data
+    ? [
+        ...data.chat.map((p) => ({ id: p.id, label: p.label })),
+        ...data.search.map((p) => ({ id: p.id, label: p.label })),
+        ...data.tts.filter((p) => p.managed).map((p) => ({ id: p.id, label: p.label })),
+      ]
+    : []
 
   const addKey = async () => {
     if (!key.trim()) return
@@ -291,8 +297,9 @@ function ProviderKeysPanel() {
         <h2 className="text-[14px] font-semibold text-ink">AI provider &amp; voice keys</h2>
       </div>
       <p className="mb-3 text-[12.5px] text-ink-muted">
-        Add another account's key to widen the shared AI quota pool, or add a Fish Audio / ElevenLabs key to enable
-        text-to-speech in more languages. Added here, not in Vercel — takes effect immediately.
+        Add another account's key to widen the shared AI quota pool, a Tavily key to enable real, free web-search
+        grounding (current events, prices, "latest" questions), or a Fish Audio / ElevenLabs key for text-to-speech
+        in more languages. Added here, not in Vercel — takes effect immediately.
       </p>
 
       <div className="mb-4 space-y-2">
@@ -303,6 +310,28 @@ function ProviderKeysPanel() {
               <span className="text-[11.5px] text-ink-faint">{p.envKeys} from env · {p.storedKeys.length} added here</span>
             </div>
             {p.storedKeys.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {p.storedKeys.map((hint, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-ink-muted">
+                    {hint}
+                    <button onClick={() => removeKey(p.id, i)} className="text-ink-faint hover:text-rose-500"><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {data.search.map((p) => (
+          <div key={p.id} className="rounded-xl border border-edge bg-surface px-3.5 py-2.5">
+            <div className="mb-1.5 flex items-center justify-between text-[13px]">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+                <Search size={12} className="text-primary" /> {p.label}
+              </span>
+              <span className="text-[11.5px] text-ink-faint">{p.envKeys} from env · {p.storedKeys.length} added here</span>
+            </div>
+            {p.storedKeys.length === 0 ? (
+              <p className="text-[11.5px] text-ink-faint">Not set up — without this, "what's happening now" questions fall back to the model's own trained knowledge.</p>
+            ) : (
               <div className="flex flex-wrap gap-1.5">
                 {p.storedKeys.map((hint, i) => (
                   <span key={i} className="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-ink-muted">

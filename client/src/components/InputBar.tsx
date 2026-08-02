@@ -5,7 +5,6 @@ import {
   FileText,
   Globe,
   GraduationCap,
-  Headphones,
   Loader2,
   Mic,
   Paperclip,
@@ -26,7 +25,6 @@ interface InputBarProps {
   study: boolean
   onToggleStudy: (v: boolean) => void
   quota?: ChatQuota | null
-  onOpenVoiceMode?: () => void
 }
 
 function formatResetIn(resetAt: number): string {
@@ -74,7 +72,6 @@ export function InputBar({
   study,
   onToggleStudy,
   quota,
-  onOpenVoiceMode,
 }: InputBarProps) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -90,8 +87,7 @@ export function InputBar({
   // Dictation: record a clip, transcribe it, drop the text straight into the
   // composer for the user to review/edit before sending — deliberately NOT
   // auto-sent, since a misheard word here is just a normal typo to fix, not
-  // an accidental message. (Voice Mode, opened via onOpenVoiceMode, is the
-  // separate hands-free flow that DOES auto-send.)
+  // an accidental message.
   const mic = useVoiceRecorder(async (blob) => {
     const transcript = await transcribeAudio(blob)
     if (transcript.trim()) setText((t) => (t.trim() ? `${t.trim()} ${transcript}` : transcript))
@@ -271,16 +267,6 @@ export function InputBar({
                 <GraduationCap size={16} />
                 <span className="hidden sm:inline">Study</span>
               </button>
-              {onOpenVoiceMode && (
-                <button
-                  onClick={onOpenVoiceMode}
-                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink-muted"
-                  title="Voice mode — talk to Bermi hands-free"
-                >
-                  <Headphones size={16} />
-                  <span className="hidden sm:inline">Voice</span>
-                </button>
-              )}
               <div className="relative" ref={pickerRef}>
                 <button
                   onClick={() => setPickerOpen((v) => !v)}

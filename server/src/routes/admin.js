@@ -4,6 +4,7 @@ import { hashPassword } from '../auth.js'
 import { providerHealth } from '../openrouter.js'
 import { MANAGED_KEY_PROVIDERS, addStoredKey, removeStoredKey, envKeyCount } from '../providers.js'
 import { MANAGED_TTS_PROVIDERS, ttsProviderStatus } from '../tts.js'
+import { MANAGED_SEARCH_PROVIDERS } from '../websearch.js'
 
 export const adminRouter = Router()
 
@@ -53,16 +54,21 @@ adminRouter.get('/admin/providers', requireAdmin, async (_req, res, next) => {
 // needing Vercel dashboard access — keys added here are stored in the
 // database and merged with whatever's set as an env var (see
 // providers.js#envOrSetting).
+async function keyInfo(providers) {
+  return Promise.all(
+    providers.map(async (p) => {
+      const raw = await storage.getSetting(p.settingKey)
+      const storedKeys = raw ? raw.split(/[,\s]+/).filter(Boolean).map((k) => `…${k.slice(-4)}`) : []
+      return { id: p.id, label: p.label, envKeys: envKeyCount(p.envBase), storedKeys }
+    }),
+  )
+}
+
 adminRouter.get('/admin/provider-keys', requireAdmin, async (_req, res, next) => {
   try {
-    const chat = await Promise.all(
-      MANAGED_KEY_PROVIDERS.map(async (p) => {
-        const raw = await storage.getSetting(p.settingKey)
-        const storedKeys = raw ? raw.split(/[,\s]+/).filter(Boolean).map((k) => `…${k.slice(-4)}`) : []
-        return { id: p.id, label: p.label, envKeys: envKeyCount(p.envBase), storedKeys }
-      }),
-    )
-    res.json({ chat, tts: await ttsProviderStatus() })
+    const chat = await keyInfo(MANAGED_KEY_PROVIDERS)
+    const search = await keyInfo(MANAGED_SEARCH_PROVIDERS)
+    res.json({ chat, search, tts: await ttsProviderStatus() })
   } catch (err) {
     next(err)
   }
@@ -71,7 +77,7 @@ adminRouter.get('/admin/provider-keys', requireAdmin, async (_req, res, next) =>
 adminRouter.post('/admin/provider-keys', requireAdmin, async (req, res, next) => {
   try {
     const { provider, key } = req.body ?? {}
-    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
+    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_SEARCH_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
     const p = all.find((x) => x.id === provider)
     if (!p) return res.status(400).json({ error: 'Unknown provider' })
     const keys = await addStoredKey(p.settingKey, key)
@@ -84,7 +90,7 @@ adminRouter.post('/admin/provider-keys', requireAdmin, async (req, res, next) =>
 
 adminRouter.delete('/admin/provider-keys/:provider/:index', requireAdmin, async (req, res, next) => {
   try {
-    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
+    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_SEARCH_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
     const p = all.find((x) => x.id === req.params.provider)
     if (!p) return res.status(400).json({ error: 'Unknown provider' })
     await removeStoredKey(p.settingKey, Number(req.params.index))
