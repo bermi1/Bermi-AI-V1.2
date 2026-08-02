@@ -449,9 +449,20 @@ const FRESHNESS_RE =
   /\b(today|tonight|this (?:week|month|year|morning|afternoon|evening)|current(?:ly)?|latest|up[- ]to[- ]date|right now|as of (?:today|now)|breaking news|just (?:announced|released|happened)|recently|upcoming|next (?:week|month|year)|20(?:2[5-9]|[3-9]\d))\b/i
 const NEWSY_RE =
   /\b(news|headlines?|stock price|share price|exchange rate|weather|forecast|election results?|who (?:is|won|leads) the|release date|when (?:is|does|will)|price of|cost of)\b/i
+// Whole categories that are inherently about "what's happening in the world
+// right now" even without an explicit freshness word — sports results, chart
+// releases, industry updates, regional news. Rather than scraping and storing
+// a copy of hundreds of named third-party sites ourselves (most of which
+// explicitly prohibit that in their own terms of service, and none of which
+// a serverless deployment can crawl continuously anyway), these categories
+// route through the same live, legitimate web-search grounding — the actual
+// outcome that matters (current real information, cited) without operating
+// an unlicensed scraper.
+const TOPIC_RE =
+  /\b(sports?|football|soccer|basketball|match(es)?|fixture|score|league|tournament|olympics|premier league|afcon|nba|music|album|song|artist|chart|billboard|movies?|films?|box office|cinema|actor|actress|startup|gadget|health|wellness|outbreak|lifestyle|fashion trend|stock market|economy|africa|african|tanzania|tanzanian|dar es salaam|east africa|entrepreneur)\b/i
 
 function needsFreshInfo(message) {
-  return FRESHNESS_RE.test(message) || NEWSY_RE.test(message)
+  return FRESHNESS_RE.test(message) || NEWSY_RE.test(message) || TOPIC_RE.test(message)
 }
 
 /**
