@@ -9,10 +9,8 @@ import { MANAGED_SEARCH_PROVIDERS } from '../websearch.js'
 export const adminRouter = Router()
 
 // Admins are identified by email allowlist (comma-separated ADMIN_EMAILS, with
-// the platform owners as a built-in default). Kept simple and role-free.
-const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS || 'multiverselimited01@gmail.com,basilrealestatecompany@gmail.com'
-)
+// the platform owner as a built-in default). Kept simple and role-free.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'bernardsalia1@gmail.com')
   .split(',')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean)
@@ -34,6 +32,16 @@ adminRouter.get('/admin/overview', requireAdmin, async (_req, res, next) => {
   try {
     const [stats, users] = await Promise.all([storage.adminStats(), storage.listUsers()])
     res.json({ stats, users })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Engagement analytics: daily signups/messages/active users over the last
+// two weeks, plus an all-time leaderboard — "how people are interacting".
+adminRouter.get('/admin/activity', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json(await storage.adminActivity())
   } catch (err) {
     next(err)
   }

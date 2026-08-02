@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { summarizeActivity } from './activity.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -225,6 +226,12 @@ export class SqliteStorage {
       enrollments: count('enrollments'),
       certificates: count('certificates'),
     }
+  }
+  async adminActivity(daysBack = 14) {
+    const users = this.db.prepare('SELECT id, name, email, created_at FROM users').all()
+    const conversations = this.db.prepare('SELECT id, user_id FROM conversations').all()
+    const messages = this.db.prepare('SELECT conversation_id, created_at FROM messages').all()
+    return summarizeActivity({ users, conversations, messages, sinceMs: Date.now() - daysBack * 86400_000 })
   }
   async createSession(row) {
     this.db

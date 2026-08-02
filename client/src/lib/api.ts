@@ -564,6 +564,29 @@ export const adminMe = () =>
 export const adminOverview = () =>
   apiFetch('/api/admin/overview').then((r) => json<{ stats: AdminStats; users: AdminUser[] }>(r))
 
+export interface AdminActivityPoint {
+  day: string
+  n: number
+}
+
+export interface AdminLeaderboardUser {
+  id: string
+  name: string
+  email: string
+  message_count: number
+}
+
+export interface AdminActivity {
+  messagesByDay: AdminActivityPoint[]
+  signupsByDay: AdminActivityPoint[]
+  activeUsersByDay: AdminActivityPoint[]
+  topUsers: AdminLeaderboardUser[]
+  recentUsers: AdminUser[]
+}
+
+export const adminActivity = () =>
+  apiFetch('/api/admin/activity').then((r) => json<AdminActivity>(r))
+
 export const adminUpdateUser = (id: string, patch: { email_verified?: boolean; name?: string }) =>
   apiFetch(`/api/admin/users/${id}`, {
     method: 'PATCH',

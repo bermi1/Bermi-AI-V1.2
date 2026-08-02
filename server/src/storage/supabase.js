@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { summarizeActivity } from './activity.js'
 
 // Bermi tables are prefixed so they coexist with anything else in the project.
 const T = {
@@ -100,6 +101,21 @@ export class SupabaseStorage {
       ])
     return { users, conversations, messages, documents, institutions, courses, enrollments, certificates }
   }
+
+  // Engagement analytics for the admin dashboard: daily signups/messages/active
+  // users over the trailing window, plus all-time leaderboard. Aggregated in
+  // JS rather than SQL since the Data API has no GROUP BY and table sizes here
+  // are small enough that a full scan is cheap.
+  async adminActivity(daysBack = 14) {
+    const sinceMs = Date.now() - daysBack * 86400_000
+    const [users, conversations, messages] = await Promise.all([
+      this.#one(this.sb.from(T.users).select('id,name,email,created_at').order('created_at', { ascending: false })),
+      this.#one(this.sb.from(T.conversations).select('id,user_id')),
+      this.#one(this.sb.from(T.messages).select('conversation_id,created_at')),
+    ])
+    return summarizeActivity({ users, conversations, messages, sinceMs })
+  }
+
   async createSession(row) {
     await this.#one(this.sb.from(T.sessions).insert(row))
   }
