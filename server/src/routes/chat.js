@@ -16,8 +16,19 @@ const BASE_PROMPT =
   'clearest, most complete response — then reply with that improved understanding (never show this planning). ' +
   'STAY ON TOPIC: answer exactly what the user asked, directly and fully; do not drift into unrelated tangents, ' +
   'filler, or unrequested topics. If the request is broad, cover it thoroughly and stay within its scope. ' +
+  'MATCH LENGTH TO INTENT: a short, simple, or single-fact question gets a short, direct answer — one sentence or ' +
+  'a tight paragraph, no headers, no padding, no unrequested caveats or follow-up questions tacked on. A broad, ' +
+  'multi-part, or genuinely complex question gets a full, thorough, well-structured answer. Never inflate a quick ' +
+  "question into an essay to seem thorough, and never compress a complex one to seem concise — read what the " +
+  'user actually needs and size the reply to that, not to a fixed style. ' +
   'Be genuinely useful and expansive when depth helps, concise when it does not. ' +
   'Format responses in Markdown. Use tables where they aid clarity. ' +
+  'Your trained knowledge has a real cutoff and is not current — for anything time-sensitive (news, prices, ' +
+  'schedules, scores, releases, "latest"/"current"/"today", or anything that could plausibly have changed), you ' +
+  'will automatically be given live web results below when relevant; when present, treat them as more current and ' +
+  'reliable than your own trained knowledge and cite them naturally. If no web results are present for something ' +
+  'clearly time-sensitive, say plainly that you cannot confirm the current state of it rather than guessing from ' +
+  'stale training data. ' +
   'IMPORTANT: only include code blocks when the user is actually asking about programming or explicitly wants ' +
   'code. For everyday, factual, or non-technical questions, answer in prose and DO NOT append example code, ' +
   'commands, or snippets. Match the format to the question. ' +
@@ -362,6 +373,28 @@ function sse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
+// ---------------------------------------------------------------------------
+// Hybrid RAG: the open-weight models behind Bermi have a real training
+// cutoff and know nothing on their own about anything after it. Rather than
+// require the user to notice that and manually flip on web search every
+// time, detect questions that are plainly time-sensitive — current events,
+// prices, schedules, "latest"/"today"/a near-future year — and route THOSE
+// through live web-grounded retrieval automatically, even if the client
+// didn't ask for it. Everything else still answers instantly from the
+// model's own trained knowledge at no retrieval cost. That mix — fast
+// parametric answers by default, automatic retrieval only when freshness
+// actually matters — is the "hybrid" here, and it also protects the
+// rate-limited web-search quota from being spent on questions that never
+// needed it.
+const FRESHNESS_RE =
+  /\b(today|tonight|this (?:week|month|year|morning|afternoon|evening)|current(?:ly)?|latest|up[- ]to[- ]date|right now|as of (?:today|now)|breaking news|just (?:announced|released|happened)|recently|upcoming|next (?:week|month|year)|20(?:2[5-9]|[3-9]\d))\b/i
+const NEWSY_RE =
+  /\b(news|headlines?|stock price|share price|exchange rate|weather|forecast|election results?|who (?:is|won|leads) the|release date|when (?:is|does|will)|price of|cost of)\b/i
+
+function needsFreshInfo(message) {
+  return FRESHNESS_RE.test(message) || NEWSY_RE.test(message)
+}
+
 /**
  * POST /api/chat  { conversationId?, message, model }
  * Streams back SSE: `conversation`, then `token` events, then [DONE].
@@ -375,10 +408,14 @@ chatRouter.post(
   }),
   async (req, res, next) => {
   try {
-    const { conversationId, message, model, web = false, study = false, attachments } = req.body ?? {}
+    const { conversationId, message, model, web: webRequested = false, study = false, attachments } = req.body ?? {}
     if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required' })
     }
+    // Hybrid RAG: honor an explicit toggle, but also auto-trigger live web
+    // retrieval for questions the trained model plainly can't answer from
+    // memory alone — see needsFreshInfo above.
+    const web = webRequested || needsFreshInfo(message)
 
     // Attached documents are read INTERNALLY: their (OCR'd / parsed) text is
     // folded into this turn's context for the model, but never stored or shown
