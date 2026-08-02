@@ -95,6 +95,29 @@ adminRouter.delete('/admin/provider-keys/:provider/:index', requireAdmin, async 
   }
 })
 
+// Per-user hourly AI-message quota (see routes/chat.js#quotaGate) — how many
+// messages each signed-in user can draw from the shared provider pool per
+// hour. Admin-adjustable so it can be raised as more provider keys are added.
+adminRouter.get('/admin/quota', requireAdmin, async (_req, res, next) => {
+  try {
+    const stored = Number(await storage.getSetting('chat_quota_per_hour'))
+    res.json({ perHour: stored > 0 ? stored : 40, isDefault: !(stored > 0) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.post('/admin/quota', requireAdmin, async (req, res, next) => {
+  try {
+    const perHour = Number(req.body?.perHour)
+    if (!(perHour > 0)) return res.status(400).json({ error: 'perHour must be a positive number' })
+    await storage.setSetting('chat_quota_per_hour', String(Math.floor(perHour)))
+    res.json({ ok: true, perHour: Math.floor(perHour) })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Edit a user's name / verified state.
 adminRouter.patch('/admin/users/:id', requireAdmin, async (req, res, next) => {
   try {

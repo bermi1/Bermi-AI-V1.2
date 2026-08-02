@@ -14,7 +14,7 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
   const started = stats && stats.sessions > 0
 
   return (
-    <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-5 shadow-sm">
+    <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <GraduationCap size={17} className="text-primary" />
@@ -36,7 +36,7 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
         </p>
       ) : (
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Tile icon={GraduationCap} label="Level" value={String(stats!.level)} />
             <Tile icon={Flame} label="Day streak" value={String(stats!.streak)} tint="text-amber-500" />
             <Tile icon={Star} label="Total XP" value={String(stats!.xp)} />
@@ -73,31 +73,39 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
           )}
 
           {stats!.topic_list && stats!.topic_list.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-[13px] font-semibold">Topics studied</div>
-              {stats!.topic_list.slice(0, 6).map((t) => (
-                <div key={t.topic} className="rounded-xl border border-edge bg-surface p-3">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="text-[12.5px] font-medium text-ink">{t.topic}</span>
-                    <span className="text-[11px] text-ink-faint">
-                      {t.count} step{t.count === 1 ? '' : 's'} mastered
-                    </span>
+            <div>
+              <div className="mb-2 text-[13px] font-semibold">Topics studied</div>
+              {/* A single horizontal, scrollable line on every screen size —
+                  including phones — rather than a vertical stack that grows
+                  tall and pushes the rest of the dashboard down. */}
+              <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
+                {stats!.topic_list.slice(0, 6).map((t) => (
+                  <div
+                    key={t.topic}
+                    className="w-[220px] shrink-0 snap-start rounded-xl border border-edge bg-surface p-3"
+                  >
+                    <div className="mb-1.5">
+                      <span className="block truncate text-[12.5px] font-medium text-ink">{t.topic}</span>
+                      <span className="text-[11px] text-ink-faint">
+                        {t.count} step{t.count === 1 ? '' : 's'} mastered
+                      </span>
+                    </div>
+                    {t.steps.length > 0 && (
+                      <ul className="space-y-1">
+                        {t.steps.slice(0, 4).map((step, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-[11.5px] text-ink-muted">
+                            <span className="mt-[3px] shrink-0 text-primary">✓</span>
+                            <span className="min-w-0 line-clamp-2">{step}</span>
+                          </li>
+                        ))}
+                        {t.steps.length > 4 && (
+                          <li className="text-[11px] text-ink-faint">+{t.steps.length - 4} more</li>
+                        )}
+                      </ul>
+                    )}
                   </div>
-                  {t.steps.length > 0 && (
-                    <ul className="space-y-1">
-                      {t.steps.slice(0, 6).map((step, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-[11.5px] text-ink-muted">
-                          <span className="mt-[3px] text-primary">✓</span>
-                          <span className="min-w-0">{step}</span>
-                        </li>
-                      ))}
-                      {t.steps.length > 6 && (
-                        <li className="text-[11px] text-ink-faint">+{t.steps.length - 6} more</li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -9,7 +9,7 @@ interface ChatPanelProps {
   messages: Message[]
   streaming: boolean
   steps: string[]
-  error: string | null
+  error: { message: string; retryAfter: number | null } | null
   userName?: string
   onStudyCourse?: (title: string) => void
 }
@@ -127,11 +127,7 @@ export function ChatPanel({ messages, streaming, steps, error, userName, onStudy
             </div>
           )
         })}
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner message={error.message} retryAfter={error.retryAfter} />}
         {streaming && last?.role === 'user' && (
           <div className="mb-6 flex gap-3">
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
@@ -151,6 +147,31 @@ export function ChatPanel({ messages, streaming, steps, error, userName, onStudy
 }
 
 /** Gentle reminder of courses the learner started but hasn't finished. */
+/** Plain-English chat error with a live "retrying in Xs" countdown, instead
+ * of dumping the raw provider error text (e.g. a 413 from a rate-limited
+ * model) straight into the conversation. */
+function ErrorBanner({ message, retryAfter }: { message: string; retryAfter: number | null }) {
+  const [secondsLeft, setSecondsLeft] = useState(retryAfter ?? 0)
+
+  useEffect(() => {
+    setSecondsLeft(retryAfter ?? 0)
+    if (!retryAfter) return
+    const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(id)
+  }, [retryAfter, message])
+
+  return (
+    <div className="mb-6 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+      <p>{message}</p>
+      {retryAfter != null && (
+        <p className="mt-1.5 text-[12.5px] font-medium opacity-80">
+          {secondsLeft > 0 ? `You can try again in ${secondsLeft}s.` : 'You can try again now.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ContinueLearning({ onStudyCourse }: { onStudyCourse?: (title: string) => void }) {
   const [items, setItems] = useState<Enrollment[]>([])
 

@@ -6,7 +6,7 @@ import { STUDY_PROMPT, awardStudy, parseMasteredSteps, syncLessonProgress, title
 import { BERMI_FEATURES_PROMPT } from '../features.js'
 import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
-import { rateLimit, checkRateLimit } from '../rateLimit.js'
+import { rateLimit, checkRateLimit, peekRateLimit } from '../rateLimit.js'
 import { quickBuildPersonalOffering } from './learn.js'
 
 export const chatRouter = Router()
@@ -432,6 +432,72 @@ function sse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
+// Some free-tier providers (e.g. Groq's smaller instant models) cap the
+// *entire* request at only a few thousand tokens per minute — well below what
+// a long-running conversation plus Bermi's system prompt can reach. Rather
+// than let that surface as a raw 413 from the provider, keep the payload sent
+// upstream within a conservative character budget (~4 chars/token is a
+// reasonable rough estimate for English text) by dropping the OLDEST turns
+// first — the model still gets the full system prompt and as much recent
+// context as fits, which is what actually matters for continuing a chat.
+const MAX_HISTORY_CHARS = 16_000
+
+function trimHistoryToBudget(historyMessages, budgetChars) {
+  if (historyMessages.length <= 1) return historyMessages
+  let total = 0
+  let cut = historyMessages.length
+  for (let i = historyMessages.length - 1; i >= 0; i--) {
+    total += historyMessages[i].content.length
+    if (total > budgetChars && i < historyMessages.length - 1) {
+      cut = i + 1
+      break
+    }
+    cut = i
+  }
+  return historyMessages.slice(cut)
+}
+
+// ---------------------------------------------------------------------------
+// Per-user hourly AI quota: the shared free-tier provider pool (see
+// providers.js) is finite, so without a per-user cap one heavy user can burn
+// through it and leave everyone else hitting rate limits. Each signed-in user
+// gets their own capped "chunk" per hour instead, on top of the existing
+// short-window anti-burst limit above. Admin-configurable (Settings → Admin)
+// so the cap can be raised as more provider keys are added, without a
+// redeploy.
+const DEFAULT_QUOTA_PER_HOUR = 40
+const QUOTA_WINDOW_MS = 60 * 60_000
+
+async function quotaLimit() {
+  const fromEnv = Number(process.env.CHAT_QUOTA_PER_HOUR)
+  if (fromEnv > 0) return fromEnv
+  const stored = Number(await storage.getSetting('chat_quota_per_hour'))
+  return stored > 0 ? stored : DEFAULT_QUOTA_PER_HOUR
+}
+
+function formatMinutes(seconds) {
+  const mins = Math.ceil(seconds / 60)
+  return mins <= 1 ? 'about a minute' : `about ${mins} minutes`
+}
+
+async function quotaGate(req, res, next) {
+  try {
+    const max = await quotaLimit()
+    const key = `chat-quota:${req.user.id}`
+    if (checkRateLimit(key, { windowMs: QUOTA_WINDOW_MS, max })) return next()
+    const status = peekRateLimit(key, { windowMs: QUOTA_WINDOW_MS, max })
+    const retryAfter = Math.max(1, Math.ceil((status.resetAt - Date.now()) / 1000))
+    res.setHeader('Retry-After', String(retryAfter))
+    res.status(429).json({
+      error: `You've used your ${max} shared AI messages for this hour. It resets in ${formatMinutes(retryAfter)} — everyone draws from the same pool, so this keeps it fair.`,
+      retryAfter,
+      quota: { used: status.used, max, resetAt: status.resetAt },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Hybrid RAG: the open-weight models behind Bermi have a real training
 // cutoff and know nothing on their own about anything after it. Rather than
@@ -476,6 +542,7 @@ chatRouter.post(
     max: 20,
     message: "You're sending messages a bit fast — take a breath and try again in a few seconds.",
   }),
+  quotaGate,
   async (req, res, next) => {
   try {
     const { conversationId, message, model, web: webRequested = false, study = false, attachments } = req.body ?? {}
@@ -580,12 +647,13 @@ chatRouter.post(
     // Real, in-context web citations (the sources the grounded answer used).
     const citations = []
     try {
+      const trimmedHistory = trimHistoryToBudget(history, MAX_HISTORY_CHARS)
       const upstream = await streamCompletion({
         model,
         web,
         messages: [
           { role: 'system', content: systemPrompt },
-          ...history.map(({ role, content }, i, arr) => {
+          ...trimmedHistory.map(({ role, content }, i, arr) => {
             // Fold attached-document text into the final user turn only.
             if (docBlocks && role === 'user' && i === arr.length - 1) {
               return {
@@ -644,7 +712,7 @@ chatRouter.post(
       if (web && citations.length) sse(res, { type: 'citations', items: citations })
     } catch (err) {
       if (!abort.signal.aborted) {
-        sse(res, { type: 'error', error: err.message })
+        sse(res, { type: 'error', error: err.friendly || err.message, retryAfter: err.retryAfter ?? null })
         res.end()
         return
       }
@@ -714,6 +782,22 @@ chatRouter.post(
 
     res.write('data: [DONE]\n\n')
     res.end()
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /api/chat/quota
+ * The current user's slice of the shared hourly AI-message pool, so the
+ * client can warn them before they hit it (and show when it resets) instead
+ * of them only finding out from a 429.
+ */
+chatRouter.get('/chat/quota', async (req, res, next) => {
+  try {
+    const max = await quotaLimit()
+    const status = peekRateLimit(`chat-quota:${req.user.id}`, { windowMs: QUOTA_WINDOW_MS, max })
+    res.json({ used: status.used, max, remaining: status.remaining, resetAt: status.resetAt })
   } catch (err) {
     next(err)
   }

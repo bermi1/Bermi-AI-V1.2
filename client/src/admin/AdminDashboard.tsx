@@ -124,6 +124,7 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
 
         <ProviderHealthPanel />
         <ProviderKeysPanel />
+        <QuotaPanel />
 
         {/* Users */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -349,6 +350,71 @@ function ProviderKeysPanel() {
         </button>
       </div>
       {error && <p className="mt-2 text-[12px] text-rose-500">{error}</p>}
+    </div>
+  )
+}
+
+// Every signed-in user draws from the shared provider pool at this many
+// messages per hour (see server routes/chat.js#quotaGate). Raise it as more
+// provider keys widen the pool; lower it if the pool is under pressure (see
+// AI provider capacity panel above).
+function QuotaPanel() {
+  const [perHour, setPerHour] = useState<number | null>(null)
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    api.adminGetQuota().then((r) => {
+      setPerHour(r.perHour)
+      setInput(String(r.perHour))
+    })
+  }, [])
+
+  const save = async () => {
+    const n = Number(input)
+    if (!(n > 0)) return
+    setBusy(true)
+    try {
+      const r = await api.adminSetQuota(n)
+      setPerHour(r.perHour)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (perHour == null) return null
+
+  return (
+    <div className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4">
+      <div className="mb-1 flex items-center gap-2">
+        <MessageSquare size={15} className="text-primary" />
+        <h2 className="text-[14px] font-semibold text-ink">Per-user chat quota</h2>
+      </div>
+      <p className="mb-3 text-[12.5px] text-ink-muted">
+        Each signed-in user gets this many AI messages per hour from the shared provider pool, so one heavy user
+        can't starve everyone else. Raise it as more provider keys are added above.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          min={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()}
+          className="w-28 rounded-xl border border-edge bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+        />
+        <span className="text-[12.5px] text-ink-faint">messages / hour / user</span>
+        <button
+          onClick={save}
+          disabled={busy || Number(input) === perHour || !(Number(input) > 0)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+        >
+          {busy && <Loader2 size={14} className="animate-spin" />} {saved ? 'Saved' : 'Save'}
+        </button>
+      </div>
     </div>
   )
 }

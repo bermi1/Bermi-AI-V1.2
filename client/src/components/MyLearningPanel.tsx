@@ -32,7 +32,7 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
   if (!enrollments) return null
   if (enrollments.length === 0 && !buildOpen) {
     return (
-      <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-5 shadow-sm">
+      <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4 shadow-sm sm:p-5">
         <div className="mb-1 flex items-center gap-2">
           <GraduationCap size={17} className="text-primary" />
           <h2 className="text-[15px] font-semibold tracking-tight">My activity</h2>
@@ -72,7 +72,7 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
   const order: OfferingKind[] = ['course', 'program', 'event', 'resource']
 
   return (
-    <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-5 shadow-sm">
+    <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4 shadow-sm sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <GraduationCap size={17} className="text-primary" />
@@ -116,9 +116,9 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
                       <button
                         key={e.id}
                         onClick={() => onStudyCourse(course.title, kind)}
-                        className="flex items-start gap-3 rounded-xl border border-edge bg-surface p-3.5 text-left transition-colors hover:border-primary"
+                        className="flex items-start gap-2.5 rounded-xl border border-edge bg-surface p-3 text-left transition-colors hover:border-primary sm:gap-3 sm:p-3.5"
                       >
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-lg sm:h-10 sm:w-10 sm:text-xl">
                           {kind === 'event' ? <CalendarClock size={18} /> : course.cover_emoji || '📘'}
                         </span>
                         <span className="min-w-0 flex-1">

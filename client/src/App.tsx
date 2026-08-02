@@ -140,8 +140,19 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   const [studyStats, setStudyStats] = useState<StudyStats | null>(null)
   const [studyToast, setStudyToast] = useState<StudyAwardEvent | null>(null)
   const [streaming, setStreaming] = useState(false)
-  const [chatError, setChatError] = useState<string | null>(null)
+  const [chatError, setChatError] = useState<{ message: string; retryAfter: number | null } | null>(null)
+  const [quota, setQuota] = useState<api.ChatQuota | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // The shared hourly AI-message pool this user is drawing from (see
+  // server routes/chat.js#quotaGate) — refreshed after every send so the
+  // "X left, resets in Y" indicator near the composer stays live.
+  const refreshQuota = useCallback(() => {
+    api.getChatQuota().then(setQuota).catch(() => {})
+  }, [])
+  useEffect(() => {
+    refreshQuota()
+  }, [refreshQuota])
 
   // Local-first cache: mirror the conversation list into this browser so the
   // workspace loads instantly and survives offline — the user's data lives
@@ -343,11 +354,13 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
             setStreaming(false)
             setChatSteps([])
             refreshConversations()
+            refreshQuota()
           },
-          onError: (message) => {
+          onError: (message, retryAfter) => {
             setStreaming(false)
             setChatSteps([])
-            setChatError(message)
+            setChatError({ message, retryAfter: retryAfter ?? null })
+            refreshQuota()
             setMessages((prev) =>
               prev[prev.length - 1]?.role === 'assistant' &&
               prev[prev.length - 1]?.content === ''
@@ -359,7 +372,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         abort.signal,
       )
     },
-    [activeId, selectedModel, refreshConversations],
+    [activeId, selectedModel, refreshConversations, refreshQuota],
   )
 
   const stop = useCallback(() => {
@@ -523,6 +536,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               streaming={streaming}
               study={study}
               onToggleStudy={setStudy}
+              quota={quota}
             />
           </>
         ) : (

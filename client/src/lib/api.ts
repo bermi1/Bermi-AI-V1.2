@@ -378,8 +378,18 @@ export interface ChatStreamCallbacks {
   onStudy?: (award: StudyAwardEvent) => void
   onEnrolled?: (info: { courseId: string; courseTitle: string; kind?: string }) => void
   onDone: (fullText: string) => void
-  onError: (message: string) => void
+  onError: (message: string, retryAfter?: number | null) => void
 }
+
+export interface ChatQuota {
+  used: number
+  max: number
+  remaining: number
+  resetAt: number
+}
+
+/** The current user's slice of the shared hourly AI-message pool. */
+export const getChatQuota = () => apiFetch('/api/chat/quota').then((r) => json<ChatQuota>(r))
 
 /**
  * Streams a chat completion over SSE. The full history lives server-side per
@@ -408,13 +418,15 @@ export async function streamChat(
     })
     if (!res.ok || !res.body) {
       let detail = `Request failed (${res.status})`
+      let retryAfter: number | null = null
       try {
         const body = await res.json()
         detail = body.error || detail
+        if (typeof body.retryAfter === 'number') retryAfter = body.retryAfter
       } catch {
         /* ignore */
       }
-      callbacks.onError(detail)
+      callbacks.onError(detail, retryAfter)
       return
     }
 
@@ -450,6 +462,7 @@ export async function streamChat(
           courseId?: string
           courseTitle?: string
           kind?: string
+          retryAfter?: number | null
         }
         try {
           parsed = JSON.parse(payload)
@@ -475,7 +488,7 @@ export async function streamChat(
           full += parsed.token
           callbacks.onToken(parsed.token)
         } else if (parsed.type === 'error') {
-          callbacks.onError(parsed.error || 'Unknown streaming error')
+          callbacks.onError(parsed.error || 'Unknown streaming error', parsed.retryAfter)
           return
         }
       }
@@ -622,6 +635,16 @@ export const adminAddProviderKey = (provider: string, key: string) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, key }),
   }).then((r) => json<{ ok: true; count: number }>(r))
+
+export const adminGetQuota = () =>
+  apiFetch('/api/admin/quota').then((r) => json<{ perHour: number; isDefault: boolean }>(r))
+
+export const adminSetQuota = (perHour: number) =>
+  apiFetch('/api/admin/quota', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ perHour }),
+  }).then((r) => json<{ ok: true; perHour: number }>(r))
 
 export const adminDeleteProviderKey = (provider: string, index: number) =>
   apiFetch(`/api/admin/provider-keys/${provider}/${index}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))

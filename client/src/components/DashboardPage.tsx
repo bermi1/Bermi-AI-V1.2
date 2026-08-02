@@ -173,23 +173,23 @@ export function DashboardPage({
           </div>
         </header>
 
-        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-8 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
           {stats.map(({ label, value, sub, icon: Icon }) => (
-            <div key={label} className="rounded-2xl border border-edge bg-surface-raised p-4 shadow-sm">
+            <div key={label} className="rounded-2xl border border-edge bg-surface-raised p-3 shadow-sm sm:p-4">
               <div className="flex items-center justify-between">
-                <span className="text-[12.5px] font-medium text-ink-muted">{label}</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary">
-                  <Icon size={15} />
+                <span className="text-[12px] font-medium text-ink-muted sm:text-[12.5px]">{label}</span>
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary sm:h-8 sm:w-8">
+                  <Icon size={14} />
                 </div>
               </div>
-              <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight">{value}</div>
-              <div className="mt-1.5 text-[11.5px] text-ink-faint">{sub}</div>
+              <div className="mt-2 text-[21px] font-semibold leading-none tracking-tight sm:text-[26px]">{value}</div>
+              <div className="mt-1.5 text-[11px] text-ink-faint sm:text-[11.5px]">{sub}</div>
             </div>
           ))}
         </div>
 
         {/* How Bermi understands you */}
-        <section className="mb-8 rounded-2xl border border-edge bg-gradient-to-br from-primary-soft/60 to-surface-raised p-5 shadow-sm">
+        <section className="mb-8 rounded-2xl border border-edge bg-gradient-to-br from-primary-soft/60 to-surface-raised p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Lightbulb size={16} className="text-primary" />
@@ -355,7 +355,7 @@ export function DashboardPage({
           )}
         </section>
 
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className="grid gap-6 md:gap-8 lg:grid-cols-2">
           {/* Knowledge bases */}
           <section>
             <div className="mb-3.5 flex items-center justify-between">

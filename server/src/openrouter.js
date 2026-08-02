@@ -54,6 +54,41 @@ async function errorDetail(res) {
   }
 }
 
+// A raw provider error ("Request too large for model `llama-3.1-8b-instant` on
+// tokens per minute (TPM): Limit 6000, Requested 7765...") is meaningless to
+// an end user and looks like a crash. Once every provider/model/key in the
+// chain has been exhausted, translate the *last* failure into one plain,
+// reassuring sentence — the system already tried everything available before
+// giving up, so the message should say that, not dump the wire-level detail.
+function friendlyMessage(status) {
+  if (status === 413) {
+    return "That request was too large for the AI providers' current capacity. Try starting a new conversation (or turning off a large knowledge base) to shrink it, then send it again."
+  }
+  if (status === 429 || status === 402) {
+    return "Bermi's shared AI capacity is fully busy right now — it already tried every available provider. Please try again shortly."
+  }
+  if (status === 401 || status === 403) {
+    return 'The AI provider rejected the request. An admin may need to check the configured API keys.'
+  }
+  if (typeof status === 'number' && status >= 500) {
+    return 'The AI providers are temporarily unavailable. Please try again in a moment.'
+  }
+  return 'Bermi could not get a response right now. Please try again in a moment.'
+}
+
+// How long to suggest waiting before a retry, in seconds. Real cooldowns (see
+// `cooldown` map below) give an exact number for auth/quota failures; a 413
+// isn't tied to any cooldown (it's a payload-size problem, not an exhausted
+// key) so it gets a short fixed suggestion instead.
+function suggestedRetrySeconds(status, attempts) {
+  if (status === 413) return 15
+  const now = Date.now()
+  const until = attempts
+    .map((a) => cooldown.get(cooldownKey(a.provider.id, a.key)) ?? 0)
+    .filter((t) => t > now)
+  return until.length ? Math.ceil((Math.min(...until) - now) / 1000) : 30
+}
+
 /**
  * Builds the ordered list of attempts (provider × model × key) for a Bermi
  * model id. A Bermi alias ("bermi-core" etc.) fans out across every
@@ -116,7 +151,14 @@ export async function streamCompletion({ model, messages, signal, web = false })
     throw err
   }
   let lastErr
+  // A 413 means THIS model can't fit THIS request at all — retrying the same
+  // realModel under a different key would just 413 again for the identical
+  // reason. Skip the rest of that model's keys and move straight to a
+  // different model instead of burning attempts (and time) on guaranteed
+  // repeats.
+  const oversizedModels = new Set()
   for (const { provider, key, realModel, web: useWeb } of attempts) {
+    if (oversizedModels.has(realModel)) continue
     let res
     try {
       res = await fetch(provider.url, {
@@ -137,13 +179,17 @@ export async function streamCompletion({ model, messages, signal, web = false })
     if (res.ok) return res
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
+    if (res.status === 413) oversizedModels.add(realModel)
     // Every non-2xx just moves on to the next attempt — provider/model/key
     // outages should never take the whole request down while any other
     // option remains. Only cool the (provider, key) down when the failure
     // looks like an auth/quota problem, so it isn't retried needlessly.
     if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
-  throw lastErr ?? new Error('No model available')
+  const finalErr = lastErr ?? new Error('No model available')
+  finalErr.friendly = friendlyMessage(finalErr.status)
+  finalErr.retryAfter = suggestedRetrySeconds(finalErr.status, attempts)
+  throw finalErr
 }
 
 /**
@@ -155,7 +201,9 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
   const attempts = await buildAttempts(model, { web: false })
   if (attempts.length === 0) return null
   let lastErr
+  const oversizedModels = new Set()
   for (const { provider, key, realModel } of attempts) {
+    if (oversizedModels.has(realModel)) continue
     let res
     try {
       res = await fetch(provider.url, {
@@ -173,9 +221,13 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
     }
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
+    if (res.status === 413) oversizedModels.add(realModel)
     if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
-  throw lastErr ?? new Error('No model available')
+  const finalErr = lastErr ?? new Error('No model available')
+  finalErr.friendly = friendlyMessage(finalErr.status)
+  finalErr.retryAfter = suggestedRetrySeconds(finalErr.status, attempts)
+  throw finalErr
 }
 
 /**

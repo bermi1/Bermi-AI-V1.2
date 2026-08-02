@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import type { Attachment, ModelOption } from '../lib/types'
-import { extractFile } from '../lib/api'
+import { extractFile, type ChatQuota } from '../lib/api'
 
 interface InputBarProps {
   models: ModelOption[]
@@ -22,6 +22,38 @@ interface InputBarProps {
   streaming: boolean
   study: boolean
   onToggleStudy: (v: boolean) => void
+  quota?: ChatQuota | null
+}
+
+function formatResetIn(resetAt: number): string {
+  const ms = resetAt - Date.now()
+  if (ms <= 0) return 'now'
+  const mins = Math.ceil(ms / 60_000)
+  return mins <= 1 ? 'under a minute' : `${mins} minutes`
+}
+
+// Only surfaced once a user has burned through a meaningful chunk of their
+// shared hourly quota — a constant "X left" badge on every message would be
+// noise for the common case where nobody is anywhere near the limit. This is
+// the "avoid reaching the limit" warning: it appears with time to spare, and
+// gets louder the closer the reset gets.
+function QuotaBadge({ quota }: { quota: ChatQuota }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick((t) => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  if (quota.max <= 0 || quota.remaining > quota.max * 0.5) return null
+  const critical = quota.remaining <= Math.max(1, Math.ceil(quota.max * 0.15))
+  return (
+    <div
+      className={`mb-1.5 text-center text-[11px] ${
+        critical ? 'font-medium text-amber-600 dark:text-amber-400' : 'text-ink-faint'
+      }`}
+    >
+      {quota.remaining} of {quota.max} shared AI messages left this hour · resets in {formatResetIn(quota.resetAt)}
+    </div>
+  )
 }
 
 const ACCEPT =
@@ -37,6 +69,7 @@ export function InputBar({
   streaming,
   study,
   onToggleStudy,
+  quota,
 }: InputBarProps) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -98,6 +131,7 @@ export function InputBar({
   return (
     <div className="sticky bottom-0 bg-gradient-to-t from-surface via-surface to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 md:px-6 md:pb-6">
       <div className="mx-auto w-full max-w-3xl">
+        {quota && <QuotaBadge quota={quota} />}
         {study && (
           <div className="mb-2 flex items-center justify-center gap-2 rounded-xl bg-primary-soft px-3 py-1.5 text-[12.5px] font-medium text-primary">
             <GraduationCap size={14} />

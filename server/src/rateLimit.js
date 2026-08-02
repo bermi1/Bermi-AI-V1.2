@@ -21,6 +21,18 @@ export function checkRateLimit(key, { windowMs, max }) {
   return bucket.count <= max
 }
 
+/** Read-only status for a bucket — does not consume it. Used to show a user
+ * their remaining quota/reset time without counting the check itself as a
+ * request. */
+export function peekRateLimit(key, { windowMs, max }) {
+  const now = Date.now()
+  const bucket = buckets.get(key)
+  const fresh = !bucket || now - bucket.start > windowMs
+  const used = fresh ? 0 : bucket.count
+  const resetAt = fresh ? now + windowMs : bucket.start + windowMs
+  return { used, max, remaining: Math.max(0, max - used), resetAt }
+}
+
 export function rateLimit({ windowMs, max, message }) {
   return (req, res, next) => {
     const key = req.user?.id || req.ip
