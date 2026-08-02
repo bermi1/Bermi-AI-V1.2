@@ -28,11 +28,17 @@ function numberedEnvKeys(base, max = 20) {
   return names
 }
 
+// Keys can come from Vercel env vars (set once by whoever has dashboard
+// access) AND/OR from admin-added keys stored in the database (added
+// in-product via Settings → AI Providers — see routes/admin.js). The two
+// pools are merged, deduplicated, so an admin who can't touch Vercel can
+// still widen the shared quota pool themselves, and an env-configured
+// deployment keeps working with zero setup.
 async function envOrSetting(envKeys, settingKey) {
-  const keys = envKeys.flatMap((k) => parseKeys(process.env[k]))
-  if (keys.length) return keys
-  const stored = await storage.getSetting(settingKey)
-  return stored ? parseKeys(stored) : []
+  const fromEnv = envKeys.flatMap((k) => parseKeys(process.env[k]))
+  const storedRaw = await storage.getSetting(settingKey)
+  const fromSetting = storedRaw ? parseKeys(storedRaw) : []
+  return [...new Set([...fromEnv, ...fromSetting])]
 }
 
 const OPENROUTER_MODELS = {
@@ -161,6 +167,36 @@ async function localProvider() {
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
     }),
   }
+}
+
+// Provider keys manageable from the admin dashboard (Settings → AI
+// Providers), not just Vercel env vars — see envOrSetting above.
+export const MANAGED_KEY_PROVIDERS = [
+  { id: 'openrouter', label: 'OpenRouter', settingKey: 'openrouter_api_key', envBase: 'OPENROUTER_API_KEY' },
+  { id: 'groq', label: 'Groq', settingKey: 'groq_api_key', envBase: 'GROQ_API_KEY' },
+  { id: 'cerebras', label: 'Cerebras', settingKey: 'cerebras_api_key', envBase: 'CEREBRAS_API_KEY' },
+]
+
+export function envKeyCount(envBase) {
+  return numberedEnvKeys(envBase).flatMap((k) => parseKeys(process.env[k])).length
+}
+
+export async function addStoredKey(settingKey, newKey) {
+  const trimmed = String(newKey || '').trim()
+  if (!trimmed) throw new Error('Key is required')
+  const keys = parseKeys(await storage.getSetting(settingKey))
+  if (!keys.includes(trimmed)) keys.push(trimmed)
+  await storage.setSetting(settingKey, keys.join(','))
+  return keys
+}
+
+export async function removeStoredKey(settingKey, index) {
+  const keys = parseKeys(await storage.getSetting(settingKey))
+  if (index < 0 || index >= keys.length) throw new Error('No such key')
+  keys.splice(index, 1)
+  if (keys.length) await storage.setSetting(settingKey, keys.join(','))
+  else await storage.deleteSetting(settingKey)
+  return keys
 }
 
 /** All configured providers, in preference order. Unconfigured ones are skipped. */

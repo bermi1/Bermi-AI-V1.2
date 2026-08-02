@@ -2,6 +2,8 @@ import { Router } from 'express'
 import { storage } from '../storage/index.js'
 import { hashPassword } from '../auth.js'
 import { providerHealth } from '../openrouter.js'
+import { MANAGED_KEY_PROVIDERS, addStoredKey, removeStoredKey, envKeyCount } from '../providers.js'
+import { MANAGED_TTS_PROVIDERS, ttsProviderStatus } from '../tts.js'
 
 export const adminRouter = Router()
 
@@ -42,6 +44,53 @@ adminRouter.get('/admin/providers', requireAdmin, async (_req, res, next) => {
   try {
     res.json(await providerHealth())
   } catch (err) {
+    next(err)
+  }
+})
+
+// Admin-manageable API keys: lets an admin widen the shared AI quota pool
+// (or wire up a new TTS provider) directly from the product, without
+// needing Vercel dashboard access — keys added here are stored in the
+// database and merged with whatever's set as an env var (see
+// providers.js#envOrSetting).
+adminRouter.get('/admin/provider-keys', requireAdmin, async (_req, res, next) => {
+  try {
+    const chat = await Promise.all(
+      MANAGED_KEY_PROVIDERS.map(async (p) => {
+        const raw = await storage.getSetting(p.settingKey)
+        const storedKeys = raw ? raw.split(/[,\s]+/).filter(Boolean).map((k) => `…${k.slice(-4)}`) : []
+        return { id: p.id, label: p.label, envKeys: envKeyCount(p.envBase), storedKeys }
+      }),
+    )
+    res.json({ chat, tts: await ttsProviderStatus() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.post('/admin/provider-keys', requireAdmin, async (req, res, next) => {
+  try {
+    const { provider, key } = req.body ?? {}
+    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
+    const p = all.find((x) => x.id === provider)
+    if (!p) return res.status(400).json({ error: 'Unknown provider' })
+    const keys = await addStoredKey(p.settingKey, key)
+    res.status(201).json({ ok: true, count: keys.length })
+  } catch (err) {
+    if (err.message === 'Key is required') return res.status(400).json({ error: err.message })
+    next(err)
+  }
+})
+
+adminRouter.delete('/admin/provider-keys/:provider/:index', requireAdmin, async (req, res, next) => {
+  try {
+    const all = [...MANAGED_KEY_PROVIDERS, ...MANAGED_TTS_PROVIDERS]
+    const p = all.find((x) => x.id === req.params.provider)
+    if (!p) return res.status(400).json({ error: 'Unknown provider' })
+    await removeStoredKey(p.settingKey, Number(req.params.index))
+    res.json({ ok: true })
+  } catch (err) {
+    if (err.message === 'No such key') return res.status(404).json({ error: err.message })
     next(err)
   }
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, Globe, GraduationCap, Loader2, Share2, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Check, ChevronDown, Copy, Globe, GraduationCap, Loader2, Share2, StopCircle, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react'
 import type { Enrollment, Message } from '../lib/types'
-import { learnMyEnrollments, sendFeedback } from '../lib/api'
+import { learnMyEnrollments, sendFeedback, synthesizeSpeech } from '../lib/api'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
 
@@ -219,6 +219,8 @@ function MessageActions({
 }) {
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState(false)
+  const [speaking, setSpeaking] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const fbKey = messageId ? `bermi-fb-${messageId}` : ''
   const [vote, setVote] = useState<'up' | 'down' | null>(() => {
     if (!fbKey) return null
@@ -246,6 +248,40 @@ function MessageActions({
     }
   }
 
+  // Strip Markdown syntax and code blocks so the voice reads prose, not
+  // literal asterisks and fence markers.
+  const speakableText = () =>
+    text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/[#*_`>~-]/g, ' ')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const toggleListen = async () => {
+    if (speaking === 'playing') {
+      audioRef.current?.pause()
+      setSpeaking('idle')
+      return
+    }
+    setSpeaking('loading')
+    try {
+      const blob = await synthesizeSpeech(speakableText().slice(0, 2000))
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => setSpeaking('idle')
+      audio.onerror = () => setSpeaking('error')
+      await audio.play()
+      setSpeaking('playing')
+    } catch {
+      setSpeaking('error')
+      setTimeout(() => setSpeaking('idle'), 2500)
+    }
+  }
+
+  useEffect(() => () => audioRef.current?.pause(), [])
+
   const share = async () => {
     if (navigator.share) {
       try {
@@ -272,6 +308,16 @@ function MessageActions({
       <button onClick={share} className={btn} aria-label="Share">
         <Share2 size={13} />
         {shared ? 'Copied to share' : 'Share'}
+      </button>
+      <button onClick={toggleListen} className={btn} aria-label="Listen" disabled={speaking === 'loading'}>
+        {speaking === 'loading' ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : speaking === 'playing' ? (
+          <StopCircle size={13} className="text-primary" />
+        ) : (
+          <Volume2 size={13} />
+        )}
+        {speaking === 'loading' ? 'Loading…' : speaking === 'playing' ? 'Stop' : speaking === 'error' ? 'Unavailable' : 'Listen'}
       </button>
       {rate && (
         <>

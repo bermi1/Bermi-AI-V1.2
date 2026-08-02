@@ -593,6 +593,67 @@ export interface ProviderHealth {
 export const adminProviders = () =>
   apiFetch('/api/admin/providers').then((r) => json<ProviderHealth[]>(r))
 
+export interface TtsProviderInfo {
+  id: string
+  label: string
+  configured: boolean
+  managed: boolean
+  languages: string
+}
+
+export interface ManagedKeyProviderInfo {
+  id: string
+  label: string
+  envKeys: number
+  storedKeys: string[]
+}
+
+export interface AdminProviderKeys {
+  chat: ManagedKeyProviderInfo[]
+  tts: TtsProviderInfo[]
+}
+
+export const adminProviderKeys = () =>
+  apiFetch('/api/admin/provider-keys').then((r) => json<AdminProviderKeys>(r))
+
+export const adminAddProviderKey = (provider: string, key: string) =>
+  apiFetch('/api/admin/provider-keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, key }),
+  }).then((r) => json<{ ok: true; count: number }>(r))
+
+export const adminDeleteProviderKey = (provider: string, index: number) =>
+  apiFetch(`/api/admin/provider-keys/${provider}/${index}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r))
+
+// ---------- Text-to-speech ----------
+
+export const ttsStatus = () =>
+  apiFetch('/api/tts/status').then((r) => json<{ available: boolean; providers: TtsProviderInfo[] }>(r))
+
+export async function synthesizeSpeech(text: string, opts?: { voice?: string; language?: string }): Promise<Blob> {
+  const res = await apiFetch(
+    '/api/tts',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, ...opts }),
+    },
+    30_000,
+  )
+  if (!res.ok) {
+    const err = new ApiError(res.statusText)
+    try {
+      const body = await res.json()
+      err.message = body.error || err.message
+    } catch {
+      /* not json */
+    }
+    throw err
+  }
+  return res.blob()
+}
+
 // ---------- Bermi Learn (LMS) ----------
 
 // Public catalog + course browsing

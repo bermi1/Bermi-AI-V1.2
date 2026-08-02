@@ -8,6 +8,8 @@ import {
   KeyRound,
   Loader2,
   MessageSquare,
+  Mic,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -17,7 +19,7 @@ import {
   Zap,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { AdminStats, AdminUser, ProviderHealth } from '../lib/api'
+import type { AdminProviderKeys, AdminStats, AdminUser, ProviderHealth } from '../lib/api'
 import { BermiMark } from '../components/Logo'
 
 export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; selfEmail: string }) {
@@ -121,6 +123,7 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
         </div>
 
         <ProviderHealthPanel />
+        <ProviderKeysPanel />
 
         {/* Users */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -234,6 +237,120 @@ const PROVIDER_LABEL: Record<string, string> = {
   groq: 'Groq',
   cerebras: 'Cerebras',
   local: 'On-device (local)',
+}
+
+// Lets an admin widen the shared AI quota pool, or wire up a text-to-speech
+// provider (Fish Audio, ElevenLabs), directly from the product — no Vercel
+// dashboard access needed. Keys added here are merged with whatever's set
+// as an env var; either source works.
+function ProviderKeysPanel() {
+  const [data, setData] = useState<AdminProviderKeys | null>(null)
+  const [provider, setProvider] = useState('openrouter')
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => api.adminProviderKeys().then(setData).catch(() => setData(null))
+  useEffect(() => {
+    load()
+  }, [])
+
+  const allProviders = data ? [...data.chat.map((p) => ({ id: p.id, label: p.label })), ...data.tts.filter((p) => p.managed).map((p) => ({ id: p.id, label: p.label }))] : []
+
+  const addKey = async () => {
+    if (!key.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminAddProviderKey(provider, key.trim())
+      setKey('')
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeKey = async (providerId: string, index: number) => {
+    try {
+      await api.adminDeleteProviderKey(providerId, index)
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  if (!data) return null
+
+  return (
+    <div className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <KeyRound size={15} className="text-primary" />
+        <h2 className="text-[14px] font-semibold text-ink">AI provider &amp; voice keys</h2>
+      </div>
+      <p className="mb-3 text-[12.5px] text-ink-muted">
+        Add another account's key to widen the shared AI quota pool, or add a Fish Audio / ElevenLabs key to enable
+        text-to-speech in more languages. Added here, not in Vercel — takes effect immediately.
+      </p>
+
+      <div className="mb-4 space-y-2">
+        {data.chat.map((p) => (
+          <div key={p.id} className="rounded-xl border border-edge bg-surface px-3.5 py-2.5">
+            <div className="mb-1.5 flex items-center justify-between text-[13px]">
+              <span className="font-semibold text-ink">{p.label}</span>
+              <span className="text-[11.5px] text-ink-faint">{p.envKeys} from env · {p.storedKeys.length} added here</span>
+            </div>
+            {p.storedKeys.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {p.storedKeys.map((hint, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] text-ink-muted">
+                    {hint}
+                    <button onClick={() => removeKey(p.id, i)} className="text-ink-faint hover:text-rose-500"><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {data.tts.map((p) => (
+          <div key={p.id} className="rounded-xl border border-edge bg-surface px-3.5 py-2.5">
+            <div className="mb-0.5 flex items-center justify-between text-[13px]">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+                <Mic size={12} className="text-primary" /> {p.label}
+              </span>
+              <span className={`text-[11px] font-semibold ${p.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-faint'}`}>
+                {p.configured ? 'Configured' : 'Not set up'}
+              </span>
+            </div>
+            <p className="text-[11.5px] text-ink-faint">{p.languages}{!p.managed ? ' — uses your existing Groq key automatically' : ''}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <select value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded-xl border border-edge bg-surface px-2.5 py-2 text-[13px] text-ink outline-none focus:border-primary">
+          {allProviders.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        <input
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addKey()}
+          placeholder="Paste API key…"
+          type="password"
+          className="min-w-0 flex-1 rounded-xl border border-edge bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-primary"
+        />
+        <button
+          onClick={addKey}
+          disabled={busy || !key.trim()}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add key
+        </button>
+      </div>
+      {error && <p className="mt-2 text-[12px] text-rose-500">{error}</p>}
+    </div>
+  )
 }
 
 // Watch this during a launch: "cooling" keys mean that provider/key just hit
