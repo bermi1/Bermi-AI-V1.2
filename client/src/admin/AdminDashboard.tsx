@@ -790,8 +790,8 @@ function ResetPasswordModal({ user, onClose }: { user: AdminUser; onClose: () =>
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl border border-edge bg-surface-raised p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-t-2xl border border-edge bg-surface-raised p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
             <KeyRound size={16} className="text-primary" /> Reset password

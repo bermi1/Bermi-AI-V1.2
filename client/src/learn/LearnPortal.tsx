@@ -131,7 +131,7 @@ function PortalSidebar({
         }`}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center justify-between px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
           <button onClick={() => navigate({ name: 'landing' })} className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white">
               <BermiMark size={18} />
@@ -167,7 +167,7 @@ function PortalSidebar({
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-edge p-3">
+        <div className="border-t border-edge p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             onClick={onExit}
             className="mb-2 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
@@ -205,7 +205,7 @@ function MobileBar({
   const title =
     route.name === 'mylearning' ? 'My activity' : route.name === 'studio' ? 'Organization' : 'Bermi Learn'
   return (
-    <header className="flex items-center gap-2 border-b border-edge bg-surface-raised px-3 py-2.5 md:hidden">
+    <header className="flex items-center gap-2 border-b border-edge bg-surface-raised px-3 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] md:hidden">
       <button onClick={onMenu} className="rounded-lg p-2 text-ink-muted hover:bg-surface-sunken">
         <Menu size={18} />
       </button>
