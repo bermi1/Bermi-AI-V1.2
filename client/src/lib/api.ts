@@ -25,6 +25,7 @@ import type {
   OrgType,
   Profile,
   QuizQuestion,
+  QuizSubmitResponse,
   SettingsInfo,
   StudioDoc,
   StudioFormat,
@@ -769,6 +770,16 @@ export const learnLessonQuiz = (lessonId: string) =>
   apiFetch(`/api/learn/lessons/${lessonId}/quiz`, undefined, 45_000).then((r) =>
     json<{ questions: QuizQuestion[] }>(r),
   )
+
+// Grades a quiz just fetched via learnLessonQuiz above, and on a pass marks
+// the lesson complete server-side (see /learn/lessons/:id/quiz/submit) — a
+// real, ungameable gate, not the AI's own self-reported judgement.
+export const learnSubmitQuiz = (lessonId: string, answers: number[]) =>
+  apiFetch(`/api/learn/lessons/${lessonId}/quiz/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers }),
+  }).then((r) => json<QuizSubmitResponse>(r))
 
 export const learnCompleteLesson = (lessonId: string, score?: number) =>
   apiFetch(`/api/learn/lessons/${lessonId}/complete`, {

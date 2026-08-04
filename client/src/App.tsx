@@ -460,7 +460,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         userName={userName}
       />
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col pt-[env(safe-area-inset-top)]">
         {user.is_guest && (
           <div className="flex items-center justify-center gap-2 bg-primary-soft px-4 py-1.5 text-center text-[12.5px] text-primary">
             <span>You're using Bermi as a guest — free for one day.</span>

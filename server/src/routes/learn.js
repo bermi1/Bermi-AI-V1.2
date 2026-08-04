@@ -4,7 +4,7 @@ import { storage } from '../storage/index.js'
 import { complete } from '../openrouter.js'
 import { renderDocument } from '../doc-render.js'
 import { requireAuth } from '../auth.js'
-import { applyLessonCompletion } from '../study.js'
+import { applyLessonCompletion, isLessonUnlocked, QUIZ_PASS_THRESHOLD } from '../study.js'
 import { rateLimit } from '../rateLimit.js'
 
 // AI drafting is the most expensive call in the app (full course/program
@@ -262,6 +262,37 @@ function offeringSystemPrompt(kind) {
   )
 }
 
+// Open-weight models don't reliably follow "output ONLY JSON" — they
+// sometimes wrap it in a code fence, add a stray sentence before/after, or
+// leave a <think> block in. A naive strip-fences-then-parse breaks (and
+// silently kills the whole build) the moment any of that happens. This finds
+// the actual {...} object by matching the first '{' to its balanced closing
+// '}', tolerating anything a model adds around it.
+function extractJson(raw) {
+  const text = String(raw).replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<\/?think>/gi, '')
+  const start = text.indexOf('{')
+  if (start === -1) throw new Error('No JSON object found in the response')
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return JSON.parse(text.slice(start, i + 1))
+    }
+  }
+  throw new Error('Malformed JSON object in the response')
+}
+
 async function draftOfferingPlan(kind, brief) {
   const raw = await complete({
     model: 'bermi-core',
@@ -271,7 +302,7 @@ async function draftOfferingPlan(kind, brief) {
       { role: 'user', content: brief },
     ],
   })
-  return JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
+  return extractJson(raw)
 }
 
 // The guided intake: a short series of answers (what to teach, who it's for,
@@ -316,14 +347,22 @@ export async function quickBuildPersonalOffering(user, input = {}) {
     (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
 
   let plan = null
-  try {
-    plan = await draftOfferingPlan(kind, brief)
-  } catch (err) {
+  let lastErr = null
+  // One retry: an occasional malformed generation shouldn't dead-end the
+  // whole build when asking again usually just works.
+  for (let attempt = 0; attempt < 2 && !plan; attempt++) {
+    try {
+      plan = await draftOfferingPlan(kind, brief)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  if (!plan) {
+    const err = new Error(`Could not draft this: ${lastErr?.message || 'unknown error'}`)
     err.status = 502
-    err.message = `Could not draft this: ${err.message}`
     throw err
   }
-  if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
+  if (!Array.isArray(plan.lessons) || plan.lessons.length === 0) {
     const err = new Error('Could not draft a complete plan from those answers — try adding more detail.')
     err.status = 502
     throw err
@@ -512,12 +551,18 @@ learnRouter.post('/learn/institutions/:id/courses/quick', draftLimiter, async (r
       (material ? `\nSource material to ground it in:\n${material.slice(0, 12000)}` : '')
 
     let plan = null
-    try {
-      plan = await draftOfferingPlan(kind, brief)
-    } catch (err) {
-      return res.status(502).json({ error: `Could not draft this: ${err.message}` })
+    let lastErr = null
+    for (let attempt = 0; attempt < 2 && !plan; attempt++) {
+      try {
+        plan = await draftOfferingPlan(kind, brief)
+      } catch (err) {
+        lastErr = err
+      }
     }
-    if (!plan || !Array.isArray(plan.lessons) || plan.lessons.length === 0) {
+    if (!plan) {
+      return res.status(502).json({ error: `Could not draft this: ${lastErr?.message || 'unknown error'}` })
+    }
+    if (!Array.isArray(plan.lessons) || plan.lessons.length === 0) {
       return res.status(502).json({ error: 'Could not draft a complete plan from those answers — try adding more detail.' })
     }
 
@@ -782,22 +827,29 @@ learnRouter.get('/learn/lessons/:id/study', async (req, res, next) => {
     if (!lesson) return res.status(404).json({ error: 'Lesson not found' })
     const enrollment = await storage.getEnrollment(lesson.course_id, req.user.id)
     if (!enrollment) return res.status(403).json({ error: 'Enroll to access this lesson' })
+    const { unlocked, blockingLesson } = await isLessonUnlocked(lesson, enrollment)
+    if (!unlocked) {
+      return res.status(409).json({ error: `Complete "${blockingLesson.title}" first.`, code: 'LOCKED', blockingLesson })
+    }
     res.json({ lesson, enrollment })
   } catch (err) {
     next(err)
   }
 })
 
-// AI-generated quiz for a lesson.
-learnRouter.get('/learn/lessons/:id/quiz', async (req, res, next) => {
-  try {
-    const lesson = await storage.getLesson(req.params.id)
-    if (!lesson) return res.status(404).json({ error: 'Lesson not found' })
-    if (!(await storage.getEnrollment(lesson.course_id, req.user.id)))
-      return res.status(403).json({ error: 'Enroll first' })
+// Where a just-generated quiz's correct answers are held server-side between
+// GET (fetch questions) and POST .../submit (grade) — never sent to the
+// client, so passing requires actually answering, not reading the response.
+// Reuses the generic settings KV store the same way study.js keeps study
+// stats, rather than adding a new table to both storage backends for one
+// short-lived, per-user, per-lesson blob.
+const quizKey = (lessonId, userId) => `quiz:${lessonId}:${userId}`
 
-    const source = `${lesson.title}\n\n${lesson.content}\n\n${lesson.material}`.slice(0, 10000)
-    let questions = []
+async function generateQuiz(lesson) {
+  const source = `${lesson.title}\n\n${lesson.content}\n\n${lesson.material}`.slice(0, 10000)
+  let questions = []
+  let lastErr = null
+  for (let attempt = 0; attempt < 2 && !questions.length; attempt++) {
     try {
       const raw = await complete({
         model: 'bermi-core',
@@ -806,27 +858,104 @@ learnRouter.get('/learn/lessons/:id/quiz', async (req, res, next) => {
           {
             role: 'system',
             content:
-              'Create a 4-question multiple-choice quiz from the lesson. Respond with ONLY JSON: ' +
+              'Create a 4-question multiple-choice quiz from the lesson, testing real understanding (not just ' +
+              'wording recall). Respond with ONLY JSON: ' +
               '{"questions":[{"q":string,"options":[string,string,string,string],"answer":0}]} — answer is the correct option index. No prose.',
           },
           { role: 'user', content: source },
         ],
       })
-      const parsed = JSON.parse(String(raw).replace(/<\/?think>/gi, '').replace(/^```(?:json)?/i, '').replace(/```$/, ''))
-      questions = (parsed.questions || []).slice(0, 6)
-    } catch {
-      questions = []
+      const parsed = extractJson(raw)
+      questions = (parsed.questions || []).filter((q) => q?.q && Array.isArray(q.options) && q.options.length >= 2).slice(0, 6)
+    } catch (err) {
+      lastErr = err
     }
-    if (!questions.length) {
-      questions = [
-        { q: `What is the main focus of "${lesson.title}"?`, options: ['The core topic of this lesson', 'An unrelated subject', 'None of these', 'Not covered'], answer: 0 },
-      ]
+  }
+  if (!questions.length) {
+    if (lastErr) throw lastErr
+    questions = [
+      { q: `What is the main focus of "${lesson.title}"?`, options: ['The core topic of this lesson', 'An unrelated subject', 'None of these', 'Not covered'], answer: 0 },
+    ]
+  }
+  return questions
+}
+
+// AI-generated quiz for a lesson. Locked (403) until the previous lesson in
+// the course is done — matches the same ordering rule applyLessonCompletion
+// enforces, so a learner can't even fetch a later lesson's quiz early.
+learnRouter.get('/learn/lessons/:id/quiz', async (req, res, next) => {
+  try {
+    const lesson = await storage.getLesson(req.params.id)
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' })
+    const enrollment = await storage.getEnrollment(lesson.course_id, req.user.id)
+    if (!enrollment) return res.status(403).json({ error: 'Enroll first' })
+    const { unlocked, blockingLesson } = await isLessonUnlocked(lesson, enrollment)
+    if (!unlocked) {
+      return res.status(409).json({ error: `Complete "${blockingLesson.title}" first.`, code: 'LOCKED' })
     }
+
+    let questions
+    try {
+      questions = await generateQuiz(lesson)
+    } catch (err) {
+      return res.status(502).json({ error: `Could not generate a quiz right now: ${err.message}` })
+    }
+
+    // Persist the full quiz (with correct answers) so /submit can grade
+    // against exactly what was shown — regenerating on submit would produce
+    // different questions/answers and make grading meaningless.
+    await storage.setSetting(quizKey(lesson.id, req.user.id), JSON.stringify({ questions, createdAt: Date.now() }))
+
     // Never send correct answers to the client — that would make the quiz
     // provable by nothing but reading the response. Grading happens
-    // server-side against a lesson's stored content whenever completion is
-    // recorded (see applyLessonCompletion / Study Mode's chat evaluation).
+    // server-side in /submit below.
     res.json({ questions: questions.map((x) => ({ q: x.q, options: x.options })) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Grades a just-fetched quiz (see GET above) and, on a pass, marks the
+// lesson complete for real — this is the actual "quiz gates the lesson"
+// mechanism the rest of the app (and its marketing) promises, not just the
+// AI's own self-reported judgement from a chat conversation.
+learnRouter.post('/learn/lessons/:id/quiz/submit', async (req, res, next) => {
+  try {
+    const lesson = await storage.getLesson(req.params.id)
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' })
+    const enrollment = await storage.getEnrollment(lesson.course_id, req.user.id)
+    if (!enrollment) return res.status(403).json({ error: 'Enroll first' })
+
+    const answers = Array.isArray(req.body?.answers) ? req.body.answers : null
+    if (!answers) return res.status(400).json({ error: 'answers array is required' })
+
+    const stored = await storage.getSetting(quizKey(lesson.id, req.user.id))
+    if (!stored) return res.status(409).json({ error: 'No active quiz for this lesson — fetch a new one first.', code: 'NO_QUIZ' })
+    const { questions } = JSON.parse(stored)
+
+    const results = questions.map((q, i) => {
+      const chosen = typeof answers[i] === 'number' ? answers[i] : -1
+      const correct = chosen === q.answer
+      return { q: q.q, options: q.options, chosen, correctIndex: q.answer, correct }
+    })
+    const numCorrect = results.filter((r) => r.correct).length
+    const score = questions.length ? Math.round((numCorrect / questions.length) * 100) : 0
+    const passed = score >= QUIZ_PASS_THRESHOLD
+
+    // Consumed either way — a fresh GET is required for a retake, so a
+    // learner can't resubmit different guesses against the same answer key.
+    await storage.deleteSetting(quizKey(lesson.id, req.user.id))
+
+    if (!passed) {
+      return res.json({ score, passed: false, threshold: QUIZ_PASS_THRESHOLD, results })
+    }
+
+    const result = await applyLessonCompletion(req.user, req.params.id, score)
+    if (!result) return res.status(403).json({ error: 'Enroll first' })
+    if (result.locked) {
+      return res.status(409).json({ error: `Complete "${result.blockingLesson.title}" first.`, code: 'LOCKED' })
+    }
+    res.json({ score, passed: true, threshold: QUIZ_PASS_THRESHOLD, results, ...result })
   } catch (err) {
     next(err)
   }
@@ -840,6 +969,17 @@ learnRouter.post('/learn/lessons/:id/complete', async (req, res, next) => {
     const score = typeof req.body?.score === 'number' ? req.body.score : undefined
     const result = await applyLessonCompletion(req.user, req.params.id, score)
     if (!result) return res.status(403).json({ error: 'Enroll first' })
+    if (result.locked) {
+      return res.status(409).json({ error: `Complete "${result.blockingLesson.title}" first.`, code: 'LOCKED' })
+    }
+    if (result.failed) {
+      return res.status(409).json({
+        error: `Score ${result.score}% is below the ${result.threshold}% needed to pass — review the lesson and try the quiz again.`,
+        code: 'QUIZ_FAILED',
+        score: result.score,
+        threshold: result.threshold,
+      })
+    }
     res.json(result)
   } catch (err) {
     next(err)

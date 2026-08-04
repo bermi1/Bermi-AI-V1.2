@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BookOpen, Building2, CalendarClock, CheckCircle2, Download, MapPin, MessageSquare, Wand2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Building2, CalendarClock, CheckCircle2, Download, ListChecks, Lock, MapPin, MessageSquare, Wand2 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Course, Enrollment, Lesson, OfferingKind } from '../lib/types'
 import { Btn, ErrorNote, Pill, Spinner, handoffToStudy, type LearnRoute } from './ui'
 import { Markdown } from '../components/Markdown'
+import { QuizModal } from './QuizModal'
 
 const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', event: 'Event', resource: 'Resource' }
 const KIND_STEP_HEADING: Record<OfferingKind, string> = {
@@ -46,14 +47,16 @@ export function CoursePage({
     enrollment: Enrollment | null
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [quizLesson, setQuizLesson] = useState<Lesson | null>(null)
+
+  function reload() {
+    return api.learnCourse(courseId).then(setData)
+  }
 
   useEffect(() => {
     setData(null)
     setError(null)
-    api
-      .learnCourse(courseId)
-      .then(setData)
-      .catch((e) => setError((e as Error).message))
+    reload().catch((e) => setError((e as Error).message))
   }, [courseId])
 
   if (error && !data) return <div className="mx-auto max-w-3xl px-4 py-10"><ErrorNote>{error}</ErrorNote></div>
@@ -173,21 +176,58 @@ export function CoursePage({
           <div className="space-y-2">
             {lessons.map((l, i) => {
               const done = progress[l.id]?.done
+              // Only courses are hard mastery-gated (quiz + in-order) — a
+              // program/resource's steps stay freely browsable, matching
+              // their lighter "plain confirmation" evaluation model.
+              const locked = kind === 'course' && enrolled && i > 0 && !done && !progress[lessons[i - 1].id]?.done
+              if (locked) {
+                return (
+                  <div
+                    key={l.id}
+                    className="flex w-full cursor-not-allowed items-center gap-3 rounded-2xl border border-dashed border-edge px-4 py-3.5 opacity-60"
+                    title={`Complete "${lessons[i - 1].title}" first`}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[13px] font-semibold text-ink-faint">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-medium text-ink-faint">{l.title}</span>
+                      <span className="block truncate text-[11.5px] text-ink-faint">Complete "{lessons[i - 1].title}" first</span>
+                    </span>
+                    <Lock size={15} className="shrink-0 text-ink-faint" />
+                  </div>
+                )
+              }
               return (
-                <button
+                <div
                   key={l.id}
-                  onClick={() => handoffToStudy({ title: course.title, prompt: lessonPrompt(l) })}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-edge bg-surface-raised px-4 py-3.5 text-left transition-colors hover:border-primary hover:bg-primary-soft/40"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-edge bg-surface-raised px-4 py-3.5 transition-colors hover:border-primary hover:bg-primary-soft/40"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[13px] font-semibold text-ink-muted">
-                    {done ? <CheckCircle2 size={16} className="text-emerald-500" /> : i + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-medium text-ink">{l.title}</span>
-                  </span>
+                  <button
+                    onClick={() => handoffToStudy({ title: course.title, prompt: lessonPrompt(l) })}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[13px] font-semibold text-ink-muted">
+                      {done ? <CheckCircle2 size={16} className="text-emerald-500" /> : i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-medium text-ink">{l.title}</span>
+                    </span>
+                  </button>
                   {l.attachment_url && <Download size={15} className="shrink-0 text-ink-faint" />}
-                  <MessageSquare size={16} className="shrink-0 text-ink-faint" />
-                </button>
+                  {kind === 'course' && enrolled && !done && (
+                    <button
+                      onClick={() => setQuizLesson(l)}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-edge-strong px-2 py-1 text-[11.5px] font-semibold text-ink-muted hover:border-primary hover:text-primary"
+                      title="Take the quiz to complete this lesson"
+                    >
+                      <ListChecks size={13} /> Quiz
+                    </button>
+                  )}
+                  <button onClick={() => handoffToStudy({ title: course.title, prompt: lessonPrompt(l) })} title="Study in Bermi AI chat">
+                    <MessageSquare size={16} className="shrink-0 text-ink-faint hover:text-primary" />
+                  </button>
+                </div>
               )
             })}
             {!lessons.length && (
@@ -198,8 +238,27 @@ export function CoursePage({
           </div>
           {lessons.length > 0 && (
             <p className="mt-3 text-center text-[12.5px] text-ink-faint">
-              <MessageSquare size={12} className="mr-1 inline" /> Every {stepSingular} opens inside Bermi AI chat.
+              {kind === 'course' ? (
+                <>
+                  <ListChecks size={12} className="mr-1 inline" /> Pass each quiz to unlock the next lesson — or{' '}
+                  <MessageSquare size={12} className="mx-0.5 mb-0.5 inline" /> study it in Bermi AI chat first.
+                </>
+              ) : (
+                <>
+                  <MessageSquare size={12} className="mr-1 inline" /> Every {stepSingular} opens inside Bermi AI chat.
+                </>
+              )}
             </p>
+          )}
+          {quizLesson && (
+            <QuizModal
+              lessonId={quizLesson.id}
+              lessonTitle={quizLesson.title}
+              onClose={() => setQuizLesson(null)}
+              onPassed={() => {
+                reload().catch(() => {})
+              }}
+            />
           )}
         </div>
       )}

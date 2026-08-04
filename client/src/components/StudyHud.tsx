@@ -50,7 +50,7 @@ export function StudyToast({
   badges: { id: string; label: string }[]
 }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
       <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-primary/30 bg-surface-raised px-4 py-2.5 shadow-lg animate-fade-up">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
           {leveledUp ? <GraduationCap size={18} /> : <Star size={16} />}

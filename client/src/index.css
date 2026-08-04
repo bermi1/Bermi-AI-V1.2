@@ -50,10 +50,22 @@ body,
   height: 100%;
 }
 
+html {
+  /* Installed as a standalone PWA (see manifest.webmanifest), Bermi has no
+     browser chrome at all — without this, a pull-past-the-top/bottom
+     gesture reveals a blank rubber-band gap instead of feeling like a fixed
+     native surface. Individual scroll containers opt back in per-element
+     where a bounce is actually wanted. */
+  overscroll-behavior-y: none;
+}
+
 body {
   @apply bg-surface text-ink font-sans antialiased;
   font-feature-settings: 'cv11', 'ss01';
   line-height: 1.65;
+  /* Removes the gray flash Android/iOS browsers paint on every tap — small,
+     but it's one of the most obvious "this is a website" tells on mobile. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---------- Scrollbars ---------- */

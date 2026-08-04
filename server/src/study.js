@@ -176,13 +176,19 @@ Teach ONE section per turn — deeply, never shallowly:
 - Never dump a wall of text. Structure each turn with a heading and clear steps.
 - Be warm, encouraging, and specific in praise.
 
-MASTERY GATE — test before moving on (this is mandatory):
-- You may NOT advance to the next section until the learner has demonstrated understanding of the current one.
+MASTERY GATE — test before moving on (this is mandatory, non-negotiable):
+- You may NOT advance to the next section until the learner has demonstrated REAL understanding of the current one — not politeness, not their own self-report of "I get it", not time spent talking about it.
+- If a curriculum/progress checklist is given to you in context below, teach and test lessons STRICTLY in the order shown. If the learner asks to skip ahead or jump to a later lesson/step, decline directly and explain lessons must be cleared in order — then continue with the actual next lesson, not the one they asked for. Never invent a shortcut around this.
 - End every teaching turn with a real check: a question they must answer, or a problem they must solve. Not "does that make sense?" — an actual test.
-- Grade their answer honestly. If correct and well-reasoned → mark the section mastered and move on. If partly right → probe the gap, then re-test.
-- If wrong or confused → do NOT advance. Re-teach that same section a DIFFERENT way (new analogy, simpler level, smaller steps, concrete example), then test again.
-- Before leaving a level, run a 2-3 question quiz covering it. Only advance on a solid pass.
-- XP is earned ONLY for real mastery, never for chatting: the moment — and ONLY the moment — the learner's answer just demonstrated real mastery of a lesson, end your reply with its own line, exactly: ✅ **Mastered:** <short lesson name>. Never include this line speculatively, before testing, or when the answer was wrong, partial, or untested — that would award XP for nothing earned. Include it at most once per reply, naming only the single lesson just cleared.
+- Grade their answer HONESTLY, never generously: if it is wrong, incomplete, or just a lucky guess, say so plainly and explain exactly what is missing or incorrect — do not soften a wrong answer into "close!" or "good effort!" if it is not actually close or good. If correct and well-reasoned → say so plainly, mark the section mastered, and move on. If partly right → name precisely what part is right and what part is not, probe the gap, then re-test.
+- If wrong or confused → do NOT advance, no matter how many times it takes. Re-teach that same section a DIFFERENT way (new analogy, simpler level, smaller steps, concrete example), then test again. Never advance out of politeness, sympathy, or to keep the conversation moving.
+- Before leaving a level, run a 2-3 question quiz covering it. Only advance on a solid pass — grade that quiz with the same honesty as above.
+- XP is earned ONLY for real, verified mastery, never for chatting, trying, or asking good questions: the moment — and ONLY the moment — the learner's answer just demonstrated real mastery of a lesson, end your reply with its own line, exactly: ✅ **Mastered:** <short lesson name>. Never include this line speculatively, before testing, when the answer was wrong or partial, or as encouragement — that would award XP and unlock the next lesson for nothing actually earned, which defeats the entire point of gating. Include it at most once per reply, naming only the single lesson just cleared.
+
+TEACH FOR REAL DEPTH, NOT SURFACE COVERAGE:
+- "Covered it" and "understands it" are different things — always aim for the second. Do not settle for a definition-level pass when the topic supports (and the learner can handle) genuine depth: the underlying mechanism, why it works, where it breaks down, how it connects to adjacent ideas, and how it is actually used in practice.
+- Prefer one lesson taught to real, checkable understanding over five lessons skimmed. If a learner is breezing through, raise the bar — harder questions, less scaffolding, edge cases — rather than just moving faster through the same shallow level.
+- Be realistic, not motivational filler: if a topic is genuinely hard, say so and explain why, instead of implying it is easy to sound encouraging. Realistic confidence, built on things they actually proved they can do, beats false confidence every time.
 
 ADAPT to the individual (native, personalized learning):
 - Notice HOW this person learns and adapt in real time: if they reason well, go faster and deeper; if they struggle, slow down, shrink the steps, add analogies and scaffolding.
@@ -214,6 +220,40 @@ export const BADGE_LABELS = Object.fromEntries(BADGES.map((b) => [b.id, b.label]
 // one honest completion path instead of two.
 // ---------------------------------------------------------------------------
 
+// A course lesson is unlocked when it's the first lesson, or the lesson
+// immediately before it (by ordinal) is already marked done. Programs,
+// events, and resources aren't gated this strictly by the AI's own
+// judgement — but working through them in order is still the sane default,
+// so the same rule applies to every kind.
+export function findLockedBy(orderedLessons, progress, lessonId) {
+  const idx = orderedLessons.findIndex((l) => l.id === lessonId)
+  if (idx <= 0) return null
+  const prev = orderedLessons[idx - 1]
+  return progress?.[prev.id]?.done ? null : prev
+}
+
+export async function isLessonUnlocked(lesson, enrollment) {
+  const lessons = await storage.listLessons(lesson.course_id)
+  const ordered = [...lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
+  const blocker = findLockedBy(ordered, enrollment.progress || {}, lesson.id)
+  return { unlocked: !blocker, blockingLesson: blocker }
+}
+
+// The minimum quiz score (%) needed to pass a COURSE lesson and unlock the
+// next one. Programs/events/resources aren't graded this way — a plain
+// confirmation is enough for those, per their own design (see learn.js).
+export const QUIZ_PASS_THRESHOLD = 70
+
+/**
+ * Marks a lesson complete. Returns:
+ * - null: no such lesson, or the user isn't enrolled in its course.
+ * - { locked: true, blockingLesson }: an earlier lesson isn't done yet —
+ *   completion refused, nothing changed.
+ * - { failed: true, score, threshold }: a COURSE lesson's quiz score came in
+ *   under the pass threshold — refused, nothing changed, learner can retake.
+ * - { enrollment, certificate }: success (certificate is null unless this
+ *   was the course's last lesson).
+ */
 export async function applyLessonCompletion(user, lessonId, score) {
   const lesson = await storage.getLesson(lessonId)
   if (!lesson) return null
@@ -221,10 +261,19 @@ export async function applyLessonCompletion(user, lessonId, score) {
   if (!enrollment) return null
   if (enrollment.progress?.[lessonId]?.done) return { enrollment, certificate: null }
 
+  const lessons = await storage.listLessons(lesson.course_id)
+  const ordered = [...lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
+  const blocker = findLockedBy(ordered, enrollment.progress || {}, lessonId)
+  if (blocker) return { locked: true, blockingLesson: blocker }
+
+  const course = await storage.getCourse(lesson.course_id)
+  if ((course?.kind || 'course') === 'course' && typeof score === 'number' && score < QUIZ_PASS_THRESHOLD) {
+    return { failed: true, score: Math.round(score), threshold: QUIZ_PASS_THRESHOLD }
+  }
+
   const progress = { ...(enrollment.progress || {}) }
   progress[lessonId] = { done: true, score: typeof score === 'number' ? Math.round(score) : undefined }
 
-  const lessons = await storage.listLessons(lesson.course_id)
   const allDone = lessons.length > 0 && lessons.every((l) => progress[l.id]?.done)
   const scores = lessons.map((l) => progress[l.id]?.score).filter((s) => typeof s === 'number')
   const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
@@ -319,7 +368,11 @@ export async function syncLessonProgress(user, topicTitle, masteredLabels) {
       }
       if (best) {
         const result = await applyLessonCompletion(user, best.lesson.id, 100)
-        if (result) best.entry.enr = result.enrollment // keep in-memory progress fresh for later labels
+        // A locked result here means the tutor's own "Mastered:" label named
+        // a lesson out of order (e.g. matched lesson 5 while 1-4 aren't done)
+        // — refused by design, so just leave progress as-is rather than
+        // recording something the learner hasn't actually earned in order.
+        if (result?.enrollment) best.entry.enr = result.enrollment // keep in-memory progress fresh for later labels
         continue
       }
 
@@ -335,7 +388,7 @@ export async function syncLessonProgress(user, topicTitle, masteredLabels) {
           .find((l) => !top.enr.progress?.[l.id]?.done)
         if (next) {
           const result = await applyLessonCompletion(user, next.id, 100)
-          if (result) top.enr = result.enrollment
+          if (result?.enrollment) top.enr = result.enrollment
         }
       }
     }

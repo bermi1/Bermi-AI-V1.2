@@ -68,7 +68,7 @@ export function Sidebar({
           open ? 'translate-x-0' : '-translate-x-full md:hidden'
         }`}
       >
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between px-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-2">
             <BermiTile size={26} className="rounded-lg" />
             <span className="text-[15px] font-semibold tracking-tight">Bermi AI</span>
@@ -144,7 +144,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="border-t border-edge p-3">
+        <div className="border-t border-edge p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             onClick={onOpenSettings}
             className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-surface-raised"

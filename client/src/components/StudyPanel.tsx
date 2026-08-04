@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Award, Flame, GraduationCap, Star } from 'lucide-react'
+import { Award, Flame, GraduationCap, Lock, Star } from 'lucide-react'
 import * as api from '../lib/api'
 import type { StudyStats } from '../lib/types'
 
@@ -54,20 +54,33 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
             </div>
           </div>
 
-          {stats!.badges_detailed && stats!.badges_detailed.length > 0 && (
+          {stats!.badge_labels && Object.keys(stats!.badge_labels).length > 0 && (
             <div>
-              <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold">
-                <Award size={14} className="text-primary" /> Badges
+              <div className="mb-2 flex items-center justify-between text-[13px] font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <Award size={14} className="text-primary" /> Badges
+                </span>
+                <span className="text-[11.5px] font-normal text-ink-faint">
+                  {stats!.badges.length}/{Object.keys(stats!.badge_labels).length} earned
+                </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {stats!.badges_detailed.map((b) => (
-                  <span
-                    key={b.id}
-                    className="rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] font-medium text-primary"
-                  >
-                    {b.label}
-                  </span>
-                ))}
+                {Object.entries(stats!.badge_labels).map(([id, label]) => {
+                  const earned = stats!.badges.includes(id)
+                  return (
+                    <span
+                      key={id}
+                      className={
+                        earned
+                          ? 'rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] font-medium text-primary'
+                          : 'flex items-center gap-1 rounded-full bg-surface-sunken px-2.5 py-1 text-[11.5px] font-medium text-ink-faint'
+                      }
+                    >
+                      {!earned && <Lock size={10} />}
+                      {label}
+                    </span>
+                  )
+                })}
               </div>
             </div>
           )}

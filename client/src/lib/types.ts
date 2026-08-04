@@ -183,6 +183,7 @@ export interface StudyStats {
   xp_for_level: number
   badges: string[]
   badges_detailed?: { id: string; label: string }[]
+  badge_labels?: Record<string, string>
   topic_list?: { topic: string; count: number; steps: string[] }[]
 }
 
@@ -296,6 +297,23 @@ export interface Certificate {
 export interface QuizQuestion {
   q: string
   options: string[]
+}
+
+export interface QuizResult {
+  q: string
+  options: string[]
+  chosen: number
+  correctIndex: number
+  correct: boolean
+}
+
+export interface QuizSubmitResponse {
+  score: number
+  passed: boolean
+  threshold: number
+  results: QuizResult[]
+  enrollment?: Enrollment
+  certificate?: Certificate | null
 }
 
 export interface InstitutionAnalytics {
