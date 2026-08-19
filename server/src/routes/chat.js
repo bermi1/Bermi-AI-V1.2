@@ -950,7 +950,8 @@ chatRouter.post(
         // non-2xx responses). Logging it here is what makes "why are people
         // not getting responses" answerable from logs instead of guesswork.
         console.error(
-          `[chat] all providers failed for user ${req.user.id}: status=${err.status ?? 'n/a'} retryAfter=${err.retryAfter ?? 'n/a'} — ${err.message}`,
+          `[chat] all providers failed for user ${req.user.id}: status=${err.status ?? 'n/a'} retryAfter=${err.retryAfter ?? 'n/a'} — ${err.message}\n` +
+            (err.trace?.length ? `  attempts:\n${err.trace.map((t) => `  - ${t}`).join('\n')}` : '  (no attempts recorded — no provider configured at all)'),
         )
         sse(res, { type: 'error', error: err.friendly || err.message, retryAfter: err.retryAfter ?? null })
         res.end()

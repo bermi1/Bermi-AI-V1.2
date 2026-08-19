@@ -197,6 +197,11 @@ export async function streamCompletion({ model, messages, signal, web = false })
     throw err
   }
   let lastErr
+  // Every attempt's outcome, kept so a total failure can be logged in full —
+  // "all providers failed" used to only ever surface the LAST attempt's
+  // error, which made a single broken model id look identical to genuine
+  // multi-provider quota exhaustion. Now the real spread is visible.
+  const trace = []
   // A 413 means THIS model can't fit THIS request at all — retrying the same
   // realModel under a different key would just 413 again for the identical
   // reason. Skip the rest of that model's keys and move straight to a
@@ -214,11 +219,13 @@ export async function streamCompletion({ model, messages, signal, web = false })
       // provider/model/key in the chain.
       if (signal?.aborted) throw err
       lastErr = err
+      trace.push(`${provider.id}/${realModel}: network error — ${err.message}`)
       continue
     }
     if (res.ok) return res
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
+    trace.push(`${provider.id}/${realModel}: ${res.status} — ${lastErr.message}`)
     if (res.status === 413) oversizedModels.add(realModel)
     // Every non-2xx just moves on to the next attempt — provider/model/key
     // outages should never take the whole request down while any other
@@ -229,6 +236,7 @@ export async function streamCompletion({ model, messages, signal, web = false })
   const finalErr = lastErr ?? new Error('No model available')
   finalErr.friendly = friendlyMessage(finalErr.status)
   finalErr.retryAfter = suggestedRetrySeconds(finalErr.status, attempts)
+  finalErr.trace = trace
   throw finalErr
 }
 
@@ -241,6 +249,7 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
   const attempts = await buildAttempts(model, { web: false })
   if (attempts.length === 0) return null
   let lastErr
+  const trace = []
   const oversizedModels = new Set()
   for (const { provider, key, realModel } of attempts) {
     if (oversizedModels.has(realModel)) continue
@@ -249,6 +258,7 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
       res = await fetchAttempt(provider, key, realModel, messages, { stream: false, maxTokens }, undefined)
     } catch (err) {
       lastErr = err
+      trace.push(`${provider.id}/${realModel}: network error — ${err.message}`)
       continue
     }
     if (res.ok) {
@@ -257,12 +267,14 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
     }
     lastErr = new Error(await errorDetail(res))
     lastErr.status = res.status
+    trace.push(`${provider.id}/${realModel}: ${res.status} — ${lastErr.message}`)
     if (res.status === 413) oversizedModels.add(realModel)
     if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
   const finalErr = lastErr ?? new Error('No model available')
   finalErr.friendly = friendlyMessage(finalErr.status)
   finalErr.retryAfter = suggestedRetrySeconds(finalErr.status, attempts)
+  finalErr.trace = trace
   throw finalErr
 }
 
