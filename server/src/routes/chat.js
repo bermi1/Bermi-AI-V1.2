@@ -200,7 +200,7 @@ function formatEventWhen(course) {
  * catalog) and an action note (what the system already did) to append to the
  * system prompt.
  */
-async function learningContext(user, message, conversationTitle, study) {
+async function learningContext(user, message, conversationTitle, study, conversationId) {
   const userId = user.id
   // Keep computing this every turn once a Study Mode session is under way
   // (not just when the user's own wording happens to mention "course" or
@@ -281,9 +281,28 @@ async function learningContext(user, message, conversationTitle, study) {
     // assistant works from its real, authored steps instead of inventing a
     // parallel structure — the mismatch between an invented breakdown and
     // the stored step titles is exactly why progress used to silently fail
-    // to record. Matched against the conversation's own (stable) title.
+    // to record.
+    //
+    // Preferred signal: an explicit pin set the first time this conversation
+    // was grounded in a course (see below) — stable across turns regardless
+    // of wording. Fuzzy title matching against the conversation's own title
+    // is only a fallback for conversations that predate the pin, because the
+    // title itself is NOT stable: generateConversationTitle rewrites it from
+    // the raw first message to an AI-written summary after turn one, and
+    // that rewritten wording can drift far enough from the course title to
+    // silently drop below the match threshold — which is exactly why a
+    // course would ground correctly on the turn it was built, then "forget"
+    // its real curriculum and start improvising from turn two onward.
     let curriculumEntry = null
     let curriculumSim = 0
+    let pinnedCourseId = null
+    if (conversationId) {
+      try {
+        pinnedCourseId = await storage.getSetting(`conv-course:${conversationId}`)
+      } catch {
+        /* pin optional */
+      }
+    }
     for (const e of (enrollments || []).slice(0, 15)) {
       const course = await storage.getCourse(e.course_id)
       if (!course) continue
@@ -304,10 +323,18 @@ async function learningContext(user, message, conversationTitle, study) {
           (withVideo.length ? `. Has video for: ${withVideo.map((l) => `"${l.title}"`).join(', ')}` : ''),
       )
       if (e.status !== 'completed' && lessons.length && kind !== 'event') {
-        const sim = titleSimilarity(conversationTitle || message, course.title)
-        if (sim > curriculumSim) {
-          curriculumSim = sim
+        if (pinnedCourseId && course.id === pinnedCourseId) {
+          // Pin always wins outright — never let a fuzzy match on some other
+          // enrollment's title outscore the course this conversation is
+          // explicitly, deliberately about.
+          curriculumSim = 1
           curriculumEntry = { course, lessons, progress, kind, stepNoun }
+        } else if (curriculumSim < 1) {
+          const sim = titleSimilarity(conversationTitle || message, course.title)
+          if (sim > curriculumSim) {
+            curriculumSim = sim
+            curriculumEntry = { course, lessons, progress, kind, stepNoun }
+          }
         }
       }
     }
@@ -317,6 +344,12 @@ async function learningContext(user, message, conversationTitle, study) {
     if (curriculumEntry && curriculumSim >= 0.4) {
       const { course, lessons, progress, kind, stepNoun } = curriculumEntry
       topicTitle = course.title
+      // Pin (or re-confirm the pin) so every later turn in this conversation
+      // resolves this exact course instantly, without re-deriving it from
+      // wording that can and does drift.
+      if (conversationId && pinnedCourseId !== course.id) {
+        storage.setSetting(`conv-course:${conversationId}`, course.id).catch(() => {})
+      }
       const ordered = [...lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
       const nextLesson = ordered.find((l) => !progress[l.id]?.done)
       const checklist = ordered.map((l, i) => `${progress[l.id]?.done ? '[x]' : '[ ]'} ${i + 1}. ${l.title}`).join('\n')
@@ -367,6 +400,10 @@ async function learningContext(user, message, conversationTitle, study) {
 
   let note = ''
   let enrolled = null
+  // Set ONLY when this exact turn's Live action is playing a specific
+  // lesson's video — the one case a ```video block is legitimate. See the
+  // streaming filter in the POST /chat handler that enforces this.
+  let allowedVideoUrl = null
   // Building a brand-new course/program takes priority over enroll-style
   // wording. These used to be checked in the opposite order, which meant a
   // perfectly ordinary request like "build me a course on X and sign me up"
@@ -398,12 +435,21 @@ async function learningContext(user, message, conversationTitle, study) {
       try {
         const result = await quickBuildPersonalOffering(user, { topic: message, kind })
         const objectives = (result.course.objectives || '').trim()
+        const firstLesson = [...result.lessons].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))[0]
         note =
           `Live action: you HAVE NOW built a brand-new ${kind} called "${result.course.title}" from the user's own request, written it out in full (${result.lessons.length} ${stepNoun}${result.lessons.length === 1 ? '' : 's'}), and enrolled them in it immediately — it is already saved in their "My Activity", no dashboard or portal step needed. ` +
           (objectives ? `Its drafted aim/objectives:\n${objectives}\n` : '') +
+          (firstLesson
+            ? `\nIts real first ${stepNoun}, "${firstLesson.title}", already fully written — TEACH FROM THIS EXACT CONTENT, do not invent different material:\n---\n${(firstLesson.content || firstLesson.material || '').slice(0, 6000)}\n---\n`
+            : '') +
           `Confirm warmly, clearly state what it aims to help them achieve (from the objectives above), briefly ` +
-          `describe what it covers, then immediately begin with the first ${stepNoun} right here in this chat. State only what actually happened.`
+          `describe what it covers, then immediately begin teaching the first ${stepNoun} right here in this chat ` +
+          `using its real content above${firstLesson ? `, with this exact title: "${firstLesson.title}"` : ''}. State only what actually happened.`
         enrolled = { courseId: result.course.id, courseTitle: result.course.title, kind }
+        // Pin immediately — the curriculum-matching block above already ran
+        // for this turn and can't see an enrollment created just now, so
+        // without this the pin would only take effect starting next turn.
+        if (conversationId) storage.setSetting(`conv-course:${conversationId}`, result.course.id).catch(() => {})
       } catch (e) {
         note = `Live action: could not build that ${kind} right now (${e.message}). Apologize briefly, ask for a little more detail on what it should cover, and offer to try again right here in chat.`
       }
@@ -463,9 +509,19 @@ async function learningContext(user, message, conversationTitle, study) {
               (first ? `, starting with:\n---\n${(first.content || first.material || '').slice(0, 4000)}\n---` : '.') +
               (first?.attachment_url ? `\nDownload link to mention: ${first.attachment_url}` : '')
           } else {
-            note = `Live action: you HAVE NOW ${verbPast} the user in the ${noun} "${best.title}"${byLine}. Confirm warmly, briefly say what it covers, then immediately begin with the first ${KIND_STEP_NOUN[kind]} right here in this chat. State only what actually happened.`
+            const lessons = await storage.listLessons(best.id)
+            const first = lessons.sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))[0]
+            note =
+              `Live action: you HAVE NOW ${verbPast} the user in the ${noun} "${best.title}"${byLine}. Confirm warmly, briefly say what it covers, then immediately begin teaching the first ${KIND_STEP_NOUN[kind]} right here in this chat. State only what actually happened.` +
+              (first
+                ? ` Its real first ${KIND_STEP_NOUN[kind]}, "${first.title}", already fully written — TEACH FROM THIS EXACT CONTENT, do not invent different material:\n---\n${(first.content || first.material || '').slice(0, 6000)}\n---`
+                : '')
           }
           enrolled = { courseId: best.id, courseTitle: best.title, kind }
+          // See the matching comment in the BUILD_RE branch above — pin now
+          // so this exact course grounds every subsequent turn, not just
+          // once the curriculum block happens to recompute next turn.
+          if (conversationId) storage.setSetting(`conv-course:${conversationId}`, best.id).catch(() => {})
         }
       } catch (e) {
         note = `Live action: ${kind === 'event' ? 'registration' : 'enrollment'} failed (${e.message}). Apologize briefly and offer to try again right here in chat.`
@@ -498,14 +554,78 @@ async function learningContext(user, message, conversationTitle, study) {
         'In your reply, include exactly one fenced code block with language "video" containing only:\n' +
         `url: ${target.lesson.video_url}\ntitle: ${target.lesson.title}\n` +
         'Do not print the raw URL anywhere else. Add one short sentence introducing it, and mention captions play automatically if the source provides them.'
+      // The model doesn't always honor "never fabricate a video" — the
+      // caller strips any ```video block whose url isn't exactly this one,
+      // as a hard backstop that doesn't depend on the model behaving.
+      allowedVideoUrl = target.lesson.video_url
     }
   }
 
-  return { block, note, enrolled, topicTitle }
+  return { block, note, enrolled, topicTitle, allowedVideoUrl }
 }
 
 function sse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
+}
+
+const VIDEO_FENCE = '```video'
+
+/**
+ * Streaming-safe filter that drops any ```video fenced block whose url
+ * doesn't exactly match `allowedUrl` (or drops every such block when
+ * `allowedUrl` is null/undefined) — a hard, code-level backstop against the
+ * model fabricating a video player. The prompt already says never to invent
+ * one, but smaller open-weight models don't reliably honor that, and a
+ * fabricated player rendering in a lesson that has no real video is exactly
+ * the kind of thing a prompt instruction alone can't be trusted to prevent.
+ * Tokens arrive as arbitrary chunks that can split the fence marker across
+ * calls, so this buffers just enough to disambiguate before forwarding.
+ */
+function createVideoBlockFilter(allowedUrl) {
+  let holdback = ''
+  let inBlock = false
+  let blockBuffer = ''
+
+  function push(token) {
+    if (!inBlock) {
+      const combined = holdback + token
+      const idx = combined.indexOf(VIDEO_FENCE)
+      if (idx !== -1) {
+        const before = combined.slice(0, idx)
+        inBlock = true
+        blockBuffer = combined.slice(idx)
+        holdback = ''
+        return before + push('')
+      }
+      // Keep back a tail that could still be the start of the fence marker
+      // split across this chunk and the next one.
+      const safeLen = Math.max(0, combined.length - (VIDEO_FENCE.length - 1))
+      holdback = combined.slice(safeLen)
+      return combined.slice(0, safeLen)
+    }
+
+    blockBuffer += token
+    const closeIdx = blockBuffer.indexOf('\n```', VIDEO_FENCE.length)
+    if (closeIdx === -1) return ''
+
+    const block = blockBuffer.slice(0, closeIdx + 4) // + '\n```'.length
+    const rest = blockBuffer.slice(closeIdx + 4)
+    inBlock = false
+    blockBuffer = ''
+
+    const urlMatch = block.match(/url\s*:\s*(\S+)/i)
+    const url = urlMatch ? urlMatch[1].trim() : null
+    const authorized = Boolean(allowedUrl) && url === allowedUrl
+    return (authorized ? block : '') + push(rest)
+  }
+
+  // A stream that ends mid-block never resolved — drop it rather than leak
+  // a possibly-fabricated, definitely-incomplete block to the client.
+  function flush() {
+    return inBlock ? '' : holdback
+  }
+
+  return { push, flush }
 }
 
 // Some free-tier providers (e.g. Groq's smaller instant models) cap the
@@ -684,7 +804,7 @@ chatRouter.post(
     const [systemPromptBase, history, learn] = await Promise.all([
       buildSystemPrompt(req.user.id, study),
       storage.listMessages(conversation.id),
-      learningContext(req.user, message, conversation.title, study),
+      learningContext(req.user, message, conversation.title, study, conversation.id),
     ])
     let systemPrompt = systemPromptBase
     if (learn.block) systemPrompt += `\n\n${learn.block}`
@@ -745,6 +865,8 @@ chatRouter.post(
     // seeded from our own search above; the streaming loop below can still
     // add more if a provider-side plugin also contributes annotations.
     const citations = [...webCitations]
+    // Hard backstop against a fabricated video player — see createVideoBlockFilter.
+    const videoFilter = createVideoBlockFilter(learn.allowedVideoUrl)
     try {
       const trimmedHistory = trimHistoryToBudget(history, MAX_HISTORY_CHARS)
       const upstream = await streamCompletion({
@@ -799,13 +921,24 @@ chatRouter.post(
                 sse(res, { type: 'status', label: null }) // clear the loop
                 firstToken = false
               }
-              assistantText += token
-              sse(res, { type: 'token', token })
+              const safe = videoFilter.push(token)
+              if (safe) {
+                assistantText += safe
+                sse(res, { type: 'token', token: safe })
+              }
             }
           } catch {
             /* keep-alive comments / partial JSON */
           }
         }
+      }
+      // Release any tail the filter was still holding back (e.g. a few
+      // characters that could have been the start of a fence but never
+      // resolved into one before the stream ended).
+      const tail = videoFilter.flush()
+      if (tail) {
+        assistantText += tail
+        sse(res, { type: 'token', token: tail })
       }
       // Only surface sources that are real and tied to this answer's context.
       if (web && citations.length) sse(res, { type: 'citations', items: citations })
