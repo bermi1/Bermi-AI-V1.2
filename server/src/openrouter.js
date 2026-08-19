@@ -126,6 +126,18 @@ function suggestedRetrySeconds(status, attempts) {
  * one provider running out of tokens never stalls the platform. A raw or
  * custom model id (advanced users) routes through OpenRouter only, as before.
  */
+// Moves the given provider (if configured) to the front of the list,
+// preserving the relative order of the rest — used to prefer one provider
+// for a specific model kind without dropping the others as fallback.
+function preferProvider(list, id) {
+  const idx = list.findIndex((p) => p.id === id)
+  if (idx <= 0) return list
+  const copy = [...list]
+  const [preferred] = copy.splice(idx, 1)
+  copy.unshift(preferred)
+  return copy
+}
+
 async function buildAttempts(uiModelId, { web = false } = {}) {
   const providers = await listProviders()
   const kind = uiModelId?.startsWith('bermi-') ? uiModelId.slice(6) : null
@@ -135,9 +147,14 @@ async function buildAttempts(uiModelId, { web = false } = {}) {
     // When web grounding is requested, exhaust the web-capable provider
     // (OpenRouter) first; only fall back to non-grounded providers if it's
     // unavailable, trading citations for uptime rather than failing outright.
-    const ordered = web
+    let ordered = web
       ? [...providers.filter((p) => p.supportsWebPlugin), ...providers.filter((p) => !p.supportsWebPlugin)]
       : providers
+    // bermi-core (the default chat model) prefers NVIDIA first when it's
+    // configured — still falls back through the rest of the chain if
+    // NVIDIA's quota is exhausted, so this doesn't trade away the hybrid
+    // failover, just reorders who gets tried first for this one kind.
+    if (kind === 'core') ordered = preferProvider(ordered, 'nvidia')
     for (const provider of ordered) {
       const models = provider.models[kind] || []
       for (const realModel of models) {
