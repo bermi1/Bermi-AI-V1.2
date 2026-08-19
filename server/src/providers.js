@@ -78,6 +78,20 @@ const CEREBRAS_MODELS = {
   math: ['llama-3.3-70b'],
 }
 
+// NVIDIA's NIM catalog (integrate.api.nvidia.com) — another independent,
+// OpenAI-compatible, open-weight-only quota pool. Model slugs are best-effort
+// against NVIDIA's current public catalog naming (org/model-name, lowercase);
+// worth reconfirming against https://build.nvidia.com/models if any of these
+// start 404ing, since hosted catalogs shift over time.
+const NVIDIA_MODELS = {
+  core: ['meta/llama-3.3-70b-instruct', 'mistralai/mixtral-8x22b-instruct-v0.1'],
+  fast: ['meta/llama-3.1-8b-instruct'],
+  reason: ['deepseek-ai/deepseek-r1'],
+  coder: ['qwen/qwen2.5-coder-32b-instruct'],
+  vision: [],
+  math: ['deepseek-ai/deepseek-r1', 'meta/llama-3.3-70b-instruct'],
+}
+
 async function openrouterProvider() {
   const keys = await envOrSetting(numberedEnvKeys('OPENROUTER_API_KEY'), 'openrouter_api_key')
   if (!keys.length) return null
@@ -141,6 +155,25 @@ async function cerebrasProvider() {
   }
 }
 
+async function nvidiaProvider() {
+  const keys = await envOrSetting(numberedEnvKeys('NVIDIA_API_KEY'), 'nvidia_api_key')
+  if (!keys.length) return null
+  return {
+    id: 'nvidia',
+    keys,
+    models: NVIDIA_MODELS,
+    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
+    supportsWebPlugin: false,
+    body: (model, messages, { stream, maxTokens }) => ({
+      model,
+      messages,
+      ...(stream ? { stream: true } : {}),
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
+    }),
+  }
+}
+
 // On-device fallback: a bundled llama.cpp server (llama-server) speaks the
 // same OpenAI-compatible /v1/chat/completions contract as every other
 // provider here, so it's just one more link in the same chain — the last
@@ -175,6 +208,7 @@ export const MANAGED_KEY_PROVIDERS = [
   { id: 'openrouter', label: 'OpenRouter', settingKey: 'openrouter_api_key', envBase: 'OPENROUTER_API_KEY' },
   { id: 'groq', label: 'Groq', settingKey: 'groq_api_key', envBase: 'GROQ_API_KEY' },
   { id: 'cerebras', label: 'Cerebras', settingKey: 'cerebras_api_key', envBase: 'CEREBRAS_API_KEY' },
+  { id: 'nvidia', label: 'NVIDIA NIM', settingKey: 'nvidia_api_key', envBase: 'NVIDIA_API_KEY' },
 ]
 
 export function envKeyCount(envBase) {
@@ -205,6 +239,7 @@ export async function listProviders() {
     openrouterProvider(),
     groqProvider(),
     cerebrasProvider(),
+    nvidiaProvider(),
     localProvider(),
   ])
   return all.filter(Boolean)

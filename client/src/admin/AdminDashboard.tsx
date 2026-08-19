@@ -406,6 +406,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   openrouter: 'OpenRouter',
   groq: 'Groq',
   cerebras: 'Cerebras',
+  nvidia: 'NVIDIA NIM',
   local: 'On-device (local)',
 }
 

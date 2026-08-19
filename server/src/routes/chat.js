@@ -944,6 +944,14 @@ chatRouter.post(
       if (web && citations.length) sse(res, { type: 'citations', items: citations })
     } catch (err) {
       if (!abort.signal.aborted) {
+        // This is the ONLY place a total provider-chain failure surfaces —
+        // as an SSE payload in a 200 response, which means it previously
+        // left zero trace in server logs (Vercel's error tracking only sees
+        // non-2xx responses). Logging it here is what makes "why are people
+        // not getting responses" answerable from logs instead of guesswork.
+        console.error(
+          `[chat] all providers failed for user ${req.user.id}: status=${err.status ?? 'n/a'} retryAfter=${err.retryAfter ?? 'n/a'} — ${err.message}`,
+        )
         sse(res, { type: 'error', error: err.friendly || err.message, retryAfter: err.retryAfter ?? null })
         res.end()
         return
