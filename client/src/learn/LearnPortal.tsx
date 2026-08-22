@@ -25,6 +25,7 @@ import { LessonStudy } from './LessonStudy'
 import { MyLearning } from './MyLearning'
 import { InstitutionStudio } from './InstitutionStudio'
 import { CertificateView } from './CertificateView'
+import { TicketView } from './TicketView'
 
 // A self-contained B2B portal that lives under /learn with its own sidebar
 // shell, separate from the chat workspace. Businesses & institutions build a
@@ -71,6 +72,7 @@ export function LearnPortal({ user, onExit }: { user: AuthUser; onExit: () => vo
           {route.name === 'mylearning' && <MyLearning navigate={navigate} />}
           {route.name === 'studio' && <InstitutionStudio navigate={navigate} />}
           {route.name === 'certificate' && <CertificateView code={route.code} navigate={navigate} />}
+          {route.name === 'ticket' && <TicketView code={route.code} navigate={navigate} />}
         </div>
       </div>
     </div>

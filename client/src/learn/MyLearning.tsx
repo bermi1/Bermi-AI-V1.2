@@ -78,6 +78,8 @@ export function MyLearning({ navigate }: { navigate: (r: LearnRoute) => void }) 
                             <div className="mt-1">
                               {e.status === 'completed' ? (
                                 <Pill tone="green">Completed{e.score != null ? ` · ${e.score}%` : ''}</Pill>
+                              ) : e.status === 'rejected' ? (
+                                <Pill tone="muted">Application not approved</Pill>
                               ) : e.status === 'applied' ? (
                                 <Pill tone="amber">{kind === 'event' ? 'Registration requested' : 'Pending approval'}</Pill>
                               ) : kind === 'event' ? (
@@ -99,9 +101,16 @@ export function MyLearning({ navigate }: { navigate: (r: LearnRoute) => void }) 
                               ? 'Ready whenever you are'
                               : `${doneCount} ${meta.doneWord}${doneCount === 1 ? '' : 's'} completed`}
                         </p>
-                        <Btn size="sm" variant="outline" className="mt-auto" onClick={() => navigate({ name: 'course', id: course.id })}>
-                          <PlayCircle size={15} /> {e.status === 'completed' ? meta.revisitCta : meta.cta}
-                        </Btn>
+                        <div className="mt-auto flex gap-2">
+                          <Btn size="sm" variant="outline" className="flex-1" onClick={() => navigate({ name: 'course', id: course.id })}>
+                            <PlayCircle size={15} /> {e.status === 'completed' ? meta.revisitCta : meta.cta}
+                          </Btn>
+                          {kind === 'event' && e.ticket_code && (
+                            <Btn size="sm" onClick={() => navigate({ name: 'ticket', code: e.ticket_code! })}>
+                              Ticket
+                            </Btn>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

@@ -4,7 +4,9 @@ import {
   ArrowLeft,
   BarChart3,
   Building2,
+  Check,
   CheckCircle2,
+  ClipboardList,
   Download,
   Eye,
   EyeOff,
@@ -17,6 +19,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Target,
+  Ticket as TicketIcon,
   Trash2,
   Upload,
   UserCheck,
@@ -24,9 +27,20 @@ import {
   Video,
   Wand2,
   X,
+  XCircle,
 } from 'lucide-react'
 import * as api from '../lib/api'
-import type { Course, Institution, InstitutionAnalytics, InstitutionLearner, Lesson, OfferingKind, OrgType } from '../lib/types'
+import type {
+  Course,
+  Institution,
+  InstitutionAnalytics,
+  InstitutionLearner,
+  Lesson,
+  OfferingKind,
+  OrgType,
+  Registration,
+  RegistrationField,
+} from '../lib/types'
 import { Btn, EmptyState, ErrorNote, Field, inputClass, Pill, Spinner, type LearnRoute } from './ui'
 
 // Org types tailor language and AI defaults only — every type can still
@@ -1088,7 +1102,204 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         </div>
       </div>
 
-      <LessonsManager courseId={course.id} kind={kind} />
+      {kind === 'event' ? <RegistrationManager courseId={course.id} /> : <LessonsManager courseId={course.id} kind={kind} />}
+    </div>
+  )
+}
+
+const FIELD_TYPES: { value: RegistrationField['type']; label: string }[] = [
+  { value: 'text', label: 'Text' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'number', label: 'Number' },
+  { value: 'textarea', label: 'Long answer' },
+]
+
+function newFieldId() {
+  return `f${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+// Everything an event organizer needs beyond the basics above: what to ask
+// attendees for when they register through Bermi AI chat, whether to gate
+// entry behind approval, and who actually applied — with the ability to
+// approve (issuing a ticket) or reject each one.
+function RegistrationManager({ courseId }: { courseId: string }) {
+  const [fields, setFields] = useState<RegistrationField[]>([])
+  const [requiresApproval, setRequiresApproval] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [regs, setRegs] = useState<Registration[] | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const refreshRegs = () => api.learnRegistrations(courseId).then(setRegs).catch(() => setRegs([]))
+
+  useEffect(() => {
+    api.learnRegistrationForm(courseId).then((f) => {
+      setFields(f.fields)
+      setRequiresApproval(f.requiresApproval)
+      setLoaded(true)
+    })
+    refreshRegs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId])
+
+  const addField = () =>
+    setFields((f) => [...f, { id: newFieldId(), label: '', type: 'text', required: true }])
+  const updateField = (id: string, patch: Partial<RegistrationField>) =>
+    setFields((f) => f.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  const removeField = (id: string) => setFields((f) => f.filter((x) => x.id !== id))
+
+  const saveForm = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const clean = fields.filter((f) => f.label.trim())
+      const saved = await api.learnSetRegistrationForm(courseId, { fields: clean, requiresApproval })
+      setFields(saved.fields)
+      setSavedAt(Date.now())
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const approve = async (id: string) => {
+    setBusyId(id)
+    try {
+      await api.learnApproveRegistration(id)
+      await refreshRegs()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const reject = async (id: string) => {
+    if (!confirm('Reject this application? The applicant will no longer be registered.')) return
+    setBusyId(id)
+    try {
+      await api.learnRejectRegistration(id)
+      await refreshRegs()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (!loaded) return <div className="mt-6"><Spinner /></div>
+
+  const pending = (regs || []).filter((r) => r.status === 'applied')
+
+  return (
+    <div className="mt-6 space-y-6">
+      <div className="rounded-2xl border border-edge bg-surface-raised p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <ClipboardList size={16} /> Registration form
+        </h2>
+        <p className="mb-4 text-[12.5px] text-ink-muted">
+          Attendees fill this out conversationally in Bermi AI chat — never a separate web form. Leave it empty to
+          register people instantly with no questions asked.
+        </p>
+
+        <div className="space-y-2">
+          {fields.map((f) => (
+            <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-edge bg-surface-sunken/40 p-2.5">
+              <input
+                className={`${inputClass} flex-1 min-w-[140px]`}
+                placeholder="Field label, e.g. Full name"
+                value={f.label}
+                onChange={(e) => updateField(f.id, { label: e.target.value })}
+              />
+              <select
+                className={`${inputClass} w-auto`}
+                value={f.type}
+                onChange={(e) => updateField(f.id, { type: e.target.value as RegistrationField['type'] })}
+              >
+                {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <label className="flex items-center gap-1.5 text-[12.5px] text-ink-muted">
+                <input type="checkbox" checked={f.required} onChange={(e) => updateField(f.id, { required: e.target.checked })} />
+                Required
+              </label>
+              <button onClick={() => removeField(f.id)} className="ml-auto rounded-lg p-1.5 text-ink-faint hover:bg-surface-sunken hover:text-rose-500">
+                <X size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={addField} className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline">
+          <Plus size={14} /> Add field
+        </button>
+
+        <label className="mt-4 flex items-center gap-2 text-[13px] text-ink">
+          <input type="checkbox" checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} />
+          Require my approval before a registration is confirmed and a ticket is issued
+        </label>
+
+        {error && <div className="mt-3"><ErrorNote>{error}</ErrorNote></div>}
+        <div className="mt-4 flex items-center gap-3">
+          <Btn size="sm" onClick={saveForm} loading={saving}>Save form</Btn>
+          {savedAt && !saving && <span className="text-[12px] text-emerald-500">Saved</span>}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-edge bg-surface-raised p-5">
+        <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <Users size={16} /> Registrations · {regs ? regs.length : '…'}
+          {pending.length > 0 && <Pill tone="amber">{pending.length} awaiting approval</Pill>}
+        </h2>
+
+        {!regs ? (
+          <Spinner />
+        ) : regs.length === 0 ? (
+          <EmptyState icon={<Users size={24} />} title="No registrations yet" />
+        ) : (
+          <div className="space-y-2">
+            {regs.map((r) => (
+              <div key={r.enrollment_id} className="rounded-xl border border-edge p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-semibold text-ink">{r.name}</p>
+                    <p className="truncate text-[12.5px] text-ink-faint">{r.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {r.status === 'applied' ? (
+                      <>
+                        <Btn size="sm" onClick={() => approve(r.enrollment_id)} loading={busyId === r.enrollment_id}>
+                          <Check size={14} /> Approve
+                        </Btn>
+                        <Btn size="sm" variant="danger" onClick={() => reject(r.enrollment_id)} loading={busyId === r.enrollment_id}>
+                          <XCircle size={14} /> Reject
+                        </Btn>
+                      </>
+                    ) : r.status === 'rejected' ? (
+                      <Pill tone="muted">Rejected</Pill>
+                    ) : r.ticket_code ? (
+                      <Pill tone="green"><TicketIcon size={11} /> Ticket {r.ticket_code}</Pill>
+                    ) : (
+                      <Pill tone="green">Registered</Pill>
+                    )}
+                  </div>
+                </div>
+                {Object.keys(r.answers || {}).length > 0 && (
+                  <dl className="mt-2.5 grid gap-x-4 gap-y-1 border-t border-edge pt-2.5 sm:grid-cols-2">
+                    {fields
+                      .filter((f) => r.answers[f.id])
+                      .map((f) => (
+                        <div key={f.id} className="text-[12.5px]">
+                          <dt className="text-ink-faint">{f.label}</dt>
+                          <dd className="text-ink">{r.answers[f.id]}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

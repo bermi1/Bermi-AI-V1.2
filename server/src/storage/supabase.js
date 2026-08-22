@@ -370,6 +370,9 @@ export class SupabaseStorage {
   getEnrollment(courseId, userId) {
     return this.#first(this.sb.from(T.enrollments).select('*').eq('course_id', courseId).eq('user_id', userId))
   }
+  getEnrollmentById(id) {
+    return this.#first(this.sb.from(T.enrollments).select('*').eq('id', id))
+  }
   listEnrollmentsByUser(userId) {
     return this.#one(this.sb.from(T.enrollments).select('*').eq('user_id', userId).order('enrolled_at', { ascending: false }))
   }

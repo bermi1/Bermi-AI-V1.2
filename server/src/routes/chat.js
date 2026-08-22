@@ -10,6 +10,7 @@ import { webSearch } from '../websearch.js'
 import { rateLimit, checkRateLimit, peekRateLimit } from '../rateLimit.js'
 import { retrieveRelevant } from '../rag.js'
 import { quickBuildPersonalOffering } from './learn.js'
+import { getRegistrationForm, startRegistration, getPendingRegistration, continueRegistration, issueTicket } from '../events.js'
 
 export const chatRouter = Router()
 
@@ -231,11 +232,16 @@ function formatEventWhen(course) {
  */
 async function learningContext(user, message, conversationTitle, study, conversationId) {
   const userId = user.id
+  // A reply like "Jane Doe, jane@x.com" mid-way through filling an event's
+  // registration fields matches none of LEARN_RE's keywords at all, so the
+  // pending-registration check must be able to force this function to run
+  // even when the raw wording gives no other sign this turn is about Learn.
+  const pendingRegistration = conversationId ? await getPendingRegistration(conversationId) : null
   // Keep computing this every turn once a Study Mode session is under way
   // (not just when the user's own wording happens to mention "course" or
   // "lesson"), so the real curriculum below stays grounded throughout —
   // not just on the turn that kicked it off.
-  if (!LEARN_RE.test(message) && !study) return { block: '', note: '', enrolled: null }
+  if (!LEARN_RE.test(message) && !study && !pendingRegistration) return { block: '', note: '', enrolled: null }
   let courses = []
   let instById = new Map()
   try {
@@ -343,7 +349,14 @@ async function learningContext(user, message, conversationTitle, study, conversa
       const withVideo = lessons.filter((l) => l.video_url?.trim())
       const nextUpId = lessons.find((l) => !progress[l.id]?.done)?.id
       for (const l of withVideo) videoLessons.push({ course, lesson: l, nextUp: l.id === nextUpId })
-      const statusWord = kind === 'event' ? (e.status === 'applied' ? 'requested' : 'registered') : e.status
+      const statusWord =
+        kind === 'event'
+          ? e.status === 'applied'
+            ? 'requested (awaiting approval)'
+            : e.status === 'rejected'
+              ? 'application not approved'
+              : 'registered'
+          : e.status
       rows.push(
         `- "${course.title}" (${KIND_NOUN[kind] || 'course'}): ${statusWord}` +
           (kind === 'event' && course.event_at ? `, on ${formatEventWhen(course)}` : '') +
@@ -433,6 +446,57 @@ async function learningContext(user, message, conversationTitle, study, conversa
   // lesson's video — the one case a ```video block is legitimate. See the
   // streaming filter in the POST /chat handler that enforces this.
   let allowedVideoUrl = null
+
+  // A previous turn started collecting an event's registration fields right
+  // here in chat (see the ENROLL_RE branch below) — if so, this turn's reply
+  // is the user answering that, not a fresh request, and must be handled
+  // before anything else matches on the raw wording.
+  let registrationHandled = false
+  if (pendingRegistration) {
+    registrationHandled = true
+    const result = await continueRegistration({
+      conversationId,
+      message,
+      user,
+      createEnrollment: ({ courseId, userId: uid, status }) =>
+        storage.createEnrollment({
+          id: randomUUID(),
+          course_id: courseId,
+          user_id: uid,
+          status,
+          progress: {},
+          score: null,
+          enrolled_at: new Date().toISOString(),
+        }),
+      getInstitution: (id) => storage.getInstitution(id),
+    })
+    if (!result || result.courseGone) {
+      note = 'Live action: that event registration could not be completed — the event is no longer available. Apologize briefly.'
+    } else if (!result.done) {
+      const stillNeeded = result.missing.map((f) => f.label).join(', ')
+      note =
+        `Live action: registering the user for the event "${result.course.title}" — still need: ${stillNeeded}. ` +
+        `Do NOT register them yet. Ask for exactly that information, conversationally (not as a form/list of labels), ` +
+        `and don't re-ask for anything already collected.`
+    } else if (result.needsApproval) {
+      topicTitle = result.course.title
+      note =
+        `Live action: you HAVE NOW submitted the user's application to attend "${result.course.title}". It requires ` +
+        `organizer approval before it's confirmed. Tell them their registration was received and they'll be notified ` +
+        `once approved — do not claim a ticket exists yet.`
+    } else {
+      topicTitle = result.course.title
+      enrolled = { courseId: result.course.id, courseTitle: result.course.title, kind: 'event' }
+      storage.setSetting(`conv-course:${conversationId}`, result.course.id).catch(() => {})
+      note =
+        `Live action: you HAVE NOW completed the user's registration for the event "${result.course.title}"` +
+        (result.course.event_at ? ` on ${formatEventWhen(result.course)}` : '') +
+        (result.course.event_location ? ` at/via ${result.course.event_location}` : '') +
+        `, and issued their ticket (verification code ${result.ticket.code}). Confirm warmly, restate the date/location, ` +
+        `and tell them their ticket is ready in "My learning" (mention the code). State only what actually happened.`
+    }
+  }
+
   // Building a brand-new course/program takes priority over enroll-style
   // wording. These used to be checked in the opposite order, which meant a
   // perfectly ordinary request like "build me a course on X and sign me up"
@@ -443,7 +507,11 @@ async function learningContext(user, message, conversationTitle, study, conversa
   // first fixes this: building already auto-enrolls the creator (see
   // quickBuildPersonalOffering), so there is nothing left for the enroll
   // branch to do afterward anyway.
-  if (BUILD_RE.test(message)) {
+  if (registrationHandled) {
+    // Already fully handled above — do not also match BUILD_RE/ENROLL_RE on
+    // this same message (a bare "Jane Doe, jane@x.com" reply could otherwise
+    // spuriously match one of them).
+  } else if (BUILD_RE.test(message)) {
     const kind = guessOfferingKind(message)
     const stepNoun = KIND_STEP_NOUN[kind]
     // Building blind from "build me a course" alone produces something
@@ -503,32 +571,69 @@ async function learningContext(user, message, conversationTitle, study, conversa
       const verbPast = KIND_VERB_PAST[kind] || 'enrolled'
       topicTitle = best.title
       try {
-        const existing = await storage.getEnrollment(best.id, userId)
-        if (existing) {
+        const existingRaw = await storage.getEnrollment(best.id, userId)
+        // A rejected application shouldn't permanently block someone from
+        // trying again — treat it the same as never having applied.
+        const existing = existingRaw && existingRaw.status !== 'rejected' ? existingRaw : null
+        if (existing && kind === 'event' && existing.status === 'applied') {
+          note = `Live action: the user ALREADY has a pending application for the event "${best.title}", awaiting organizer approval. Confirm briefly and tell them they'll be notified once it's approved.`
+        } else if (existing) {
           note = `Live action: the user is ALREADY ${verbPast} in the ${noun} "${best.title}". Confirm briefly, then continue right here in this chat from where they left off.`
           // Re-stating "enroll me" on something already joined should still
           // drop the learner straight into Study Mode (for courses) instead
           // of requiring them to notice nothing happened and toggle it
           // manually — same signal the client acts on for a fresh enrollment.
           enrolled = { courseId: best.id, courseTitle: best.title, kind }
+        } else if (kind === 'event' && conversationId && (await getRegistrationForm(best.id)).fields.length) {
+          // This event's organizer set up custom registration fields — collect
+          // them right here in chat over however many turns it takes, instead
+          // of enrolling instantly. See the pendingRegistration handling above,
+          // which finishes this off (and issues the ticket) once answered.
+          const form = await getRegistrationForm(best.id)
+          await startRegistration(conversationId, best.id)
+          const fieldList = form.fields.map((f) => f.label).join(', ')
+          const inst = instById.get(best.institution_id)
+          note =
+            `Live action: the user wants to register for the event "${best.title}"${inst ? ` by ${inst.name}` : ''}` +
+            (best.event_at ? ` on ${formatEventWhen(best)}` : '') +
+            `. The organizer requires collecting: ${fieldList}. Do NOT register them yet — ask for exactly that ` +
+            `information conversationally, right here in chat (never a form or link). Their registration and ticket ` +
+            `complete automatically the moment they've given it all.`
         } else {
-          await storage.createEnrollment({
-            id: randomUUID(),
-            course_id: best.id,
-            user_id: userId,
-            status: best.enrollment === 'approval' ? 'applied' : 'enrolled',
-            progress: {},
-            score: null,
-            enrolled_at: new Date().toISOString(),
-          })
+          const newStatus = best.enrollment === 'approval' ? 'applied' : 'enrolled'
+          let createdEnrollment
+          if (existingRaw && existingRaw.status === 'rejected') {
+            // Re-open the previously rejected row rather than inserting a
+            // duplicate (course_id, user_id) enrollment.
+            createdEnrollment = await storage.updateEnrollment(existingRaw.id, { status: newStatus })
+          } else {
+            createdEnrollment = await storage.createEnrollment({
+              id: randomUUID(),
+              course_id: best.id,
+              user_id: userId,
+              status: newStatus,
+              progress: {},
+              score: null,
+              enrolled_at: new Date().toISOString(),
+            })
+          }
           const inst = instById.get(best.institution_id)
           const byLine = inst ? ` by ${inst.name}` : ''
-          if (kind === 'event') {
+          if (kind === 'event' && newStatus === 'applied') {
+            note =
+              `Live action: you HAVE NOW submitted the user's application to attend the event "${best.title}"${byLine}` +
+              (best.event_at ? ` on ${formatEventWhen(best)}` : '') +
+              `. It requires organizer approval before it's confirmed — tell them the application was received and ` +
+              `they'll be notified once approved. Do not claim a ticket exists yet.`
+          } else if (kind === 'event') {
+            const ticket = await issueTicket({ course: best, institution: inst, user, enrollment: createdEnrollment })
             note =
               `Live action: you HAVE NOW registered the user for the event "${best.title}"${byLine}` +
               (best.event_at ? ` on ${formatEventWhen(best)}` : '') +
               (best.event_location ? ` at/via ${best.event_location}` : '') +
-              `. Confirm warmly with the date/location, briefly say what it covers, and offer to answer any questions about it. State only what actually happened.`
+              `, and issued their ticket (verification code ${ticket.code}). Confirm warmly with the date/location, ` +
+              `mention their ticket is ready in "My learning", briefly say what it covers, and offer to answer any ` +
+              `questions about it. State only what actually happened.`
           } else if (kind === 'resource') {
             const lessons = await storage.listLessons(best.id)
             const first = lessons.sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))[0]

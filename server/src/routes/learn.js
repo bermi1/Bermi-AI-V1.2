@@ -6,6 +6,18 @@ import { renderDocument } from '../doc-render.js'
 import { requireAuth } from '../auth.js'
 import { applyLessonCompletion, isLessonUnlocked, QUIZ_PASS_THRESHOLD } from '../study.js'
 import { rateLimit } from '../rateLimit.js'
+import { extractJson } from '../json-extract.js'
+import { htmlToPdf } from '../pdf.js'
+import {
+  getRegistrationForm,
+  setRegistrationForm,
+  listRegistrations,
+  approveRegistration,
+  rejectRegistration,
+  getTicket,
+  getTicketCodeForEnrollment,
+  renderTicketHtml,
+} from '../events.js'
 
 // AI drafting is the most expensive call in the app (full course/program
 // content in one shot) — cap it separately from ordinary chat so a script or
@@ -260,37 +272,6 @@ function offeringSystemPrompt(kind) {
     'never a placeholder or a one-line stub. If source material was given, ground the lessons in it directly. ' +
     'Tailor depth and vocabulary to the stated audience/level. Output ONLY the JSON object.'
   )
-}
-
-// Open-weight models don't reliably follow "output ONLY JSON" — they
-// sometimes wrap it in a code fence, add a stray sentence before/after, or
-// leave a <think> block in. A naive strip-fences-then-parse breaks (and
-// silently kills the whole build) the moment any of that happens. This finds
-// the actual {...} object by matching the first '{' to its balanced closing
-// '}', tolerating anything a model adds around it.
-function extractJson(raw) {
-  const text = String(raw).replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<\/?think>/gi, '')
-  const start = text.indexOf('{')
-  if (start === -1) throw new Error('No JSON object found in the response')
-  let depth = 0
-  let inString = false
-  let escaped = false
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i]
-    if (inString) {
-      if (escaped) escaped = false
-      else if (ch === '\\') escaped = true
-      else if (ch === '"') inString = false
-      continue
-    }
-    if (ch === '"') inString = true
-    else if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) return JSON.parse(text.slice(start, i + 1))
-    }
-  }
-  throw new Error('Malformed JSON object in the response')
 }
 
 async function draftOfferingPlan(kind, brief) {
@@ -675,6 +656,73 @@ learnRouter.delete('/learn/courses/:id', async (req, res, next) => {
   }
 })
 
+// ---- Event registration forms & applications (owner) ----
+// The end-user side of all this lives entirely in chat (see chat.js's
+// continueRegistration wiring) — these routes are only for the organization
+// to design the form and review/approve/reject who applied.
+
+learnRouter.get('/learn/courses/:id/registration-form', async (req, res, next) => {
+  try {
+    if (!(await ownsCourse(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Course not found' })
+    res.json(await getRegistrationForm(req.params.id))
+  } catch (err) {
+    next(err)
+  }
+})
+
+learnRouter.put('/learn/courses/:id/registration-form', async (req, res, next) => {
+  try {
+    if (!(await ownsCourse(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Course not found' })
+    res.json(await setRegistrationForm(req.params.id, req.body ?? {}))
+  } catch (err) {
+    next(err)
+  }
+})
+
+learnRouter.get('/learn/courses/:id/registrations', async (req, res, next) => {
+  try {
+    if (!(await ownsCourse(req.user.id, req.params.id)))
+      return res.status(404).json({ error: 'Course not found' })
+    res.json(await listRegistrations(req.params.id))
+  } catch (err) {
+    next(err)
+  }
+})
+
+async function ownedEnrollmentContext(userId, enrollmentId) {
+  const enrollment = await storage.getEnrollmentById(enrollmentId)
+  if (!enrollment) return null
+  const course = await ownsCourse(userId, enrollment.course_id)
+  if (!course) return null
+  const institution = await storage.getInstitution(course.institution_id)
+  return { enrollment, course, institution }
+}
+
+learnRouter.post('/learn/enrollments/:id/approve', async (req, res, next) => {
+  try {
+    const ctx = await ownedEnrollmentContext(req.user.id, req.params.id)
+    if (!ctx) return res.status(404).json({ error: 'Application not found' })
+    const applicant = await storage.getUserById(ctx.enrollment.user_id)
+    if (!applicant) return res.status(404).json({ error: 'Applicant not found' })
+    const { enrollment, ticket } = await approveRegistration({ ...ctx, user: applicant })
+    res.json({ enrollment, ticket })
+  } catch (err) {
+    next(err)
+  }
+})
+
+learnRouter.post('/learn/enrollments/:id/reject', async (req, res, next) => {
+  try {
+    const ctx = await ownedEnrollmentContext(req.user.id, req.params.id)
+    if (!ctx) return res.status(404).json({ error: 'Application not found' })
+    res.json(await rejectRegistration(ctx.enrollment))
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ---- Lessons (owner) ----
 
 learnRouter.get('/learn/courses/:id/lessons/manage', async (req, res, next) => {
@@ -791,7 +839,9 @@ learnRouter.get('/learn/my/enrollments', async (req, res, next) => {
     const out = []
     for (const e of enrollments) {
       const course = await storage.getCourse(e.course_id)
-      if (course) out.push({ ...e, course })
+      if (!course) continue
+      const ticket_code = course.kind === 'event' && e.status === 'enrolled' ? await getTicketCodeForEnrollment(e.id) : null
+      out.push({ ...e, course, ticket_code })
     }
     res.json(out)
   } catch (err) {
@@ -1015,6 +1065,31 @@ learnRouter.get('/learn/certificates/:code/pdf', async (req, res, next) => {
     })
     res.setHeader('Content-Type', mime)
     res.setHeader('Content-Disposition', `attachment; filename="certificate-${c.code}.${ext}"`)
+    res.send(Buffer.from(buffer))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---- Event tickets ----
+
+learnRouter.get('/learn/tickets/:code', async (req, res, next) => {
+  try {
+    const ticket = await getTicket(req.params.code)
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
+    res.json(ticket)
+  } catch (err) {
+    next(err)
+  }
+})
+
+learnRouter.get('/learn/tickets/:code/pdf', async (req, res, next) => {
+  try {
+    const ticket = await getTicket(req.params.code)
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
+    const buffer = await htmlToPdf(renderTicketHtml(ticket))
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="ticket-${ticket.code}.pdf"`)
     res.send(Buffer.from(buffer))
   } catch (err) {
     next(err)
