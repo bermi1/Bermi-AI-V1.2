@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /portal/studio
+Disallow: /portal/me
+
+Sitemap: https://bermiai.com/sitemap.xml

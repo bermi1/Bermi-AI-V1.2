@@ -17,7 +17,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import { BermiMark } from '../components/Logo'
-import { GlowBackdrop, Reveal } from './shared'
+import { GlowBackdrop, Reveal, useDocumentMeta } from './shared'
 
 interface HomeProps {
   onSignIn: () => void
@@ -187,6 +187,10 @@ const stats = [
 ]
 
 export function Home({ onSignIn, onGetStarted }: HomeProps) {
+  useDocumentMeta(
+    'AI Workspace for Learning & Institutions',
+    'Bermi AI is a personal AI tutor and institutional learning platform — build your own course from a chat, get mastery-gated lessons with real quizzes, and let institutions publish courses, programs, and events with real analytics.',
+  )
   const heroRef = useRef<HTMLDivElement>(null)
 
   const onHeroMove = (e: MouseEvent<HTMLDivElement>) => {

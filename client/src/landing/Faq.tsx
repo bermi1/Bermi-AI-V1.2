@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, Sparkles } from 'lucide-react'
-import { GlowBackdrop, Reveal } from './shared'
+import { GlowBackdrop, Reveal, useDocumentMeta, useJsonLd } from './shared'
 
 const faqGroups = [
   {
@@ -79,6 +79,21 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 export function Faq() {
+  useDocumentMeta(
+    'Frequently Asked Questions',
+    "Answers on getting started, building courses from chat, institution publishing, learner analytics, and data privacy on Bermi AI.",
+  )
+  useJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqGroups.flatMap((group) =>
+      group.items.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: { '@type': 'Answer', text: item.a },
+      })),
+    ),
+  })
   return (
     <>
       <section className="relative isolate px-5 pb-6 pt-14 md:pt-20">

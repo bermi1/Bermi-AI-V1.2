@@ -1,5 +1,5 @@
 import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react'
-import { GlowBackdrop, Reveal } from './shared'
+import { GlowBackdrop, Reveal, useDocumentMeta } from './shared'
 
 interface PricingProps {
   onGetStarted: () => void
@@ -14,6 +14,10 @@ const included = [
 ]
 
 export function Pricing({ onGetStarted }: PricingProps) {
+  useDocumentMeta(
+    'Pricing',
+    'See what\'s included with Bermi AI — full AI chat, mastery-gated courses, gamified Study Mode, and institution publishing with live learner analytics.',
+  )
   return (
     <>
       <section className="relative isolate px-5 pb-10 pt-14 md:pt-20">

@@ -104,6 +104,65 @@ export function LandingFooter({ go }: { go: (to: LandingPath) => void }) {
   )
 }
 
+// A pure client-rendered SPA has no server-side title/meta per route, so
+// every page was shipping the exact same generic <title> and description —
+// bad for both search ranking (search engines weight title/description
+// heavily per-URL) and for how a shared link previews on social apps. This
+// updates them on mount for whichever landing page is showing, and restores
+// the app's default on unmount so navigating into the signed-in app (which
+// doesn't use this hook) isn't left with a stale marketing title.
+const DEFAULT_TITLE = 'Bermi AI'
+const DEFAULT_DESCRIPTION = 'Bermi AI — your AI workspace: chat, documents, brains, and connectors'
+
+export function useDocumentMeta(title: string, description: string) {
+  useEffect(() => {
+    const fullTitle = `${title} — Bermi AI`
+    document.title = fullTitle
+    const meta = document.querySelector('meta[name="description"]')
+    const prevDescription = meta?.getAttribute('content') ?? DEFAULT_DESCRIPTION
+    meta?.setAttribute('content', description)
+
+    let ogTitle = document.querySelector('meta[property="og:title"]')
+    let ogDescription = document.querySelector('meta[property="og:description"]')
+    if (!ogTitle) {
+      ogTitle = document.createElement('meta')
+      ogTitle.setAttribute('property', 'og:title')
+      document.head.appendChild(ogTitle)
+    }
+    if (!ogDescription) {
+      ogDescription = document.createElement('meta')
+      ogDescription.setAttribute('property', 'og:description')
+      document.head.appendChild(ogDescription)
+    }
+    ogTitle.setAttribute('content', fullTitle)
+    ogDescription.setAttribute('content', description)
+
+    return () => {
+      document.title = DEFAULT_TITLE
+      meta?.setAttribute('content', prevDescription)
+    }
+  }, [title, description])
+}
+
+/**
+ * Injects a JSON-LD structured-data script for the current page (e.g.
+ * FAQPage schema) and removes it on unmount — lets a page like the FAQ
+ * qualify for a rich-result snippet directly in Google search, not just a
+ * plain blue link.
+ */
+export function useJsonLd(data: object) {
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.type = 'application/ld+json'
+    script.textContent = JSON.stringify(data)
+    document.head.appendChild(script)
+    return () => {
+      document.head.removeChild(script)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(data)])
+}
+
 /** Fades a section in the moment it scrolls into view. */
 export function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null)
