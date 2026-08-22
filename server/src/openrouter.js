@@ -126,6 +126,78 @@ function suggestedRetrySeconds(status, attempts) {
  * one provider running out of tokens never stalls the platform. A raw or
  * custom model id (advanced users) routes through OpenRouter only, as before.
  */
+// ---------------------------------------------------------------------------
+// Dynamic best-open-weight-model discovery (OpenRouter, "core" kind only).
+//
+// A hardcoded model id list goes stale the moment a provider renames or
+// re-prices a model — exactly what just happened when OpenRouter discontinued
+// the `:free` variant of every model this file used to list. Rather than
+// hardcode the "best" model by name (which will just go stale again), this
+// asks OpenRouter's own live catalog which open-weight models are CURRENTLY
+// free and picks the largest/most capable ones itself — self-correcting
+// instead of needing another manual fix next time the catalog shifts.
+//
+// Falls back to nothing (an empty list) on any failure, so the caller's
+// existing hardcoded OPENROUTER_MODELS.core always still applies — this is
+// purely additive, prepended ahead of the static list, never a replacement
+// that could leave core with zero options if the live fetch is unavailable.
+// ---------------------------------------------------------------------------
+
+// Orgs that publish genuinely open-weight models on OpenRouter. A couple of
+// these orgs (google, microsoft) publish BOTH open and closed models under
+// the same namespace, so those two need an extra name check below.
+const OPEN_WEIGHT_ORGS = new Set(['meta-llama', 'qwen', 'deepseek', 'mistralai', 'google', 'moonshotai', '01-ai', 'thudm', 'microsoft'])
+
+function isOpenWeightModelId(id) {
+  const org = id.split('/')[0]?.toLowerCase()
+  if (!OPEN_WEIGHT_ORGS.has(org)) return false
+  if (org === 'google' && !/gemma/i.test(id)) return false // exclude closed Gemini
+  if (org === 'microsoft' && !/\bphi/i.test(id)) return false // exclude closed models
+  if (/vision|embed|moderation|guard/i.test(id)) return false // not a general chat model
+  return true
+}
+
+// Known flagship-tier open-weight models whose names don't encode a plain
+// "Nb" parameter count (e.g. Kimi K2 is a ~1T-parameter MoE model, DeepSeek
+// R1/V3 are frontier-class reasoning/chat models) — without this, the naive
+// size heuristic below would rank them BELOW an ordinary "Llama-3.3-70b"
+// just because "70b" is easy to parse and "kimi-k2" isn't. Scored above any
+// plain parsed size so these always rank first when available.
+const FLAGSHIP_RE = /deepseek[\w-]*-r1|deepseek[\w-]*-v3|kimi-k2|kimi-k1\.5|qwen3-235b|qwen-3-235b|llama-3\.1-405b/i
+
+// Rough capability proxy: known flagships first, then parameter count parsed
+// from the id/name (e.g. "70b", "405b"). Not exact science, but a reasonable
+// way to prefer the strongest variant of each model family without a fully
+// hardcoded, ever-staling model list.
+function modelScore(id) {
+  if (FLAGSHIP_RE.test(id)) return 1000
+  const m = id.match(/(\d+(?:\.\d+)?)b\b/i)
+  return m ? parseFloat(m[1]) : 0
+}
+
+let coreModelCache = { at: 0, ids: [] }
+const CORE_MODEL_CACHE_MS = 6 * 60 * 60_000 // 6h — this doesn't need to be fresh-to-the-second
+
+async function dynamicOpenRouterCoreModels() {
+  if (Date.now() - coreModelCache.at < CORE_MODEL_CACHE_MS) return coreModelCache.ids
+  try {
+    const models = await fetchLiveModels()
+    const ids = models
+      .filter((m) => isOpenWeightModelId(m.id) && parseFloat(m.pricing?.prompt ?? '1') === 0 && parseFloat(m.pricing?.completion ?? '1') === 0)
+      .sort((a, b) => modelScore(b.id) - modelScore(a.id))
+      .slice(0, 5)
+      .map((m) => m.id)
+    coreModelCache = { at: Date.now(), ids }
+    return ids
+  } catch {
+    // Live catalog unreachable — keep the previous cache (even if stale) if
+    // there is one, so a transient fetch failure doesn't downgrade to the
+    // static list unnecessarily; a genuinely empty cache just means "add
+    // nothing", the static OPENROUTER_MODELS.core is still there.
+    return coreModelCache.ids
+  }
+}
+
 // Moves the given provider (if configured) to the front of the list,
 // preserving the relative order of the rest — used to prefer one provider
 // for a specific model kind without dropping the others as fallback.
@@ -155,8 +227,16 @@ async function buildAttempts(uiModelId, { web = false } = {}) {
     // NVIDIA's quota is exhausted, so this doesn't trade away the hybrid
     // failover, just reorders who gets tried first for this one kind.
     if (kind === 'core') ordered = preferProvider(ordered, 'nvidia')
+    // Best-currently-free-open-weight models, discovered live from
+    // OpenRouter's own catalog rather than hardcoded — see
+    // dynamicOpenRouterCoreModels above for why. Only applies to
+    // OpenRouter's core list; other providers/kinds are unaffected.
+    const dynamicCoreIds = kind === 'core' ? await dynamicOpenRouterCoreModels() : []
     for (const provider of ordered) {
-      const models = provider.models[kind] || []
+      let models = provider.models[kind] || []
+      if (provider.id === 'openrouter' && dynamicCoreIds.length) {
+        models = [...new Set([...dynamicCoreIds, ...models])]
+      }
       for (const realModel of models) {
         for (const key of provider.keys) {
           attempts.push({ provider, key, realModel, web: web && provider.supportsWebPlugin })
