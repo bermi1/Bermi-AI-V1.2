@@ -8,6 +8,7 @@ import { getMemory, remember, maybeDeepConsolidate } from '../memory.js'
 import { summarizeVideo } from '../video.js'
 import { webSearch } from '../websearch.js'
 import { rateLimit, checkRateLimit, peekRateLimit } from '../rateLimit.js'
+import { retrieveRelevant } from '../rag.js'
 import { quickBuildPersonalOffering } from './learn.js'
 
 export const chatRouter = Router()
@@ -68,12 +69,27 @@ const BASE_PROMPT =
   "one is actually present in context for what's being discussed right now; a lesson with no video is a non-issue, " +
   'not something to bring up or apologize for.'
 
+// Brains at or under this size just ride along in full — retrieval only
+// pays for itself once there's actually more content than reasonably fits.
+const SMALL_BRAIN_CHARS = 6_000
+// How much of a large brain's content the retrieved excerpts may total —
+// same ballpark as the old flat cap, but now it's the MOST RELEVANT part of
+// however large the source is, not just whatever happened to be first.
+const RETRIEVED_BRAIN_CHARS = 20_000
+
 /**
  * System prompt = base + user personalization + enabled brains. The company
  * and personal brains are persistent knowledge stores the user curates; they
  * ride along on every request since the LLM API is stateless.
+ *
+ * `message` (the user's current turn) is used as the retrieval query for any
+ * brain too large to include in full — see retrieveRelevant in rag.js. This
+ * is what actually lets a knowledge base scale past a flat character cap:
+ * the whole document gets searched, and only the parts relevant to what was
+ * just asked get included, instead of always just the first N characters
+ * regardless of the question.
  */
-async function buildSystemPrompt(userId, study = false) {
+async function buildSystemPrompt(userId, study = false, message = '') {
   const parts = [study ? STUDY_PROMPT : BASE_PROMPT]
 
   // Bermi's self-knowledge: current features & updates, so it can answer
@@ -104,14 +120,27 @@ async function buildSystemPrompt(userId, study = false) {
 
   const brains = await storage.listBrains(userId)
   for (const brain of brains) {
-    if (brain.enabled && brain.content?.trim()) {
-      // Cap each brain's contribution so an oversized knowledge base cannot
-      // blow up the request; stored content can be much larger.
-      const content = brain.content.trim().slice(0, 20_000)
-      parts.push(
-        `# ${brain.name} (persistent knowledge — treat as reliable context)\n${content}`,
-      )
+    if (!brain.enabled || !brain.content?.trim()) continue
+    const full = brain.content.trim()
+    if (full.length <= SMALL_BRAIN_CHARS) {
+      parts.push(`# ${brain.name} (persistent knowledge — treat as reliable context)\n${full}`)
+      continue
     }
+    // Too large to include whole — retrieve the passages actually relevant
+    // to this message instead of an arbitrary head-of-document slice.
+    const hits = retrieveRelevant(message, full, { topK: 8, chunkSize: 900, overlap: 150 })
+    const excerpt = hits.length
+      ? hits.map((h) => h.text).join('\n\n---\n\n').slice(0, RETRIEVED_BRAIN_CHARS)
+      // The message shared no vocabulary with this brain at all (e.g. a
+      // generic greeting, or a question genuinely unrelated to it) — still
+      // include a reasonable slice rather than nothing, since the brain was
+      // deliberately enabled and may still be relevant in ways BM25's exact
+      // term-matching can't detect from wording alone.
+      : full.slice(0, RETRIEVED_BRAIN_CHARS)
+    parts.push(
+      `# ${brain.name} (persistent knowledge — treat as reliable context; ` +
+        `${hits.length ? 'most relevant excerpts retrieved for this message from a larger document' : 'excerpt of a larger document'})\n${excerpt}`,
+    )
   }
   return parts.join('\n\n')
 }
@@ -802,7 +831,7 @@ chatRouter.post(
     })
 
     const [systemPromptBase, history, learn] = await Promise.all([
-      buildSystemPrompt(req.user.id, study),
+      buildSystemPrompt(req.user.id, study, message),
       storage.listMessages(conversation.id),
       learningContext(req.user, message, conversation.title, study, conversation.id),
     ])
