@@ -32,6 +32,7 @@ import { documentPdfUrl, studioDownloadUrl } from '../lib/api'
 import { InsightsPanel } from './InsightsPanel'
 import { StudyPanel } from './StudyPanel'
 import { MyLearningPanel } from './MyLearningPanel'
+import { NewsPanel } from './NewsPanel'
 
 interface DashboardPageProps {
   userName: string
@@ -224,6 +225,9 @@ export function DashboardPage({
 
         {/* Study Mode */}
         <StudyPanel onStartStudy={onStartStudy} />
+
+        {/* News & opportunities: Tanzania, Africa, and global youth opportunities */}
+        <NewsPanel />
 
         {/* Interaction health (Insights) */}
         <InsightsPanel />

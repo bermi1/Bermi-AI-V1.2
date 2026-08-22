@@ -24,6 +24,8 @@ import { connectorsRouter } from './routes/connectors.js'
 import { ttsRouter } from './routes/tts.js'
 import { sttRouter } from './routes/stt.js'
 import { voicesRouter } from './routes/voices.js'
+import { newsRouter } from './routes/news.js'
+import { refreshAllSources } from './news.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -36,6 +38,25 @@ app.use(cors({ credentials: true, origin: true }))
 app.use(express.json({ limit: '2mb' }))
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+// Triggered by Vercel Cron (see vercel.json) on a schedule, never by a
+// signed-in user — registered before the auth middleware below and gated by
+// its own shared secret instead of a session. Vercel Cron only ever issues
+// GET requests, and automatically attaches "Authorization: Bearer
+// $CRON_SECRET" once that env var is set — matching the check below.
+// Refuses to run at all if CRON_SECRET isn't set, rather than defaulting to
+// an open trigger.
+app.get('/api/cron/refresh-news', async (req, res, next) => {
+  try {
+    const secret = process.env.CRON_SECRET
+    const provided = req.headers.authorization?.replace(/^Bearer\s+/i, '')
+    if (!secret || provided !== secret) return res.status(401).json({ error: 'Unauthorized' })
+    const results = await refreshAllSources()
+    res.json({ ok: true, results })
+  } catch (err) {
+    next(err)
+  }
+})
 
 // Session resolution for every API request; auth endpoints stay public,
 // everything else requires a signed-in user.
@@ -62,6 +83,7 @@ app.use('/api', connectorsRouter)
 app.use('/api', ttsRouter)
 app.use('/api', sttRouter)
 app.use('/api', voicesRouter)
+app.use('/api', newsRouter)
 
 // Async route errors land here instead of crashing the process.
 app.use((err, _req, res, _next) => {

@@ -19,6 +19,10 @@ import type {
   Lesson,
   Message,
   ModelOption,
+  NewsFocus,
+  NewsItem,
+  NewsRegion,
+  NewsSource,
   NicheQuestion,
   NicheReport,
   OfferingKind,
@@ -285,6 +289,19 @@ export const refreshInsights = (period: 'day' | 'week') =>
 
 export const getStudyStats = () =>
   apiFetch('/api/study/stats').then((r) => json<StudyStats>(r))
+
+// ---------- News & opportunities ----------
+
+export const newsFeed = (params: { region?: NewsRegion; focus?: NewsFocus } = {}) => {
+  const q = new URLSearchParams()
+  if (params.region) q.set('region', params.region)
+  if (params.focus) q.set('focus', params.focus)
+  const qs = q.toString()
+  return apiFetch(`/api/news${qs ? `?${qs}` : ''}`).then((r) => json<{ items: NewsItem[] }>(r))
+}
+
+export const newsSources = () =>
+  apiFetch('/api/news/sources').then((r) => json<{ sources: NewsSource[] }>(r))
 
 // ---------- Niche discovery ----------
 

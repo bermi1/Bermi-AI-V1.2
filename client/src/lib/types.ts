@@ -168,6 +168,29 @@ export interface InsightsReport {
   summary: string
 }
 
+export type NewsRegion = 'tanzania' | 'africa' | 'global'
+export type NewsFocus = 'youth_opportunities' | 'national_news' | 'opportunities_events'
+
+export interface NewsItem {
+  title: string
+  link: string
+  publishedAt: string | null
+  summary: string
+  source: string
+  sourceId: string
+  region: NewsRegion
+  focus: NewsFocus
+}
+
+export interface NewsSource {
+  id: string
+  name: string
+  region: NewsRegion
+  focus: NewsFocus
+  homepage: string
+  hasFeed: boolean
+}
+
 export interface NicheQuestion {
   id: string
   q: string

@@ -19,5 +19,11 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/refresh-news",
+      "schedule": "0 6 * * *"
+    }
   ]
 }
