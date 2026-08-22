@@ -41,23 +41,41 @@ async function envOrSetting(envKeys, settingKey) {
   return [...new Set([...fromEnv, ...fromSetting])]
 }
 
+// OpenRouter discontinued the `:free` variant of every one of these models
+// platform-wide (confirmed live in production, 2026-08-22: every `:free`
+// slug below returned 404 "This model is unavailable for free... use this
+// slug instead: <same id without :free>" — not an account-specific block,
+// the free tier for these specific popular models is just gone). Using the
+// plain slug below now bills against the account's OpenRouter credit
+// balance — cheap for open-weight models, but NOT free, which breaks the
+// "always free" design intent of this file unless the account is funded.
+// Kept as the top of the fallback chain anyway since it's still the widest
+// model selection and the only web-search-capable provider; an account with
+// zero balance will just 402 straight through to Groq/NVIDIA/Cerebras below.
 const OPENROUTER_MODELS = {
   core: [
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'qwen/qwen-2.5-72b-instruct:free',
-    'deepseek/deepseek-chat-v3-0324:free',
-    'google/gemma-3-27b-it:free',
-    'mistralai/mistral-small-3.1-24b-instruct:free',
+    'meta-llama/llama-3.3-70b-instruct',
+    'qwen/qwen-2.5-72b-instruct',
+    'deepseek/deepseek-chat-v3-0324',
+    'google/gemma-3-27b-it',
+    'mistralai/mistral-small-3.1-24b-instruct',
   ],
-  fast: ['google/gemma-3-27b-it:free', 'mistralai/mistral-small-3.1-24b-instruct:free', 'meta-llama/llama-3.2-3b-instruct:free'],
-  reason: ['deepseek/deepseek-r1:free', 'deepseek/deepseek-r1-0528:free', 'qwen/qwq-32b:free'],
-  coder: ['qwen/qwen-2.5-coder-32b-instruct:free', 'deepseek/deepseek-chat-v3-0324:free'],
-  vision: ['qwen/qwen-2.5-vl-72b-instruct:free', 'meta-llama/llama-3.2-11b-vision-instruct:free'],
-  math: ['qwen/qwen-2.5-72b-instruct:free', 'qwen/qwq-32b:free', 'deepseek/deepseek-r1:free'],
+  fast: ['google/gemma-3-27b-it', 'mistralai/mistral-small-3.1-24b-instruct', 'meta-llama/llama-3.2-3b-instruct'],
+  reason: ['deepseek/deepseek-r1', 'deepseek/deepseek-r1-0528', 'qwen/qwq-32b'],
+  coder: ['qwen/qwen-2.5-coder-32b-instruct', 'deepseek/deepseek-chat-v3-0324'],
+  vision: ['qwen/qwen-2.5-vl-72b-instruct', 'meta-llama/llama-3.2-11b-vision-instruct'],
+  math: ['qwen/qwen-2.5-72b-instruct', 'qwen/qwq-32b', 'deepseek/deepseek-r1'],
 }
 
 // Groq's free tier serves genuinely open-weight models (Llama, etc.) at very
 // high speed — a strong second provider for the hybrid pool.
+//
+// Both models below are well-established, heavily-used Groq model names —
+// if BOTH are simultaneously returning "does not exist or you do not have
+// access to it" (confirmed live in production, 2026-08-22), that's a strong
+// signal the configured GROQ_API_KEY itself is invalid/revoked rather than
+// the model names being wrong. Verify the key directly at
+// console.groq.com/keys before assuming these need renaming.
 const GROQ_MODELS = {
   core: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   fast: ['llama-3.1-8b-instant'],
@@ -83,8 +101,17 @@ const CEREBRAS_MODELS = {
 // against NVIDIA's current public catalog naming (org/model-name, lowercase);
 // worth reconfirming against https://build.nvidia.com/models if any of these
 // start 404ing, since hosted catalogs shift over time.
+//
+// Confirmed live in production, 2026-08-22: mixtral-8x22b-instruct-v0.1
+// returned 410 Gone — actually removed from NVIDIA's catalog, dropped below.
+// llama-3.3-70b-instruct returned 403 — on NIM that usually means the model
+// needs a manual "Request Access" click on its build.nvidia.com model page
+// even with an otherwise-valid key, not that the id is wrong. Left in place
+// (first choice, best quality once access is granted) but no longer the
+// ONLY core option — llama-3.1-8b-instruct is typically open-access by
+// default on NIM, so core has a real fallback that doesn't need that step.
 const NVIDIA_MODELS = {
-  core: ['meta/llama-3.3-70b-instruct', 'mistralai/mixtral-8x22b-instruct-v0.1'],
+  core: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-8b-instruct'],
   fast: ['meta/llama-3.1-8b-instruct'],
   reason: ['deepseek-ai/deepseek-r1'],
   coder: ['qwen/qwen2.5-coder-32b-instruct'],
