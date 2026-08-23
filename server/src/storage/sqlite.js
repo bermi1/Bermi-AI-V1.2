@@ -557,10 +557,6 @@ export class SqliteStorage {
     const row = this.db.prepare('SELECT * FROM enrollments WHERE course_id = ? AND user_id = ?').get(courseId, userId)
     return row ? { ...row, progress: JSON.parse(row.progress || '{}') } : null
   }
-  async getEnrollmentById(id) {
-    const row = this.db.prepare('SELECT * FROM enrollments WHERE id = ?').get(id)
-    return row ? { ...row, progress: JSON.parse(row.progress || '{}') } : null
-  }
   async listEnrollmentsByUser(userId) {
     return this.db.prepare('SELECT * FROM enrollments WHERE user_id = ? ORDER BY enrolled_at DESC').all(userId).map((r) => ({ ...r, progress: JSON.parse(r.progress || '{}') }))
   }

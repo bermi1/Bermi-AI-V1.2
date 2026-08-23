@@ -78,8 +78,6 @@ export function MyLearning({ navigate }: { navigate: (r: LearnRoute) => void }) 
                             <div className="mt-1">
                               {e.status === 'completed' ? (
                                 <Pill tone="green">Completed{e.score != null ? ` · ${e.score}%` : ''}</Pill>
-                              ) : e.status === 'rejected' ? (
-                                <Pill tone="muted">Application not approved</Pill>
                               ) : e.status === 'applied' ? (
                                 <Pill tone="amber">{kind === 'event' ? 'Registration requested' : 'Pending approval'}</Pill>
                               ) : kind === 'event' ? (

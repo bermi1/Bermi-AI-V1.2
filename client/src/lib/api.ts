@@ -30,8 +30,6 @@ import type {
   Profile,
   QuizQuestion,
   QuizSubmitResponse,
-  Registration,
-  RegistrationForm,
   SettingsInfo,
   StudioDoc,
   StudioFormat,
@@ -823,28 +821,6 @@ export const learnTicketPdfUrl = (code: string) => {
   const token = getSessionToken()
   return `/api/learn/tickets/${code}/pdf${token ? `?token=${token}` : ''}`
 }
-
-// Event registration forms & applications (owner)
-export const learnRegistrationForm = (courseId: string) =>
-  apiFetch(`/api/learn/courses/${courseId}/registration-form`).then((r) => json<RegistrationForm>(r))
-
-export const learnSetRegistrationForm = (courseId: string, form: RegistrationForm) =>
-  apiFetch(`/api/learn/courses/${courseId}/registration-form`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(form),
-  }).then((r) => json<RegistrationForm>(r))
-
-export const learnRegistrations = (courseId: string) =>
-  apiFetch(`/api/learn/courses/${courseId}/registrations`).then((r) => json<Registration[]>(r))
-
-export const learnApproveRegistration = (enrollmentId: string) =>
-  apiFetch(`/api/learn/enrollments/${enrollmentId}/approve`, { method: 'POST' }).then((r) =>
-    json<{ enrollment: Enrollment; ticket: Ticket }>(r),
-  )
-
-export const learnRejectRegistration = (enrollmentId: string) =>
-  apiFetch(`/api/learn/enrollments/${enrollmentId}/reject`, { method: 'POST' }).then((r) => json<Enrollment>(r))
 
 // Institution management (owner)
 export const learnMyInstitutions = () =>

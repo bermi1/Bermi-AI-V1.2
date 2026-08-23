@@ -8,16 +8,7 @@ import { applyLessonCompletion, isLessonUnlocked, QUIZ_PASS_THRESHOLD } from '..
 import { rateLimit } from '../rateLimit.js'
 import { extractJson } from '../json-extract.js'
 import { htmlToPdf } from '../pdf.js'
-import {
-  getRegistrationForm,
-  setRegistrationForm,
-  listRegistrations,
-  approveRegistration,
-  rejectRegistration,
-  getTicket,
-  getTicketCodeForEnrollment,
-  renderTicketHtml,
-} from '../events.js'
+import { getTicket, getTicketCodeForEnrollment, renderTicketHtml } from '../events.js'
 
 // AI drafting is the most expensive call in the app (full course/program
 // content in one shot) — cap it separately from ordinary chat so a script or
@@ -651,73 +642,6 @@ learnRouter.delete('/learn/courses/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Course not found' })
     await storage.deleteCourse(req.params.id)
     res.json({ ok: true })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// ---- Event registration forms & applications (owner) ----
-// The end-user side of all this lives entirely in chat (see chat.js's
-// continueRegistration wiring) — these routes are only for the organization
-// to design the form and review/approve/reject who applied.
-
-learnRouter.get('/learn/courses/:id/registration-form', async (req, res, next) => {
-  try {
-    if (!(await ownsCourse(req.user.id, req.params.id)))
-      return res.status(404).json({ error: 'Course not found' })
-    res.json(await getRegistrationForm(req.params.id))
-  } catch (err) {
-    next(err)
-  }
-})
-
-learnRouter.put('/learn/courses/:id/registration-form', async (req, res, next) => {
-  try {
-    if (!(await ownsCourse(req.user.id, req.params.id)))
-      return res.status(404).json({ error: 'Course not found' })
-    res.json(await setRegistrationForm(req.params.id, req.body ?? {}))
-  } catch (err) {
-    next(err)
-  }
-})
-
-learnRouter.get('/learn/courses/:id/registrations', async (req, res, next) => {
-  try {
-    if (!(await ownsCourse(req.user.id, req.params.id)))
-      return res.status(404).json({ error: 'Course not found' })
-    res.json(await listRegistrations(req.params.id))
-  } catch (err) {
-    next(err)
-  }
-})
-
-async function ownedEnrollmentContext(userId, enrollmentId) {
-  const enrollment = await storage.getEnrollmentById(enrollmentId)
-  if (!enrollment) return null
-  const course = await ownsCourse(userId, enrollment.course_id)
-  if (!course) return null
-  const institution = await storage.getInstitution(course.institution_id)
-  return { enrollment, course, institution }
-}
-
-learnRouter.post('/learn/enrollments/:id/approve', async (req, res, next) => {
-  try {
-    const ctx = await ownedEnrollmentContext(req.user.id, req.params.id)
-    if (!ctx) return res.status(404).json({ error: 'Application not found' })
-    const applicant = await storage.getUserById(ctx.enrollment.user_id)
-    if (!applicant) return res.status(404).json({ error: 'Applicant not found' })
-    const { enrollment, ticket } = await approveRegistration({ ...ctx, user: applicant })
-    res.json({ enrollment, ticket })
-  } catch (err) {
-    next(err)
-  }
-})
-
-learnRouter.post('/learn/enrollments/:id/reject', async (req, res, next) => {
-  try {
-    const ctx = await ownedEnrollmentContext(req.user.id, req.params.id)
-    if (!ctx) return res.status(404).json({ error: 'Application not found' })
-    res.json(await rejectRegistration(ctx.enrollment))
   } catch (err) {
     next(err)
   }

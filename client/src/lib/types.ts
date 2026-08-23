@@ -302,7 +302,7 @@ export interface Enrollment {
   id: string
   course_id: string
   user_id: string
-  status: 'applied' | 'enrolled' | 'completed' | 'rejected'
+  status: 'applied' | 'enrolled' | 'completed'
   progress: Record<string, { done: boolean; score?: number }>
   score: number | null
   course?: Course
@@ -316,29 +316,6 @@ export interface Certificate {
   institution_name: string
   score: number | null
   issued_at: string
-}
-
-export interface RegistrationField {
-  id: string
-  label: string
-  type: 'text' | 'email' | 'phone' | 'number' | 'textarea'
-  required: boolean
-}
-
-export interface RegistrationForm {
-  fields: RegistrationField[]
-  requiresApproval: boolean
-}
-
-export interface Registration {
-  enrollment_id: string
-  user_id: string
-  name: string
-  email: string
-  status: 'applied' | 'enrolled' | 'completed' | 'rejected'
-  ticket_code?: string | null
-  registered_at: string
-  answers: Record<string, string>
 }
 
 export interface Ticket {

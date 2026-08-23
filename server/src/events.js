@@ -1,70 +1,18 @@
-// Event registration forms, chat-native multi-turn form collection, approval
-// workflow, and ticket issuance — all stored through the generic settings
-// key-value store (see storage/sqlite.js + storage/supabase.js) so none of
-// this needs a schema migration on either backend.
+// Event tickets — an AI-processed, organization-branded ticket issued the
+// moment someone registers for an event through chat. Deliberately minimal:
+// no organizer-configured form, no approval queue, no management dashboard —
+// registering for an event works exactly like enrolling in anything else
+// (see the ENROLL_RE branch in chat.js), it just also produces a ticket.
+// Stored through the generic settings key-value store (see storage/sqlite.js
+// + storage/supabase.js) so this needs no schema migration on either backend.
 import { randomBytes } from 'node:crypto'
 import { storage } from './storage/index.js'
-import { complete } from './openrouter.js'
-import { extractJson } from './json-extract.js'
 
-const FORM_KEY = (courseId) => `event-form:${courseId}`
-const ANSWERS_KEY = (enrollmentId) => `event-reg-data:${enrollmentId}`
-const PENDING_KEY = (conversationId) => `event-reg-pending:${conversationId}`
 const TICKET_KEY = (code) => `event-ticket:${code}`
 const TICKET_BY_ENROLLMENT_KEY = (enrollmentId) => `event-ticket-for:${enrollmentId}`
 
-const DEFAULT_FORM = { fields: [], requiresApproval: false }
-const FIELD_TYPES = new Set(['text', 'email', 'phone', 'number', 'textarea'])
-
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-}
-
-function sanitizeFields(fields) {
-  if (!Array.isArray(fields)) return []
-  return fields
-    .filter((f) => f && typeof f.label === 'string' && f.label.trim())
-    .slice(0, 20)
-    .map((f, i) => ({
-      id: (typeof f.id === 'string' && f.id.trim()) || `f${i}_${f.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 24)}`,
-      label: f.label.trim().slice(0, 120),
-      type: FIELD_TYPES.has(f.type) ? f.type : 'text',
-      required: f.required !== false,
-    }))
-}
-
-export async function getRegistrationForm(courseId) {
-  try {
-    const raw = await storage.getSetting(FORM_KEY(courseId))
-    if (!raw) return DEFAULT_FORM
-    const parsed = JSON.parse(raw)
-    return { fields: sanitizeFields(parsed.fields), requiresApproval: !!parsed.requiresApproval }
-  } catch {
-    return DEFAULT_FORM
-  }
-}
-
-export async function setRegistrationForm(courseId, form) {
-  const clean = { fields: sanitizeFields(form?.fields), requiresApproval: !!form?.requiresApproval }
-  await storage.setSetting(FORM_KEY(courseId), JSON.stringify(clean))
-  return clean
-}
-
-export async function getRegistrationAnswers(enrollmentId) {
-  try {
-    const raw = await storage.getSetting(ANSWERS_KEY(enrollmentId))
-    return raw ? JSON.parse(raw) : {}
-  } catch {
-    return {}
-  }
-}
-
-async function saveRegistrationAnswers(enrollmentId, answers) {
-  await storage.setSetting(ANSWERS_KEY(enrollmentId), JSON.stringify(answers || {}))
-}
-
-function missingRequiredFields(fields, answers) {
-  return fields.filter((f) => f.required && !String(answers[f.id] ?? '').trim())
 }
 
 function generateTicketCode() {
@@ -149,137 +97,4 @@ export function renderTicketHtml(ticket) {
     </div>
   </div>
 </body></html>`
-}
-
-// Open-weight models don't reliably return clean JSON for freeform text —
-// see the identical rationale in json-extract.js. This asks the model to
-// pull whatever field values it can find out of the user's latest chat
-// message, merging on top of whatever was already collected earlier in the
-// conversation so a multi-turn back-and-forth accumulates instead of
-// resetting every reply.
-export async function extractFormAnswers(message, fields, existingAnswers = {}) {
-  const shape = fields.map((f) => `"${f.id}": <${f.label}${f.required ? ', required' : ', optional'}>`).join(',\n  ')
-  const raw = await complete({
-    model: 'bermi-fast',
-    maxTokens: 600,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Extract event-registration field values from the user\'s message. Output ONLY a JSON object shaped like:\n' +
-          `{\n  ${shape}\n}\n` +
-          'Use an empty string "" for any field not present in the message. Do not guess or invent values. Output ONLY the JSON object.',
-      },
-      { role: 'user', content: message.slice(0, 2000) },
-    ],
-  })
-  let extracted = {}
-  try {
-    extracted = extractJson(raw)
-  } catch {
-    extracted = {}
-  }
-  const merged = { ...existingAnswers }
-  for (const f of fields) {
-    const v = extracted[f.id]
-    if (typeof v === 'string' && v.trim()) merged[f.id] = v.trim()
-  }
-  return merged
-}
-
-export async function startRegistration(conversationId, courseId) {
-  await storage.setSetting(PENDING_KEY(conversationId), JSON.stringify({ courseId, answers: {} }))
-}
-
-export async function getPendingRegistration(conversationId) {
-  try {
-    const raw = await storage.getSetting(PENDING_KEY(conversationId))
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
-async function clearPendingRegistration(conversationId) {
-  await storage.setSetting(PENDING_KEY(conversationId), '')
-}
-
-/**
- * Advances a pending chat-native registration by one turn: merges any newly
- * extracted field values from `message`, and either finalizes the
- * registration (enrollment created, answers saved, ticket issued unless the
- * event requires approval) once every required field is filled, or reports
- * what's still missing so the caller can ask for just that.
- */
-export async function continueRegistration({ conversationId, message, user, createEnrollment, getInstitution }) {
-  const pending = await getPendingRegistration(conversationId)
-  if (!pending?.courseId) return null
-  const course = await storage.getCourse(pending.courseId)
-  if (!course) {
-    await clearPendingRegistration(conversationId)
-    return { done: false, error: true, courseGone: true }
-  }
-  const form = await getRegistrationForm(course.id)
-  const answers = await extractFormAnswers(message, form.fields, pending.answers || {})
-  const missing = missingRequiredFields(form.fields, answers)
-  if (missing.length) {
-    await storage.setSetting(PENDING_KEY(conversationId), JSON.stringify({ courseId: course.id, answers }))
-    return { done: false, course, missing, answers }
-  }
-  const existing = await storage.getEnrollment(course.id, user.id)
-  const newStatus = form.requiresApproval || course.enrollment === 'approval' ? 'applied' : 'enrolled'
-  let enrollment
-  if (existing && existing.status === 'rejected') {
-    // A previously rejected application shouldn't permanently block a retry —
-    // the (course_id, user_id) row already exists, so re-open it in place
-    // rather than trying to insert a duplicate.
-    enrollment = await storage.updateEnrollment(existing.id, { status: newStatus })
-  } else if (existing) {
-    enrollment = existing
-  } else {
-    enrollment = await createEnrollment({ courseId: course.id, userId: user.id, status: newStatus })
-  }
-  await saveRegistrationAnswers(enrollment.id, answers)
-  await clearPendingRegistration(conversationId)
-  let ticket = null
-  if (enrollment.status === 'enrolled') {
-    const institution = getInstitution ? await getInstitution(course.institution_id) : null
-    ticket = await issueTicket({ course, institution, user, enrollment })
-  }
-  return { done: true, course, enrollment, answers, ticket, needsApproval: enrollment.status === 'applied' }
-}
-
-// ---- Owner-side management ----
-
-export async function listRegistrations(courseId) {
-  const enrollments = await storage.listEnrollmentsByCourse(courseId)
-  const out = []
-  for (const e of enrollments) {
-    const [learner, answers, ticket_code] = await Promise.all([
-      storage.getUserById(e.user_id),
-      getRegistrationAnswers(e.id),
-      e.status === 'enrolled' ? getTicketCodeForEnrollment(e.id) : null,
-    ])
-    out.push({
-      enrollment_id: e.id,
-      user_id: e.user_id,
-      name: learner?.name || 'Guest',
-      email: learner?.email || '',
-      status: e.status,
-      ticket_code,
-      registered_at: e.enrolled_at,
-      answers,
-    })
-  }
-  return out
-}
-
-export async function approveRegistration({ enrollment, course, institution, user }) {
-  const updated = await storage.updateEnrollment(enrollment.id, { status: 'enrolled' })
-  const ticket = await issueTicket({ course, institution, user, enrollment: updated })
-  return { enrollment: updated, ticket }
-}
-
-export async function rejectRegistration(enrollment) {
-  return storage.updateEnrollment(enrollment.id, { status: 'rejected' })
 }
