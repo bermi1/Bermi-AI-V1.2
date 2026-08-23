@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { ChevronDown, Sparkles } from 'lucide-react'
 import { GlowBackdrop, Reveal, useDocumentMeta, useJsonLd } from './shared'
 
-const faqGroups = [
+// Exported so the prerender script (scripts/prerender.mjs) can build the
+// identical FAQPage JSON-LD for the static HTML snapshot — useJsonLd only
+// injects it client-side via an effect, which a non-JS crawler never runs.
+export const faqGroups = [
   {
     label: 'Getting started',
     items: [
