@@ -11,7 +11,6 @@ export type LearnRoute =
   | { name: 'mylearning' }
   | { name: 'studio' }
   | { name: 'certificate'; code: string }
-  | { name: 'ticket'; code: string }
 
 export function parseLearnRoute(pathname: string): LearnRoute {
   const rest = pathname.replace(/^\/(portal|learn)\/?/, '').replace(/\/+$/, '')
@@ -21,7 +20,6 @@ export function parseLearnRoute(pathname: string): LearnRoute {
   if (parts[0] === 'studio') return { name: 'studio' }
   if (parts[0] === 'i' && parts[1]) return { name: 'institution', slug: parts[1] }
   if (parts[0] === 'cert' && parts[1]) return { name: 'certificate', code: parts[1] }
-  if (parts[0] === 'ticket' && parts[1]) return { name: 'ticket', code: parts[1] }
   if (parts[0] === 'c' && parts[1]) {
     if (parts[2] === 'lesson' && parts[3])
       return { name: 'study', courseId: parts[1], lessonId: parts[3] }
@@ -46,8 +44,6 @@ export function routeToPath(route: LearnRoute): string {
       return `/portal/c/${route.courseId}/lesson/${route.lessonId}`
     case 'certificate':
       return `/portal/cert/${route.code}`
-    case 'ticket':
-      return `/portal/ticket/${route.code}`
   }
 }
 

@@ -1,36 +1,27 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BookOpen, Building2, CalendarClock, CheckCircle2, Download, ListChecks, Lock, MapPin, MessageSquare, Wand2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Building2, CheckCircle2, Download, ListChecks, Lock, MessageSquare, Wand2 } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Course, Enrollment, Lesson, OfferingKind } from '../lib/types'
+import { CourseIcon } from '../lib/courseIcons'
 import { Btn, ErrorNote, Pill, Spinner, handoffToStudy, type LearnRoute } from './ui'
 import { Markdown } from '../components/Markdown'
 import { QuizModal } from './QuizModal'
 
-const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', event: 'Event', resource: 'Resource' }
+const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', resource: 'Resource' }
 const KIND_STEP_HEADING: Record<OfferingKind, string> = {
   course: 'Curriculum',
   program: 'Steps',
-  event: 'Agenda',
   resource: 'Contents',
 }
 const KIND_STEP_SINGULAR: Record<OfferingKind, string> = {
   course: 'lesson',
   program: 'step',
-  event: 'agenda item',
   resource: 'section',
 }
 const KIND_JOIN_VERB: Record<OfferingKind, string> = {
   course: 'Enroll',
   program: 'Enroll',
-  event: 'Register',
   resource: 'Get access',
-}
-
-function formatEventWhen(iso?: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 export function CoursePage({
@@ -76,20 +67,16 @@ export function CoursePage({
   // itself; it just hands the request to chat, which does the right thing
   // for the kind (enroll, register, or grant access) in the same message.
   const continuePrompt =
-    kind === 'event'
-      ? `Tell me more about the event "${course.title}" and confirm my registration status.`
-      : kind === 'resource'
-        ? `Show me the resource "${course.title}" again.`
-        : `Let's continue the ${kind} "${course.title}". Pick up where I left off and guide me through the next part.`
+    kind === 'resource'
+      ? `Show me the resource "${course.title}" again.`
+      : `Let's continue the ${kind} "${course.title}". Pick up where I left off and guide me through the next part.`
   const joinPrompt =
-    kind === 'event'
-      ? `I'd like to register for the event "${course.title}"` + (institution ? ` by ${institution.name}` : '') + `.` + (course.summary ? `\n\n${course.summary}` : '')
-      : kind === 'resource'
-        ? `I'd like to get the resource "${course.title}"` + (institution ? ` by ${institution.name}` : '') + `. Please give me access to it now.`
-        : `I'd like to enroll in the ${kind} "${course.title}"` +
-          (institution ? ` by ${institution.name}` : '') +
-          `. Please enroll me and guide me through it${kind === 'course' ? ' step by step' : ''}.` +
-          (course.summary ? `\n\nOverview: ${course.summary}` : '')
+    kind === 'resource'
+      ? `I'd like to get the resource "${course.title}"` + (institution ? ` by ${institution.name}` : '') + `. Please give me access to it now.`
+      : `I'd like to enroll in the ${kind} "${course.title}"` +
+        (institution ? ` by ${institution.name}` : '') +
+        `. Please enroll me and guide me through it${kind === 'course' ? ' step by step' : ''}.` +
+        (course.summary ? `\n\nOverview: ${course.summary}` : '')
 
   const lessonPrompt = (lesson: Lesson) =>
     (enrolled ? '' : `${joinPrompt} `) +
@@ -106,14 +93,13 @@ export function CoursePage({
 
       <div className="rounded-3xl border border-edge bg-surface-raised p-6 md:p-8">
         <div className="mb-4 flex items-start gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-4xl">
-            {course.cover_emoji || '📘'}
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+            <CourseIcon name={course.cover_emoji} size={30} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
               <Pill tone="primary">{kind === 'course' ? course.level || 'All levels' : KIND_LABEL[kind]}</Pill>
               {enrolled && enrollment?.status === 'completed' && <Pill tone="green"><CheckCircle2 size={12} /> Completed</Pill>}
-              {enrolled && kind === 'event' && enrollment?.status !== 'completed' && <Pill tone="green"><CheckCircle2 size={12} /> Registered</Pill>}
             </div>
             <h1 className="text-[22px] font-bold leading-tight text-ink md:text-[26px]">{course.title}</h1>
             {institution && (
@@ -129,18 +115,7 @@ export function CoursePage({
 
         {course.summary && <p className="text-[14.5px] leading-relaxed text-ink-muted">{course.summary}</p>}
 
-        {kind === 'event' && (course.event_at || course.event_location) && (
-          <div className="mt-4 flex flex-wrap gap-4 text-[13.5px] text-ink-muted">
-            {course.event_at && (
-              <span className="inline-flex items-center gap-1.5"><CalendarClock size={15} className="text-primary" /> {formatEventWhen(course.event_at)}</span>
-            )}
-            {course.event_location && (
-              <span className="inline-flex items-center gap-1.5"><MapPin size={15} className="text-primary" /> {course.event_location}</span>
-            )}
-          </div>
-        )}
-
-        {enrolled && kind !== 'event' && lessons.length > 0 && (
+        {enrolled && lessons.length > 0 && (
           <div className="mt-5">
             <div className="mb-1.5 flex items-center justify-between text-[12.5px] font-medium text-ink-muted">
               <span>Your progress</span>
@@ -153,8 +128,8 @@ export function CoursePage({
         )}
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Btn onClick={() => handoffToStudy({ title: course.title, prompt: enrolled ? continuePrompt : joinPrompt })} disabled={kind !== 'event' && kind !== 'resource' && !lessons.length}>
-            <Wand2 size={17} /> {enrolled ? (kind === 'event' ? 'Ask about this event' : kind === 'resource' ? 'Open in Bermi AI' : 'Continue in Bermi AI') : `${joinVerb} in Bermi AI`}
+          <Btn onClick={() => handoffToStudy({ title: course.title, prompt: enrolled ? continuePrompt : joinPrompt })} disabled={kind !== 'resource' && !lessons.length}>
+            <Wand2 size={17} /> {enrolled ? (kind === 'resource' ? 'Open in Bermi AI' : 'Continue in Bermi AI') : `${joinVerb} in Bermi AI`}
           </Btn>
         </div>
 
@@ -168,15 +143,14 @@ export function CoursePage({
         </div>
       )}
 
-      {kind !== 'event' && (
-        <div className="mt-6">
-          <h2 className="mb-3 flex items-center gap-2 text-[16px] font-semibold text-ink">
-            <BookOpen size={17} /> {KIND_STEP_HEADING[kind]} · {lessons.length} {stepSingular}{lessons.length === 1 ? '' : 's'}
-          </h2>
-          <div className="space-y-2">
-            {lessons.map((l, i) => {
-              const done = progress[l.id]?.done
-              // Only courses are hard mastery-gated (quiz + in-order) — a
+      <div className="mt-6">
+        <h2 className="mb-3 flex items-center gap-2 text-[16px] font-semibold text-ink">
+          <BookOpen size={17} /> {KIND_STEP_HEADING[kind]} · {lessons.length} {stepSingular}{lessons.length === 1 ? '' : 's'}
+        </h2>
+        <div className="space-y-2">
+          {lessons.map((l, i) => {
+            const done = progress[l.id]?.done
+            // Only courses are hard mastery-gated (quiz + in-order) — a
               // program/resource's steps stay freely browsable, matching
               // their lighter "plain confirmation" evaluation model.
               const locked = kind === 'course' && enrolled && i > 0 && !done && !progress[lessons[i - 1].id]?.done
@@ -260,8 +234,7 @@ export function CoursePage({
               }}
             />
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

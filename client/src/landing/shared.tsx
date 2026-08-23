@@ -40,7 +40,7 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
           className="flex items-center gap-2"
           aria-label="Bermi AI home"
         >
-          <BermiMark size={22} className="text-violet-300" />
+          <BermiMark size={22} className="text-white" />
           <span className="text-[15px] font-semibold tracking-tight text-white">Bermi AI</span>
         </button>
         <nav className="hidden items-center gap-1 sm:flex">
@@ -65,7 +65,7 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
           </button>
           <button
             onClick={onGetStarted}
-            className="group flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-[13px] font-semibold text-[#0a0a12] shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all hover:shadow-[0_0_24px_rgba(167,139,250,0.55)]"
+            className="group flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-[13px] font-semibold text-[#0a0a0a] shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.35)]"
           >
             Get started
             <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
@@ -81,7 +81,7 @@ export function LandingFooter({ go }: { go: (to: LandingPath) => void }) {
     <footer className="border-t border-white/10 px-5 py-8">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
         <div className="flex items-center gap-2 text-white/60">
-          <BermiMark size={16} className="text-violet-300" />
+          <BermiMark size={16} className="text-white/70" />
           <span className="text-[13px]">Bermi AI</span>
         </div>
         <nav className="flex items-center gap-4">
@@ -226,9 +226,9 @@ export function GlowBackdrop({ size = 'lg' }: { size?: 'sm' | 'lg' }) {
       <div
         className={`bermi-orbit-spin absolute left-1/2 -translate-x-1/2 rounded-full border border-dashed border-white/[0.06] ${ring}`}
       />
-      <div className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-violet-600/25 blur-[90px] ${glow}`} />
+      <div className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-white/[0.08] blur-[90px] ${glow}`} />
       <div className="absolute left-1/2 top-8 h-px w-px -translate-x-1/2">
-        <div className={`w-[2px] bg-gradient-to-b from-transparent via-violet-300/70 to-transparent ${beam}`} />
+        <div className={`w-[2px] bg-gradient-to-b from-transparent via-white/40 to-transparent ${beam}`} />
       </div>
     </div>
   )

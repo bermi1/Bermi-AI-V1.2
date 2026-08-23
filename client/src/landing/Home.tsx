@@ -36,12 +36,12 @@ function HeroMockup() {
             <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
           </div>
           <div className="ml-2 flex items-center gap-1.5">
-            <BermiMark size={14} className="text-violet-300" />
+            <BermiMark size={14} className="text-white" />
             <span className="text-[12px] font-medium text-white/60">Bermi AI</span>
           </div>
         </div>
         <div className="mt-4 space-y-2.5 px-1 pb-1">
-          <div className="ml-auto w-fit max-w-[80%] rounded-xl rounded-tr-sm bg-violet-500/20 px-3.5 py-2 text-[13px] text-white/90">
+          <div className="ml-auto w-fit max-w-[80%] rounded-xl rounded-tr-sm bg-white/10 px-3.5 py-2 text-[13px] text-white/90">
             Build me a course on negotiation skills
           </div>
           <div className="w-fit max-w-[85%] rounded-xl rounded-tl-sm bg-white/[0.06] px-3.5 py-2 text-[13px] leading-relaxed text-white/70">
@@ -50,7 +50,7 @@ function HeroMockup() {
         </div>
       </div>
       <div className="bermi-float absolute -right-3 -top-6 hidden w-40 rounded-2xl p-3 bermi-glass sm:block">
-        <div className="flex items-center gap-1.5 text-violet-300">
+        <div className="flex items-center gap-1.5 text-white/70">
           <BarChart3 size={13} />
           <span className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
             Mastery
@@ -58,7 +58,7 @@ function HeroMockup() {
         </div>
         <p className="mt-1 text-[18px] font-semibold text-white">Lesson 3/6</p>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-1/2 rounded-full bg-violet-400" />
+          <div className="h-full w-1/2 rounded-full bg-white" />
         </div>
       </div>
     </div>
@@ -76,17 +76,17 @@ const steps = [
 function HowItWorks() {
   return (
     <div className="relative mt-12">
-      <div className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-[26px] hidden h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent sm:block">
-        <div className="bermi-pulse-travel absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-violet-300 shadow-[0_0_10px_3px_rgba(167,139,250,0.7)]" />
+      <div className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-[26px] hidden h-px bg-gradient-to-r from-transparent via-white/25 to-transparent sm:block">
+        <div className="bermi-pulse-travel absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_3px_rgba(255,255,255,0.5)]" />
       </div>
       <div className="grid gap-6 sm:grid-cols-4">
         {steps.map((s, i) => (
           <Reveal key={s.title} delay={i * 100} className="relative text-center">
-            <div className="relative z-10 mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bermi-glass text-violet-300">
+            <div className="relative z-10 mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bermi-glass text-white/80">
               <s.icon size={22} />
             </div>
             <h3 className="mt-4 text-[14.5px] font-semibold text-white">
-              <span className="mr-1.5 text-violet-400/70">{i + 1}.</span>
+              <span className="mr-1.5 text-white/35">{i + 1}.</span>
               {s.title}
             </h3>
             <p className="mx-auto mt-1.5 max-w-[200px] text-[12.5px] leading-relaxed text-white/55">
@@ -111,12 +111,12 @@ function OrbitDiagram() {
     <div className="relative mx-auto aspect-square w-full max-w-[280px]">
       <div className="bermi-orbit-spin absolute inset-0 rounded-full border border-dashed border-white/10" />
       <div className="absolute inset-[15%] rounded-full border border-white/[0.06]" />
-      <div className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bermi-glass shadow-[0_0_40px_rgba(139,92,246,0.35)]">
-        <BermiMark size={26} className="text-violet-300" />
+      <div className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bermi-glass shadow-[0_0_40px_rgba(255,255,255,0.15)]">
+        <BermiMark size={26} className="text-white" />
       </div>
       {nodes.map((n) => (
         <div key={n.label} className={`absolute flex flex-col items-center gap-1.5 ${n.pos}`}>
-          <div className="bermi-float flex h-11 w-11 items-center justify-center rounded-xl bermi-glass text-violet-300">
+          <div className="bermi-float flex h-11 w-11 items-center justify-center rounded-xl bermi-glass text-white/80">
             <n.icon size={17} />
           </div>
           <span className="text-[10.5px] font-medium text-white/55">{n.label}</span>
@@ -129,7 +129,7 @@ function OrbitDiagram() {
 const explainPoints = [
   'A capable AI assistant for writing, research, and documents — plus your own custom AI "brains".',
   'Ask for a course on anything and get it drafted, enrolled, and taught step by step, instantly.',
-  'Organizations publish courses, programs, events, and resources under their own catalog.',
+  'Registered organizations publish courses, programs, and resources under their own catalog.',
 ]
 
 const capabilities = [
@@ -151,7 +151,7 @@ const capabilities = [
   {
     icon: Building2,
     title: 'Organization publishing',
-    body: 'Institutions list courses, programs, events, and resources under their own catalog.',
+    body: 'Registered institutions list courses, programs, and resources under their own catalog.',
   },
   {
     icon: BarChart3,
@@ -173,17 +173,17 @@ const learnerFeatures = [
 ]
 
 const orgFeatures = [
-  'Publish courses, programs, events, and resources to your own catalog',
+  'Publish courses, programs, and resources to your own catalog',
   'AI-assisted authoring — describe a topic, get a drafted curriculum',
   'Live analytics dashboard for progress, completions, and mastery',
   'Searchable learner directory with CSV export for reporting',
 ]
 
 const stats = [
-  { value: '4', label: 'Catalog types', sub: 'Courses, programs, events & resources' },
+  { value: '3', label: 'Catalog types', sub: 'Courses, programs & resources' },
   { value: '100%', label: 'Mastery-gated', sub: 'Every lesson checked before advancing' },
   { value: '1 chat', label: 'To a full course', sub: 'No wizard or dashboard detour' },
-  { value: '0', label: 'Setup required', sub: 'For institutions to start publishing' },
+  { value: '0', label: 'Setup required', sub: 'To start learning' },
 ]
 
 export function Home({ onSignIn, onGetStarted }: HomeProps) {
@@ -213,14 +213,13 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
         <div aria-hidden className="bermi-spotlight pointer-events-none absolute inset-0" />
         <div className="mx-auto max-w-xl text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-white/70 backdrop-blur">
-            <Sparkles size={13} className="text-violet-300" />
+            <Sparkles size={13} className="text-white/70" />
             AI chat, meet learning management
           </span>
-          <h1 className="mt-5 text-[32px] font-semibold leading-[1.12] tracking-tight md:text-[44px]">
-            Learn faster.{' '}
-            <span className="bg-gradient-to-r from-violet-300 via-fuchsia-200 to-violet-300 bg-clip-text text-transparent">
-              Build smarter.
-            </span>
+          <h1 className="mt-5 text-[36px] font-semibold leading-[1.08] tracking-tight text-white md:text-[56px]">
+            Chat your way
+            <br />
+            to mastery.
           </h1>
           <p className="mx-auto mt-4 max-w-md text-[14.5px] leading-relaxed text-white/60">
             One AI workspace that chats, writes, and teaches — for people who want to get things
@@ -229,7 +228,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               onClick={onGetStarted}
-              className="group flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a12] shadow-[0_0_30px_rgba(167,139,250,0.25)] transition-all hover:shadow-[0_0_36px_rgba(167,139,250,0.55)] sm:w-auto"
+              className="group flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a0a] shadow-[0_0_30px_rgba(255,255,255,0.15)] transition-all hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] sm:w-auto"
             >
               Get started free
               <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
@@ -270,7 +269,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
             <ul className="mt-5 space-y-3">
               {explainPoints.map((p) => (
                 <li key={p} className="flex items-start gap-2.5 text-[13.5px] leading-relaxed">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-violet-300" />
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-white/70" />
                   <span className="text-white/65">{p}</span>
                 </li>
               ))}
@@ -288,7 +287,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           {stats.map((s, i) => (
             <Reveal key={s.label} delay={i * 80}>
               <div className="rounded-2xl bermi-glass px-4 py-5 text-center">
-                <p className="bg-gradient-to-r from-violet-300 to-fuchsia-200 bg-clip-text text-[26px] font-bold text-transparent">
+                <p className="text-[26px] font-bold text-white">
                   {s.value}
                 </p>
                 <p className="mt-1 text-[12.5px] font-semibold text-white">{s.label}</p>
@@ -310,7 +309,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           <Reveal>
             <div className="h-full rounded-2xl bermi-glass p-6">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white">
                   <Users size={16} />
                 </div>
                 <h3 className="text-[16px] font-semibold text-white">For learners</h3>
@@ -318,7 +317,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
               <ul className="mt-4 space-y-2.5">
                 {learnerFeatures.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
-                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-violet-300" />
+                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-white/70" />
                     <span className="text-white/60">{f}</span>
                   </li>
                 ))}
@@ -328,7 +327,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           <Reveal delay={100}>
             <div className="h-full rounded-2xl bermi-glass p-6">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white">
                   <Layers size={16} />
                 </div>
                 <h3 className="text-[16px] font-semibold text-white">For organizations</h3>
@@ -336,7 +335,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
               <ul className="mt-4 space-y-2.5">
                 {orgFeatures.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
-                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-violet-300" />
+                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-white/70" />
                     <span className="text-white/60">{f}</span>
                   </li>
                 ))}
@@ -361,9 +360,9 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           {capabilities.map((c) => (
             <div
               key={c.title}
-              className="group rounded-2xl bermi-glass p-5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/30 hover:shadow-[0_0_30px_-8px_rgba(139,92,246,0.5)]"
+              className="group rounded-2xl bermi-glass p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/30 hover:shadow-[0_0_30px_-8px_rgba(255,255,255,0.25)]"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300 transition-transform duration-300 group-hover:scale-110">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition-transform duration-300 group-hover:scale-110">
                 <c.icon size={18} />
               </div>
               <h3 className="mt-3.5 text-[14.5px] font-semibold text-white">{c.title}</h3>
@@ -384,7 +383,7 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
           </p>
           <button
             onClick={onGetStarted}
-            className="group mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a12] transition-all hover:shadow-[0_0_28px_rgba(167,139,250,0.5)]"
+            className="group mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a0a] transition-all hover:shadow-[0_0_28px_rgba(255,255,255,0.3)]"
           >
             Get started free
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />

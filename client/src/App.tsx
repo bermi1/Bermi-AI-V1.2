@@ -391,16 +391,14 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
 
   // Resume/continue anything from "My activity" entirely inside Bermi AI
   // chat — never the portal. Only a course forces Study Mode's gamified
-  // teaching UI; a program/event/resource is guided in ordinary chat.
+  // teaching UI; a program/resource is guided in ordinary chat.
   const studyCourse = useCallback(
-    (title: string, kind: 'course' | 'program' | 'event' | 'resource' = 'course') => {
+    (title: string, kind: 'course' | 'program' | 'resource' = 'course') => {
       setView('chat')
       const prompt =
-        kind === 'event'
-          ? `Tell me more about the event "${title}" and confirm my registration status.`
-          : kind === 'resource'
-            ? `Show me the resource "${title}" again.`
-            : `Let's continue the ${kind} "${title}". Pick up where I left off and guide me through the next part.`
+        kind === 'resource'
+          ? `Show me the resource "${title}" again.`
+          : `Let's continue the ${kind} "${title}". Pick up where I left off and guide me through the next part.`
       if (kind === 'course') setStudy(true)
       send(prompt, { study: kind === 'course' })
     },

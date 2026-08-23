@@ -4,6 +4,7 @@ import type { Enrollment, Message } from '../lib/types'
 import { learnMyEnrollments, sendFeedback, synthesizeSpeech } from '../lib/api'
 import { Markdown } from './Markdown'
 import { BermiMark } from './Logo'
+import { CourseIcon } from '../lib/courseIcons'
 
 interface ChatPanelProps {
   messages: Message[]
@@ -208,8 +209,8 @@ function ContinueLearning({ onStudyCourse }: { onStudyCourse?: (title: string) =
               onClick={() => onStudyCourse?.(e.course!.title)}
               className="flex w-full items-center gap-3 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 text-left transition-colors hover:border-primary"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-xl">
-                {e.course!.cover_emoji || '📘'}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                <CourseIcon name={e.course!.cover_emoji} size={17} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px] font-medium text-ink">{e.course!.title}</span>

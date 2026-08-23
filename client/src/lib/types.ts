@@ -219,12 +219,12 @@ export interface StudyAward {
 
 // ---------- Bermi Learn ----------
 // Not education-only: an "institution" here can be a school, but just as
-// easily a bank, NGO, company, government body, or event host — org_type
-// only tailors language and AI defaults. A "course" can be a taught course,
-// or a program/event/resource — see OfferingKind below.
+// easily a bank, NGO, company, or government body — org_type only tailors
+// language and AI defaults. A "course" can be a taught course, or a
+// program/resource — see OfferingKind below.
 
 export type OrgType = 'education' | 'business' | 'nonprofit' | 'government' | 'community' | 'media' | 'other'
-export type OfferingKind = 'course' | 'program' | 'event' | 'resource'
+export type OfferingKind = 'course' | 'program' | 'resource'
 
 export interface Institution {
   id: string
@@ -246,14 +246,15 @@ export interface Course {
   slug: string
   summary: string
   description: string
+  // A kebab-case icon keyword (e.g. "book-open"), not a literal emoji —
+  // see client/src/lib/courseIcons.tsx. Field name kept from when this
+  // stored emoji, to avoid a schema migration.
   cover_emoji: string
   level: string
   category?: string
   published: boolean
   enrollment: 'open' | 'approval'
   kind?: OfferingKind
-  event_at?: string | null
-  event_location?: string
   objectives?: string
   evaluation?: string
   tracking?: string
@@ -306,7 +307,6 @@ export interface Enrollment {
   progress: Record<string, { done: boolean; score?: number }>
   score: number | null
   course?: Course
-  ticket_code?: string | null
 }
 
 export interface Certificate {
@@ -315,20 +315,6 @@ export interface Certificate {
   course_title: string
   institution_name: string
   score: number | null
-  issued_at: string
-}
-
-export interface Ticket {
-  code: string
-  course_id: string
-  enrollment_id: string
-  user_id: string
-  attendee_name: string
-  event_title: string
-  event_at: string | null
-  event_location: string
-  institution_name: string
-  institution_logo_url: string
   issued_at: string
 }
 

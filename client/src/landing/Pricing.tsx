@@ -9,7 +9,7 @@ const included = [
   'Full AI chat, documents, and your own custom AI "brains"',
   'Build and take mastery-gated courses, right from the conversation',
   'Gamified Study Mode with XP and streaks',
-  'Institution publishing: courses, programs, events, and resources',
+  'Institution publishing: courses, programs, and resources',
   'Live learner analytics and CSV export',
 ]
 
@@ -24,7 +24,7 @@ export function Pricing({ onGetStarted }: PricingProps) {
         <GlowBackdrop size="sm" />
         <Reveal className="mx-auto max-w-lg text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-white/70 backdrop-blur">
-            <Sparkles size={13} className="text-violet-300" />
+            <Sparkles size={13} className="text-white/70" />
             Pricing
           </span>
           <h1 className="mt-5 text-[32px] font-semibold leading-[1.15] tracking-tight md:text-[42px]">
@@ -39,7 +39,7 @@ export function Pricing({ onGetStarted }: PricingProps) {
 
       <section className="mx-auto max-w-lg px-5 pb-16">
         <Reveal className="rounded-3xl bermi-glass px-8 py-9">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/70">
             Free, for now
           </p>
           <p className="mt-2 text-[28px] font-bold text-white">
@@ -48,14 +48,14 @@ export function Pricing({ onGetStarted }: PricingProps) {
           <ul className="mt-6 space-y-3">
             {included.map((f) => (
               <li key={f} className="flex items-start gap-2.5 text-[13.5px] leading-relaxed">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-violet-300" />
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-white/70" />
                 <span className="text-white/65">{f}</span>
               </li>
             ))}
           </ul>
           <button
             onClick={onGetStarted}
-            className="group mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a12] transition-all hover:shadow-[0_0_28px_rgba(167,139,250,0.5)]"
+            className="group mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a0a] transition-all hover:shadow-[0_0_28px_rgba(255,255,255,0.35)]"
           >
             Get started free
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />

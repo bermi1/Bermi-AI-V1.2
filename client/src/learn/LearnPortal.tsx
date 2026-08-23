@@ -12,6 +12,7 @@ import {
 import * as api from '../lib/api'
 import type { AuthUser, Course, Institution, OfferingKind } from '../lib/types'
 import { BermiMark } from '../components/Logo'
+import { CourseIcon } from '../lib/courseIcons'
 import {
   EmptyState,
   Pill,
@@ -25,7 +26,6 @@ import { LessonStudy } from './LessonStudy'
 import { MyLearning } from './MyLearning'
 import { InstitutionStudio } from './InstitutionStudio'
 import { CertificateView } from './CertificateView'
-import { TicketView } from './TicketView'
 
 // A self-contained B2B portal that lives under /learn with its own sidebar
 // shell, separate from the chat workspace. Businesses & institutions build a
@@ -72,7 +72,6 @@ export function LearnPortal({ user, onExit }: { user: AuthUser; onExit: () => vo
           {route.name === 'mylearning' && <MyLearning navigate={navigate} />}
           {route.name === 'studio' && <InstitutionStudio navigate={navigate} />}
           {route.name === 'certificate' && <CertificateView code={route.code} navigate={navigate} />}
-          {route.name === 'ticket' && <TicketView code={route.code} navigate={navigate} />}
         </div>
       </div>
     </div>
@@ -221,7 +220,7 @@ function MobileBar({
 
 // ---------- Landing (B2B / organization-first) ----------
 
-const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', event: 'Event', resource: 'Resource' }
+const KIND_LABEL: Record<OfferingKind, string> = { course: 'Course', program: 'Program', resource: 'Resource' }
 
 function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
   const kind = course.kind || 'course'
@@ -231,7 +230,9 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
       className="group flex flex-col rounded-2xl border border-edge bg-surface-raised p-5 text-left transition-all hover:border-primary hover:shadow-sm"
     >
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-3xl">{course.cover_emoji || '📘'}</div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+          <CourseIcon name={course.cover_emoji} size={22} />
+        </div>
         <Pill tone={kind === 'course' ? 'muted' : 'primary'}>{kind === 'course' ? course.level || 'All levels' : KIND_LABEL[kind]}</Pill>
       </div>
       <h3 className="text-[16px] font-semibold leading-snug text-ink group-hover:text-primary">{course.title}</h3>

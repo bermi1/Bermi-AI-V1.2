@@ -1,23 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, CalendarClock, FileText, GraduationCap, Loader2, Plus, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, FileText, GraduationCap, Loader2, Plus, Sparkles, X } from 'lucide-react'
 import * as api from '../lib/api'
 import type { Attachment, Enrollment, OfferingKind } from '../lib/types'
+import { CourseIcon } from '../lib/courseIcons'
 
 // Not every enrollment is a "course" being studied: a bank/NGO program is
-// guided, an event is attended, a resource is just read. Same widget, four
-// vocabularies, so the dashboard reflects what actually happened.
+// guided, a resource is just read. Same widget, different vocabularies, so
+// the dashboard reflects what actually happened.
 const KIND_META: Record<OfferingKind, { section: string; doneWord: string; cta: string }> = {
   course: { section: 'Courses', doneWord: 'lessons done', cta: 'Study →' },
   program: { section: 'Programs', doneWord: 'steps done', cta: 'Continue →' },
-  event: { section: 'Events', doneWord: '', cta: 'View →' },
   resource: { section: 'Resources', doneWord: '', cta: 'Open →' },
-}
-
-function formatEventWhen(iso?: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: string, kind?: OfferingKind) => void }) {
@@ -38,9 +31,9 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
           <h2 className="text-[15px] font-semibold tracking-tight">My activity</h2>
         </div>
         <p className="mb-3 text-[13.5px] text-ink-muted">
-          Ask Bermi to enroll you in a course, register for an event, walk you through an organization's program,
-          or hand you a resource — or build your own course, answer a few quick questions and Bermi drafts it. It
-          all happens right here in Bermi AI.
+          Ask Bermi to enroll you in a course, walk you through an organization's program, or hand you a
+          resource — or build your own course, answer a few quick questions and Bermi drafts it. It all happens
+          right here in Bermi AI.
         </p>
         <button
           onClick={() => setBuildOpen(true)}
@@ -69,7 +62,7 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
     if (!byKind.has(kind)) byKind.set(kind, [])
     byKind.get(kind)!.push(e)
   }
-  const order: OfferingKind[] = ['course', 'program', 'event', 'resource']
+  const order: OfferingKind[] = ['course', 'program', 'resource']
 
   return (
     <section className="mb-8 rounded-2xl border border-edge bg-surface-raised p-4 shadow-sm sm:p-5">
@@ -103,23 +96,19 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
                     const progress = e.progress || {}
                     const done = Object.values(progress).filter((p) => p.done).length
                     const sub =
-                      kind === 'event'
-                        ? e.status === 'applied'
-                          ? 'Requested'
-                          : `Registered${course.event_at ? ` · ${formatEventWhen(course.event_at)}` : ''}`
-                        : kind === 'resource'
-                          ? 'Available'
-                          : e.status === 'completed'
-                            ? `Completed${e.score != null ? ` · ${e.score}%` : ''}`
-                            : `${done} ${meta.doneWord}`
+                      kind === 'resource'
+                        ? 'Available'
+                        : e.status === 'completed'
+                          ? `Completed${e.score != null ? ` · ${e.score}%` : ''}`
+                          : `${done} ${meta.doneWord}`
                     return (
                       <button
                         key={e.id}
                         onClick={() => onStudyCourse(course.title, kind)}
                         className="flex items-start gap-2.5 rounded-xl border border-edge bg-surface p-3 text-left transition-colors hover:border-primary sm:gap-3 sm:p-3.5"
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-lg sm:h-10 sm:w-10 sm:text-xl">
-                          {kind === 'event' ? <CalendarClock size={18} /> : course.cover_emoji || '📘'}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary sm:h-10 sm:w-10">
+                          <CourseIcon name={course.cover_emoji} size={18} />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13.5px] font-medium text-ink">{course.title}</span>

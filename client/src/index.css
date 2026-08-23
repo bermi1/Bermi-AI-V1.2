@@ -250,7 +250,7 @@ body {
 /* Mouse-reactive glow layer for the compact hero (JS sets --mx/--my on the section) */
 .bermi-spotlight {
   z-index: -5;
-  background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 0%), rgba(167, 139, 250, 0.16), transparent 65%);
+  background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.1), transparent 65%);
   transition: background 0.15s ease-out;
 }
 

@@ -10,7 +10,6 @@ import { webSearch } from '../websearch.js'
 import { rateLimit, checkRateLimit, peekRateLimit } from '../rateLimit.js'
 import { retrieveRelevant } from '../rag.js'
 import { quickBuildPersonalOffering } from './learn.js'
-import { issueTicket } from '../events.js'
 
 export const chatRouter = Router()
 
@@ -184,13 +183,13 @@ async function generateConversationTitle(message, assistantText) {
 // Only touch the LMS when the message is actually about learning/engaging
 // with something an organization published, so normal chats stay fast and
 // lean. Bermi Learn isn't education-only: an organization here can be a
-// school (courses), but just as easily a bank or NGO (programs), a company
-// or government body (events), or anyone with public material to hand out
-// (resources) — so the trigger words and verbs below cover all four.
+// school (courses), but just as easily a bank or NGO (programs), or anyone
+// with public material to hand out (resources) — so the trigger words and
+// verbs below cover all three.
 const LEARN_RE =
-  /\b(courses?|class(es)?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|initiative|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next|events?|register|registration|rsvp|attend\w*|resources?|materials?|download|briefing|workshop|webinar|service|services|shareholders?|update|announcement|offering)\b/i
+  /\b(courses?|class(es)?|lessons?|enroll?|enrol|enrolled|apply|applying|study|studying|learn(ing)?|certificate|programs?|programme|initiative|curriculum|syllabus|tutor|progress|recommend\w*|continue|graduate|what.{0,12}next|register|registration|resources?|materials?|download|service|services|shareholders?|update|announcement|offering)\b/i
 const ENROLL_RE =
-  /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|registration|rsvp|join|subscribe|get (?:the|a|this) (?:resource|report|guide|material)|download|access (?:the|this))\b/i
+  /\b(enroll?|enrol|apply|applying|sign me up|sign up for|register|registration|join|subscribe|get (?:the|a|this) (?:resource|report|guide|material)|download|access (?:the|this))\b/i
 const VIDEO_SUMMARY_RE = /\b(summar(y|ize|ise)|tl;?dr|recap)\b.{0,25}\bvideo\b|\bvideo\b.{0,25}\b(summar(y|ize|ise)|tl;?dr|recap)\b/i
 const VIDEO_PLAY_RE = /\b(play|watch|show|open)\b.{0,25}\bvideo\b/i
 // Building your own course/program was never meant to require the dashboard
@@ -200,30 +199,18 @@ const BUILD_RE = /\b(build|create|make|design|draft)\b.{0,25}\b(course|program|c
 
 function guessOfferingKind(message) {
   const lower = message.toLowerCase()
-  if (/\b(event|workshop|webinar|briefing|seminar|conference|meetup)\b/.test(lower)) return 'event'
   if (/\b(program|process|onboarding|walkthrough|initiative|application)\b/.test(lower)) return 'program'
   if (/\b(resource|guide|report|explainer|faq)\b/.test(lower)) return 'resource'
   return 'course'
 }
 
-const KIND_NOUN = { course: 'course', program: 'program', event: 'event', resource: 'resource' }
-const KIND_VERB_PAST = { course: 'enrolled', program: 'enrolled', event: 'registered', resource: 'given access to' }
-const KIND_STEP_NOUN = { course: 'lesson', program: 'step', event: 'agenda item', resource: 'section' }
-
-function formatEventWhen(course) {
-  if (!course.event_at) return ''
-  try {
-    return new Date(course.event_at).toLocaleString('en-US', {
-      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    })
-  } catch {
-    return course.event_at
-  }
-}
+const KIND_NOUN = { course: 'course', program: 'program', resource: 'resource' }
+const KIND_VERB_PAST = { course: 'enrolled', program: 'enrolled', resource: 'given access to' }
+const KIND_STEP_NOUN = { course: 'lesson', program: 'step', resource: 'section' }
 
 /**
  * Lets Bermi access everything organizations have published — courses,
- * programs, events, resources — and act on it agentically from chat: discuss
+ * programs, resources — and act on it agentically from chat: discuss
  * or recommend any of it, and enroll/register/grant-access to the user
  * directly when they ask, regardless of what kind of organization published
  * it or whether it has any "curriculum" at all. Returns a context block (the
@@ -263,18 +250,15 @@ async function learningContext(user, message, conversationTitle, study, conversa
 
   // Grouped by kind so the model sees "Bank X's loan program" next to other
   // programs, not lumped in with unrelated school courses.
-  const byKind = { course: [], program: [], event: [], resource: [] }
+  const byKind = { course: [], program: [], resource: [] }
   for (const c of courses) (byKind[c.kind] || byKind.course).push(c)
 
   const describe = (c) => {
     const inst = instById.get(c.institution_id)
     const obj = (c.objectives || '').replace(/\s+/g, ' ').trim().slice(0, 200)
     const evalGuide = (c.evaluation || '').replace(/\s+/g, ' ').trim().slice(0, 200)
-    const when = c.kind === 'event' ? formatEventWhen(c) : ''
     return (
       `- "${c.title}"${c.kind === 'course' ? ` (${c.level || 'All levels'})` : ''} by ${inst?.name || 'an organization'}${c.summary ? ` — ${c.summary}` : ''}` +
-      (when ? `\n    When: ${when}` : '') +
-      (c.kind === 'event' && c.event_location ? `\n    Where: ${c.event_location}` : '') +
       (obj ? `\n    Objectives: ${obj}` : '') +
       (evalGuide ? `\n    Evaluation/guidelines: ${evalGuide}` : '')
     )
@@ -283,7 +267,6 @@ async function learningContext(user, message, conversationTitle, study, conversa
   const sections = [
     ['course', 'Courses (taught step by step, mastery-gated)'],
     ['program', 'Programs (structured processes — e.g. an application, onboarding, or initiative to walk through)'],
-    ['event', 'Events (register/RSVP — has a date and/or location)'],
     ['resource', 'Resources (reports, guides, policy explainers — get and understand, no steps to teach)'],
   ]
   const list = sections
@@ -344,16 +327,13 @@ async function learningContext(user, message, conversationTitle, study, conversa
       const withVideo = lessons.filter((l) => l.video_url?.trim())
       const nextUpId = lessons.find((l) => !progress[l.id]?.done)?.id
       for (const l of withVideo) videoLessons.push({ course, lesson: l, nextUp: l.id === nextUpId })
-      const statusWord =
-        kind === 'event' ? (e.status === 'applied' ? 'requested (awaiting approval)' : 'registered') : e.status
       rows.push(
-        `- "${course.title}" (${KIND_NOUN[kind] || 'course'}): ${statusWord}` +
-          (kind === 'event' && course.event_at ? `, on ${formatEventWhen(course)}` : '') +
-          (lessons.length && kind !== 'event' ? `, ${done}/${lessons.length} ${stepNoun}s done` : '') +
+        `- "${course.title}" (${KIND_NOUN[kind] || 'course'}): ${e.status}` +
+          (lessons.length ? `, ${done}/${lessons.length} ${stepNoun}s done` : '') +
           (e.score != null ? `, average score ${e.score}%` : '') +
           (withVideo.length ? `. Has video for: ${withVideo.map((l) => `"${l.title}"`).join(', ')}` : ''),
       )
-      if (e.status !== 'completed' && lessons.length && kind !== 'event') {
+      if (e.status !== 'completed' && lessons.length) {
         if (pinnedCourseId && course.id === pinnedCourseId) {
           // Pin always wins outright — never let a fuzzy match on some other
           // enrollment's title outscore the course this conversation is
@@ -421,8 +401,7 @@ async function learningContext(user, message, conversationTitle, study, conversa
     'Match your approach to what the thing actually is: a COURSE is taught step by step with a mastery test before ' +
     'advancing (work through its objectives in order, quiz the learner, note how well they understand). A PROGRAM ' +
     'is a structured process — guide the person through each step in order, confirming they understood or did it ' +
-    '(no quiz needed, a plain confirmation is enough). An EVENT has no steps to teach — just confirm registration, ' +
-    'state the date/location clearly, and answer questions about it. A RESOURCE is not stepped through — present ' +
+    '(no quiz needed, a plain confirmation is enough). A RESOURCE is not stepped through — present ' +
     'its content directly and answer questions about it. Everything happens here in Bermi AI chat — never tell the ' +
     'user to go to a separate portal (the portal is for organizations managing their offerings, not the public). ' +
     'If nothing in the catalog above fits what the user wants, or they directly ask you to build/create/make them ' +
@@ -507,9 +486,7 @@ async function learningContext(user, message, conversationTitle, study, conversa
       topicTitle = best.title
       try {
         const existing = await storage.getEnrollment(best.id, userId)
-        if (existing && kind === 'event' && existing.status === 'applied') {
-          note = `Live action: the user ALREADY has a pending application for the event "${best.title}", awaiting organizer approval. Confirm briefly and tell them they'll be notified once it's approved.`
-        } else if (existing) {
+        if (existing) {
           note = `Live action: the user is ALREADY ${verbPast} in the ${noun} "${best.title}". Confirm briefly, then continue right here in this chat from where they left off.`
           // Re-stating "enroll me" on something already joined should still
           // drop the learner straight into Study Mode (for courses) instead
@@ -518,7 +495,7 @@ async function learningContext(user, message, conversationTitle, study, conversa
           enrolled = { courseId: best.id, courseTitle: best.title, kind }
         } else {
           const newStatus = best.enrollment === 'approval' ? 'applied' : 'enrolled'
-          const createdEnrollment = await storage.createEnrollment({
+          await storage.createEnrollment({
             id: randomUUID(),
             course_id: best.id,
             user_id: userId,
@@ -529,22 +506,7 @@ async function learningContext(user, message, conversationTitle, study, conversa
           })
           const inst = instById.get(best.institution_id)
           const byLine = inst ? ` by ${inst.name}` : ''
-          if (kind === 'event' && newStatus === 'applied') {
-            note =
-              `Live action: you HAVE NOW submitted the user's application to attend the event "${best.title}"${byLine}` +
-              (best.event_at ? ` on ${formatEventWhen(best)}` : '') +
-              `. It requires organizer approval before it's confirmed — tell them the application was received and ` +
-              `they'll be notified once approved. Do not claim a ticket exists yet.`
-          } else if (kind === 'event') {
-            const ticket = await issueTicket({ course: best, institution: inst, user, enrollment: createdEnrollment })
-            note =
-              `Live action: you HAVE NOW registered the user for the event "${best.title}"${byLine}` +
-              (best.event_at ? ` on ${formatEventWhen(best)}` : '') +
-              (best.event_location ? ` at/via ${best.event_location}` : '') +
-              `, and issued their ticket (verification code ${ticket.code}). Confirm warmly with the date/location, ` +
-              `mention their ticket is ready in "My learning", briefly say what it covers, and offer to answer any ` +
-              `questions about it. State only what actually happened.`
-          } else if (kind === 'resource') {
+          if (kind === 'resource') {
             const lessons = await storage.listLessons(best.id)
             const first = lessons.sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))[0]
             note =
@@ -568,7 +530,7 @@ async function learningContext(user, message, conversationTitle, study, conversa
           if (conversationId) storage.setSetting(`conv-course:${conversationId}`, best.id).catch(() => {})
         }
       } catch (e) {
-        note = `Live action: ${kind === 'event' ? 'registration' : 'enrollment'} failed (${e.message}). Apologize briefly and offer to try again right here in chat.`
+        note = `Live action: enrollment failed (${e.message}). Apologize briefly and offer to try again right here in chat.`
       }
     } else {
       note =
@@ -1058,7 +1020,7 @@ chatRouter.post(
       // "Study Mode" toggle, and its progress must still land in "My
       // Activity" and institution analytics. XP/streak gamification stays
       // Study-Mode-only — that's a course-teaching flourish, not something
-      // that fits a program, event, or resource.
+      // that fits a program or resource.
       try {
         const mastered = parseMasteredSteps(assistantText)
         if (mastered.length) {

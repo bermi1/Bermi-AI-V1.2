@@ -25,7 +25,7 @@ const faqGroups = [
     items: [
       {
         q: 'Can my organization publish its own courses?',
-        a: 'Yes. Institution Studio lets you publish courses, programs, events, and resources under your own catalog, then track learner progress and export the data.',
+        a: 'Yes — for registered organizations. Institution Studio lets you publish courses, programs, and resources under your own catalog, then track learner progress and export the data.',
       },
       {
         q: 'How is progress tracked across learners?',
@@ -33,7 +33,7 @@ const faqGroups = [
       },
       {
         q: 'Do we need to migrate from our existing LMS?',
-        a: "No migration is required to start — publish new courses, programs, events, or resources directly in Bermi and grow your catalog from there.",
+        a: "No migration is required to start — publish new courses, programs, or resources directly in Bermi and grow your catalog from there.",
       },
     ],
   },
@@ -100,7 +100,7 @@ export function Faq() {
         <GlowBackdrop size="sm" />
         <Reveal className="mx-auto max-w-lg text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-white/70 backdrop-blur">
-            <Sparkles size={13} className="text-violet-300" />
+            <Sparkles size={13} className="text-white/70" />
             FAQ
           </span>
           <h1 className="mt-5 text-[32px] font-semibold leading-[1.15] tracking-tight md:text-[42px]">
@@ -116,7 +116,7 @@ export function Faq() {
         <div className="space-y-8">
           {faqGroups.map((group, gi) => (
             <Reveal key={group.label} delay={gi * 100}>
-              <h2 className="mb-3 px-1 text-[11.5px] font-semibold uppercase tracking-wide text-violet-300">
+              <h2 className="mb-3 px-1 text-[11.5px] font-semibold uppercase tracking-wide text-white/70">
                 {group.label}
               </h2>
               <div className="divide-y divide-white/10 rounded-2xl bermi-glass">

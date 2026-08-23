@@ -478,7 +478,7 @@ export class SqliteStorage {
     this.db.prepare(
       `INSERT INTO courses (id, institution_id, title, slug, summary, description, cover_emoji, level, category, published, enrollment, kind, event_at, event_location, objectives, evaluation, tracking, created_at, updated_at)
        VALUES (@id,@institution_id,@title,@slug,@summary,@description,@cover_emoji,@level,@category,@published,@enrollment,@kind,@event_at,@event_location,@objectives,@evaluation,@tracking,@created_at,@updated_at)`,
-    ).run({ summary: '', description: '', cover_emoji: '📘', level: 'All levels', category: '', enrollment: 'open', kind: 'course', event_at: null, event_location: '', objectives: '', evaluation: '', tracking: '', ...r, published: r.published ? 1 : 0 })
+    ).run({ summary: '', description: '', cover_emoji: 'book-open', level: 'All levels', category: '', enrollment: 'open', kind: 'course', event_at: null, event_location: '', objectives: '', evaluation: '', tracking: '', ...r, published: r.published ? 1 : 0 })
     return this.getCourse(r.id)
   }
   async getCourse(id) {

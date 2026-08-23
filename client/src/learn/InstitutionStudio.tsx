@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react'
 import * as api from '../lib/api'
+import { COURSE_ICON_KEYS, CourseIcon } from '../lib/courseIcons'
 import type {
   Course,
   Institution,
@@ -55,19 +56,16 @@ const ORG_TYPES: { value: OrgType; label: string }[] = [
 const OFFERING_KINDS: { value: OfferingKind; label: string; hint: string }[] = [
   { value: 'course', label: 'Course', hint: 'Taught step by step, with a mastery check before advancing.' },
   { value: 'program', label: 'Program', hint: 'A structured process to guide someone through — an application, onboarding, initiative.' },
-  { value: 'event', label: 'Event', hint: 'Something to register/RSVP for — a briefing, workshop, AGM, webinar.' },
   { value: 'resource', label: 'Resource', hint: 'A report, guide, or policy explainer the public should get and understand.' },
 ]
 const KIND_STEP_LABEL: Record<OfferingKind, string> = {
   course: 'Lessons',
   program: 'Steps',
-  event: 'Agenda',
   resource: 'Sections',
 }
 const KIND_STEP_SINGULAR: Record<OfferingKind, string> = {
   course: 'Lesson',
   program: 'Step',
-  event: 'Agenda item',
   resource: 'Section',
 }
 
@@ -153,8 +151,11 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const isValidWebsite = /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(website.trim())
+  const canSubmit = Boolean(name.trim()) && isValidWebsite
+
   const submit = async () => {
-    if (!name.trim()) return
+    if (!canSubmit) return
     setBusy(true)
     setError(null)
     try {
@@ -172,11 +173,11 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
         <Building2 size={24} />
       </div>
-      <h1 className="text-[20px] font-bold text-ink">Set up your organization</h1>
+      <h1 className="text-[20px] font-bold text-ink">Register your organization</h1>
       <p className="mb-5 mt-1 text-[13.5px] text-ink-muted">
-        Any organization can use this — a school publishing courses, a bank or NGO walking people through a
-        program, a company or public body running an event, or anyone with a resource the public should have.
-        Bermi AI teaches, guides, informs, or delivers it — whichever fits — and evaluates engagement for you.
+        This portal is for real organizations — a school publishing courses, or a bank or NGO walking people
+        through a program or handing out a resource. Bermi AI teaches, guides, or delivers it for you, and
+        evaluates engagement. A real website is required so this stays organizations-only, not a personal profile.
       </p>
       <div className="space-y-4">
         <Field label="What kind of organization is this?" hint="Tailors the language and AI defaults — every type can still publish any kind of offering.">
@@ -184,18 +185,18 @@ function CreateInstitution({ onCreated }: { onCreated: () => void }) {
             {ORG_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="Organization name">
+        <Field label="Organization name" hint="Its real, registered/legal name.">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Riverside Institute of Design" />
+        </Field>
+        <Field label="Website" hint="Proof this is a real organization — required.">
+          <input className={inputClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </Field>
         <Field label="About" hint="Shown on your public page.">
           <textarea className={`${inputClass} min-h-[80px] resize-y`} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="What your organization does and who it's for." />
         </Field>
-        <Field label="Website (optional)">
-          <input className={inputClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
-        </Field>
         {error && <ErrorNote>{error}</ErrorNote>}
-        <Btn onClick={submit} loading={busy} disabled={!name.trim()} className="w-full">
-          Create organization
+        <Btn onClick={submit} loading={busy} disabled={!canSubmit} className="w-full">
+          Register organization
         </Btn>
       </div>
     </div>
@@ -591,7 +592,7 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
       )}
 
       {courses.length === 0 && !creating ? (
-        <EmptyState icon={<Layers size={28} />} title="Nothing published yet" body="Create a course, program, event, or resource, fill it in, then publish it to the catalog." />
+        <EmptyState icon={<Layers size={28} />} title="Nothing published yet" body="Create a course, program, or resource, fill it in, then publish it to the catalog." />
       ) : (
         <div className="space-y-2">
           {courses.map((c) => (
@@ -600,7 +601,9 @@ function CoursesTab({ institution, onEdit }: { institution: Institution; onEdit:
               onClick={() => onEdit(c)}
               className="flex w-full items-center gap-3 rounded-2xl border border-edge bg-surface-raised px-4 py-3.5 text-left transition-colors hover:border-primary"
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-xl">{c.cover_emoji || '📘'}</span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                <CourseIcon name={c.cover_emoji} size={18} />
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14.5px] font-semibold text-ink">{c.title}</span>
                 <span className="text-[12px] text-ink-faint">{c.kind && c.kind !== 'course' ? OFFERING_KINDS.find((k) => k.value === c.kind)?.label : c.level}</span>
@@ -620,27 +623,24 @@ const QUICK_LEVELS = ['All levels', 'Beginner', 'Intermediate', 'Advanced']
 const KIND_TOPIC_LABEL: Record<OfferingKind, string> = {
   course: 'What should this course teach?',
   program: 'What is this program for?',
-  event: 'What is this event?',
   resource: 'What does this resource cover?',
 }
 const KIND_TOPIC_HINT: Record<OfferingKind, string> = {
   course: 'A topic or subject — as specific as you like.',
   program: 'e.g. a loan application walkthrough, volunteer onboarding, a member benefits process.',
-  event: 'e.g. an AGM, a public briefing, a workshop, a fundraiser.',
   resource: 'e.g. an annual report explainer, a policy FAQ, a how-to guide.',
 }
 const KIND_OUTCOME_LABEL: Record<OfferingKind, string> = {
   course: 'What should learners be able to do after finishing?',
   program: 'What will someone have done or understood by the end?',
-  event: 'What does an attendee get out of it?',
   resource: 'What will a reader know or be able to do after reading it?',
 }
 
 // Institution-side "build a full offering with AI": staff describe what it's
 // for in one form, and Bermi drafts the whole thing — a course's full lesson
-// content and quiz-ready evaluation, a program's steps, an event's agenda,
-// or a resource's sections. Left as a draft so the organization can review
-// before publishing.
+// content and quiz-ready evaluation, a program's steps, or a resource's
+// sections. Left as a draft so the organization can review before
+// publishing.
 function InstitutionQuickCourseModal({
   institutionId,
   onClose,
@@ -658,8 +658,6 @@ function InstitutionQuickCourseModal({
   const [objectives, setObjectives] = useState('')
   const [material, setMaterial] = useState('')
   const [avoid, setAvoid] = useState('')
-  const [eventAt, setEventAt] = useState('')
-  const [eventLocation, setEventLocation] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -677,8 +675,6 @@ function InstitutionQuickCourseModal({
         objectives,
         material,
         avoid,
-        event_at: eventAt || undefined,
-        event_location: eventLocation || undefined,
       })
       onCreated(res.course)
     } catch (e) {
@@ -730,17 +726,6 @@ function InstitutionQuickCourseModal({
               className="min-h-[70px] w-full resize-y rounded-xl border border-edge bg-surface px-3 py-2.5 text-[14px] text-ink outline-none focus:border-primary"
             />
           </Field>
-
-          {kind === 'event' && (
-            <div className="grid gap-3.5 sm:grid-cols-2">
-              <Field label="Date & time" hint="Leave blank if not yet decided.">
-                <input type="datetime-local" value={eventAt} onChange={(e) => setEventAt(e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Location" hint="An address, or a video-call link.">
-                <input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder="e.g. Head office, or https://…" className={inputClass} />
-              </Field>
-            </div>
-          )}
 
           <Field label={KIND_OUTCOME_LABEL[kind]} hint="Optional — Bermi can infer this.">
             <textarea
@@ -916,8 +901,6 @@ function AnalyticsTab({ institutionId }: { institutionId: string }) {
   )
 }
 
-const EMOJIS = ['📘', '📗', '📙', '🎓', '💡', '🧠', '⚗️', '💻', '🎨', '📊', '🔬', '🌍', '🏛️', '⚖️', '🩺', '🎵']
-
 function CourseEditor({ course: initial, onBack, navigate }: { course: Course; onBack: () => void; navigate: (r: LearnRoute) => void }) {
   const [course, setCourse] = useState(initial)
   const [saving, setSaving] = useState(false)
@@ -942,8 +925,6 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
         published: body.published,
         enrollment: body.enrollment,
         kind: body.kind,
-        event_at: body.event_at,
-        event_location: body.event_location,
         objectives: body.objectives,
         evaluation: body.evaluation,
         tracking: body.tracking,
@@ -987,16 +968,7 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
 
       <div className="space-y-4 rounded-3xl border border-edge bg-surface-raised p-5 md:p-6">
         <div className="flex gap-3">
-          <div>
-            <span className="mb-1 block text-[12.5px] font-semibold text-ink-muted">Icon</span>
-            <select
-              value={course.cover_emoji || '📘'}
-              onChange={(e) => patch({ cover_emoji: e.target.value })}
-              className="h-[46px] w-16 rounded-xl border border-edge bg-surface-raised text-center text-2xl"
-            >
-              {EMOJIS.map((e) => <option key={e} value={e}>{e}</option>)}
-            </select>
-          </div>
+          <IconPicker value={course.cover_emoji} onChange={(name) => patch({ cover_emoji: name })} />
           <div className="flex-1">
             <Field label="Title">
               <input className={inputClass} value={course.title} onChange={(e) => patch({ title: e.target.value })} />
@@ -1023,22 +995,6 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
           </div>
         </Field>
 
-        {kind === 'event' && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date & time">
-              <input
-                type="datetime-local"
-                className={inputClass}
-                value={toLocalDateTimeInput(course.event_at)}
-                onChange={(e) => patch({ event_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              />
-            </Field>
-            <Field label="Location" hint="An address, or a video-call link.">
-              <input className={inputClass} value={course.event_location || ''} onChange={(e) => patch({ event_location: e.target.value })} placeholder="e.g. Head office, or https://…" />
-            </Field>
-          </div>
-        )}
-
         <div className="grid gap-4 sm:grid-cols-3">
           {kind === 'course' && (
             <Field label="Level">
@@ -1050,7 +1006,7 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
           <Field label="Category" hint="Groups items on your library shelf (e.g. Finance, Compliance).">
             <input className={inputClass} value={course.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder="e.g. Finance" />
           </Field>
-          <Field label={kind === 'event' ? 'Registration' : 'Enrollment'}>
+          <Field label="Enrollment">
             <select className={inputClass} value={course.enrollment || 'open'} onChange={(e) => patch({ enrollment: e.target.value as 'open' | 'approval' })}>
               <option value="open">Open — anyone can join</option>
               <option value="approval">Requires approval</option>
@@ -1063,24 +1019,22 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
 
         <div className="rounded-2xl border border-edge bg-surface-sunken/40 p-4">
           <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink">
-            <Target size={15} className="text-primary" /> {kind === 'course' ? 'Teaching & evaluation plan' : kind === 'event' ? 'What to tell attendees' : 'Guidance plan'}
+            <Target size={15} className="text-primary" /> {kind === 'course' ? 'Teaching & evaluation plan' : 'Guidance plan'}
             <span className="font-normal text-ink-faint">— guides how Bermi AI presents this and judges engagement</span>
           </div>
           <div className="space-y-3">
             <Field
-              label={kind === 'course' ? 'Learning objectives' : kind === 'event' ? 'What attendees get out of it' : 'Outcomes'}
+              label={kind === 'course' ? 'Learning objectives' : 'Outcomes'}
               hint="What should someone be able to do or understand afterward? One per line."
             >
               <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.objectives || ''} onChange={(e) => patch({ objectives: e.target.value })} placeholder={kind === 'course' ? 'Explain the water cycle\nIdentify the stages of photosynthesis' : 'One outcome per line'} />
             </Field>
-            {kind !== 'event' && (
-              <Field
-                label={kind === 'course' ? 'Areas to test & evaluation bases' : 'How to judge real engagement'}
-                hint={kind === 'course' ? 'What to assess and how mastery is judged (e.g. quiz score thresholds, must-know concepts).' : 'What tells you someone genuinely engaged with each step — a plain confirmation is enough, no quiz needed.'}
-              >
-                <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.evaluation || ''} onChange={(e) => patch({ evaluation: e.target.value })} placeholder={kind === 'course' ? 'Test recall of key terms and applied problem-solving.\nMastery = 70%+ on end-of-level quizzes.' : 'What "understood" or "done" looks like for each step.'} />
-              </Field>
-            )}
+            <Field
+              label={kind === 'course' ? 'Areas to test & evaluation bases' : 'How to judge real engagement'}
+              hint={kind === 'course' ? 'What to assess and how mastery is judged (e.g. quiz score thresholds, must-know concepts).' : 'What tells you someone genuinely engaged with each step — a plain confirmation is enough, no quiz needed.'}
+            >
+              <textarea className={`${inputClass} min-h-[80px] resize-y`} value={course.evaluation || ''} onChange={(e) => patch({ evaluation: e.target.value })} placeholder={kind === 'course' ? 'Test recall of key terms and applied problem-solving.\nMastery = 70%+ on end-of-level quizzes.' : 'What "understood" or "done" looks like for each step.'} />
+            </Field>
             <Field label="What to track" hint="Signals the organization wants on each person (e.g. understanding, how independently they engage).">
               <textarea className={`${inputClass} min-h-[64px] resize-y`} value={course.tracking || ''} onChange={(e) => patch({ tracking: e.target.value })} placeholder={'Understanding per objective, how independently they engage vs. leaning on the AI.'} />
             </Field>
@@ -1101,12 +1055,43 @@ function CourseEditor({ course: initial, onBack, navigate }: { course: Course; o
   )
 }
 
-function toLocalDateTimeInput(iso?: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+// A grid of professional icons to pick from, instead of an emoji keyboard —
+// stores the kebab-case key into course.cover_emoji (see courseIcons.tsx).
+function IconPicker({ value, onChange }: { value?: string; onChange: (name: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const current = value && COURSE_ICON_KEYS.includes(value) ? value : 'book-open'
+  return (
+    <div className="relative">
+      <span className="mb-1 block text-[12.5px] font-semibold text-ink-muted">Icon</span>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-edge bg-surface-raised text-primary hover:border-primary"
+      >
+        <CourseIcon name={current} size={20} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-[54px] z-20 grid w-56 grid-cols-6 gap-1 rounded-xl border border-edge bg-surface-raised p-2 shadow-lg">
+            {COURSE_ICON_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => { onChange(key); setOpen(false) }}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                  key === current ? 'bg-primary-soft text-primary' : 'text-ink-muted hover:bg-surface-sunken'
+                }`}
+                title={key}
+              >
+                <CourseIcon name={key} size={16} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function LessonsManager({ courseId, kind }: { courseId: string; kind: OfferingKind }) {

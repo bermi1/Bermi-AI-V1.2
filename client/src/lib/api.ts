@@ -34,7 +34,6 @@ import type {
   StudioDoc,
   StudioFormat,
   StudyStats,
-  Ticket,
 } from './types'
 
 
@@ -814,14 +813,6 @@ export const learnCertificatePdfUrl = (code: string) => {
   return `/api/learn/certificates/${code}/pdf${token ? `?token=${token}` : ''}`
 }
 
-export const learnTicket = (code: string) =>
-  apiFetch(`/api/learn/tickets/${code}`).then((r) => json<Ticket>(r))
-
-export const learnTicketPdfUrl = (code: string) => {
-  const token = getSessionToken()
-  return `/api/learn/tickets/${code}/pdf${token ? `?token=${token}` : ''}`
-}
-
 // Institution management (owner)
 export const learnMyInstitutions = () =>
   apiFetch('/api/learn/my/institutions').then((r) => json<Institution[]>(r))
@@ -829,8 +820,8 @@ export const learnMyInstitutions = () =>
 export const learnCreateInstitution = (input: {
   name: string
   about?: string
-  website?: string
-  org_type?: OrgType
+  website: string
+  org_type: OrgType
 }) =>
   apiFetch('/api/learn/institutions', {
     method: 'POST',
@@ -852,8 +843,6 @@ export const learnQuickCreateCourse = (input: {
   objectives?: string
   material?: string
   avoid?: string
-  event_at?: string
-  event_location?: string
   title?: string
 }) =>
   apiFetch(
@@ -881,7 +870,7 @@ export const learnInstitutionCourses = (institutionId: string) =>
 
 // AI-generated full offering for an organization — say what it's for; Bermi
 // drafts the whole thing (course lessons + quiz-ready evaluation, or a
-// program's steps, an event's agenda, or a resource's sections).
+// program's steps, or a resource's sections).
 export const learnInstitutionQuickCreateCourse = (
   institutionId: string,
   input: {
@@ -893,8 +882,6 @@ export const learnInstitutionQuickCreateCourse = (
     objectives?: string
     material?: string
     avoid?: string
-    event_at?: string
-    event_location?: string
     title?: string
   },
 ) =>
@@ -918,8 +905,6 @@ export const learnCreateCourse = (
     level?: string
     category?: string
     kind?: OfferingKind
-    event_at?: string
-    event_location?: string
     objectives?: string
     evaluation?: string
     tracking?: string
@@ -943,8 +928,6 @@ export const learnUpdateCourse = (
     published: boolean
     enrollment: 'open' | 'approval'
     kind: OfferingKind
-    event_at: string | null
-    event_location: string
     objectives: string
     evaluation: string
     tracking: string
