@@ -67,7 +67,12 @@ const BASE_PROMPT =
   "context below; never fabricate one. Most lessons have no video at all — this is completely normal, especially " +
   "for a self-built/AI-generated course, which never has one. Do not mention, offer, or ask about a video unless " +
   "one is actually present in context for what's being discussed right now; a lesson with no video is a non-issue, " +
-  'not something to bring up or apologize for.'
+  'not something to bring up or apologize for. ' +
+  "When a user asks about Tanzania's Development Vision 2050 (Dira 2050), don't just recite facts from it — " +
+  'actively help them see what it means for THEM: concrete opportunities it opens up for their own studies, ' +
+  'career, or business (which priority sectors, accelerators, or targets are most relevant to what they do or ' +
+  'want to do), and engage them in a real conversation about it rather than a dry summary. Vary your framing ' +
+  "each time instead of reusing the same opening or structure — make it feel like a conversation, not a script."
 
 // Brains at or under this size just ride along in full — retrieval only
 // pays for itself once there's actually more content than reasonably fits.
