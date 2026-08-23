@@ -18,6 +18,23 @@ const faqGroups = [
         q: 'Do I need to know what I want to learn before I start?',
         a: "No. Ask Bermi to suggest a topic, or just start chatting about what you're trying to get done — it can turn that into a structured course on the spot.",
       },
+      {
+        q: 'Can I upload my own materials?',
+        a: 'Yes. Attach documents, PDFs, and images directly in chat — Bermi reads them and can ground a course, a custom AI Brain, or a plain answer in exactly what you gave it.',
+      },
+    ],
+  },
+  {
+    label: 'What makes Bermi different',
+    items: [
+      {
+        q: "What makes Bermi different from ChatGPT or other AI tutors?",
+        a: 'A general chatbot answers questions and moves on — nothing was checked, and nothing is remembered as "learned." Bermi turns the same conversation into a structured, mastery-gated course: real lessons, a quiz before you advance, and progress that persists across sessions instead of resetting every chat.',
+      },
+      {
+        q: 'How does mastery gating work?',
+        a: "Each lesson ends with a quiz. You only advance to the next one after demonstrating you actually understood the material — so \"completed\" means something, instead of just meaning you scrolled to the bottom.",
+      },
     ],
   },
   {
@@ -26,6 +43,10 @@ const faqGroups = [
       {
         q: 'Can my organization publish its own courses?',
         a: 'Yes — for registered organizations. Institution Studio lets you publish courses, programs, and resources under your own catalog, then track learner progress and export the data.',
+      },
+      {
+        q: 'What features are institution-only?',
+        a: 'Publishing a branded catalog, a live analytics dashboard across every learner, a searchable learner directory, and CSV export for reporting are all specific to a registered organization — an individual account is for learning, not publishing to the public.',
       },
       {
         q: 'How is progress tracked across learners?',
@@ -43,6 +64,14 @@ const faqGroups = [
       {
         q: 'What happens to my conversations and content?',
         a: 'Everything you create stays tied to your own account and is never shared with other organizations on Bermi.',
+      },
+      {
+        q: 'Is my data secure?',
+        a: "Your account and content are scoped to you — an institution can see the progress of learners enrolled with them, not the private contents of your account. We don't sell your data or use it to train models for anyone else.",
+      },
+      {
+        q: "What's the difference between Free and paid plans?",
+        a: 'Free already includes full AI chat, mastery-gated course building, Study Mode, and institution publishing. Paid plans (coming soon) are about doing more of it — higher AI usage limits, priority model access, and multi-seat institution accounts — see the Pricing page for the full comparison.',
       },
       {
         q: 'When will paid plans be available?',
@@ -81,7 +110,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export function Faq() {
   useDocumentMeta(
     'Frequently Asked Questions',
-    "Answers on getting started, building courses from chat, institution publishing, learner analytics, and data privacy on Bermi AI.",
+    "Answers on getting started, how Bermi differs from ChatGPT and other AI tutors, mastery gating, institution publishing, learner analytics, and data privacy.",
   )
   useJsonLd({
     '@context': 'https://schema.org',

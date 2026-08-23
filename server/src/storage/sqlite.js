@@ -227,6 +227,26 @@ export class SqliteStorage {
       certificates: count('certificates'),
     }
   }
+  // Real, live counts for the public marketing site's social-proof section —
+  // never hand-authored numbers. Only exposes what's safe for the public
+  // (no message/conversation content or counts), and only published
+  // courses/institutions (a draft isn't "proof" of anything yet).
+  async publicStats() {
+    const count = (sql) => {
+      try {
+        return this.db.prepare(sql).get().n
+      } catch {
+        return 0
+      }
+    }
+    const learners = count('SELECT COUNT(*) AS n FROM users')
+    const courses = count('SELECT COUNT(*) AS n FROM courses WHERE published = 1')
+    const institutions = count('SELECT COUNT(*) AS n FROM institutions WHERE published = 1')
+    const totalEnrollments = count('SELECT COUNT(*) AS n FROM enrollments')
+    const completedEnrollments = count("SELECT COUNT(*) AS n FROM enrollments WHERE status = 'completed'")
+    const completionRate = totalEnrollments ? Math.round((completedEnrollments / totalEnrollments) * 100) : null
+    return { learners, courses, institutions, completionRate, totalEnrollments }
+  }
   async adminActivity(daysBack = 14) {
     const users = this.db.prepare('SELECT id, name, email, created_at FROM users').all()
     const conversations = this.db.prepare('SELECT id, user_id FROM conversations').all()

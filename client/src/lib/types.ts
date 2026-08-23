@@ -359,6 +359,16 @@ export interface InstitutionAnalytics {
   }[]
 }
 
+// Real, live counts for the marketing site's social-proof section — never
+// hand-authored numbers (see server's GET /api/public/stats).
+export interface PublicStats {
+  learners: number
+  courses: number
+  institutions: number
+  completionRate: number | null
+  totalEnrollments: number
+}
+
 export interface NicheReport {
   niche: string
   tagline: string

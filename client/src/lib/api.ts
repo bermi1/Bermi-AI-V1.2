@@ -28,6 +28,7 @@ import type {
   OfferingKind,
   OrgType,
   Profile,
+  PublicStats,
   QuizQuestion,
   QuizSubmitResponse,
   SettingsInfo,
@@ -164,6 +165,11 @@ export const extractFile = (file: File): Promise<Attachment> => {
 
 export const health = () =>
   apiFetch('/api/health', undefined, 6_000).then((r) => json<{ ok: boolean }>(r))
+
+// Real, live counts for the marketing site's social-proof section — never
+// hand-authored numbers. Public/unauthenticated.
+export const getPublicStats = () =>
+  apiFetch('/api/public/stats', undefined, 6_000).then((r) => json<PublicStats>(r))
 
 // ---------- Conversations ----------
 

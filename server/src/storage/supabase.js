@@ -102,6 +102,28 @@ export class SupabaseStorage {
     return { users, conversations, messages, documents, institutions, courses, enrollments, certificates }
   }
 
+  // Real, live counts for the public marketing site's social-proof section —
+  // never hand-authored numbers. Only exposes what's safe for the public
+  // (no message/conversation content or counts), and only published
+  // courses/institutions (a draft isn't "proof" of anything yet).
+  async publicStats() {
+    const count = async (table, filters) => {
+      let q = this.sb.from(table).select('*', { count: 'exact', head: true })
+      if (filters) for (const [k, v] of Object.entries(filters)) q = q.eq(k, v)
+      const { count, error } = await q
+      return error ? 0 : (count ?? 0)
+    }
+    const [learners, courses, institutions, totalEnrollments, completedEnrollments] = await Promise.all([
+      count(T.users),
+      count(T.courses, { published: true }),
+      count(T.institutions, { published: true }),
+      count(T.enrollments),
+      count(T.enrollments, { status: 'completed' }),
+    ])
+    const completionRate = totalEnrollments ? Math.round((completedEnrollments / totalEnrollments) * 100) : null
+    return { learners, courses, institutions, completionRate, totalEnrollments }
+  }
+
   // Engagement analytics for the admin dashboard: daily signups/messages/active
   // users over the trailing window, plus all-time leaderboard. Aggregated in
   // JS rather than SQL since the Data API has no GROUP BY and table sizes here

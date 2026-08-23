@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { attachUser, requireAuth, requireVerified } from './auth.js'
+import { storage } from './storage/index.js'
 import { authRouter, verificationRequired } from './routes/auth.js'
 import { chatRouter } from './routes/chat.js'
 import { conversationsRouter } from './routes/conversations.js'
@@ -38,6 +39,26 @@ app.use(cors({ credentials: true, origin: true }))
 app.use(express.json({ limit: '2mb' }))
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+// Public, unauthenticated — real counts for the marketing site's social-proof
+// section (see client/src/landing/Home.tsx). Deliberately never hand-authored
+// numbers; the client itself decides whether a count is high enough yet to
+// show as a headline figure. Cached briefly since the landing page is hit far
+// more often than these counts meaningfully change.
+let publicStatsCache = { at: 0, data: null }
+const PUBLIC_STATS_CACHE_MS = 5 * 60_000
+app.get('/api/public/stats', async (_req, res) => {
+  try {
+    if (Date.now() - publicStatsCache.at < PUBLIC_STATS_CACHE_MS && publicStatsCache.data) {
+      return res.json(publicStatsCache.data)
+    }
+    const data = await storage.publicStats()
+    publicStatsCache = { at: Date.now(), data }
+    res.json(data)
+  } catch {
+    res.json({ learners: 0, courses: 0, institutions: 0, completionRate: null, totalEnrollments: 0 })
+  }
+})
 
 // Triggered by Vercel Cron (see vercel.json) on a schedule, never by a
 // signed-in user — registered before the auth middleware below and gated by

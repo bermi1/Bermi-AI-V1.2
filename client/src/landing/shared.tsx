@@ -2,6 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { BermiMark } from '../components/Logo'
+import { getPublicStats } from '../lib/api'
+import type { PublicStats } from '../lib/types'
+
+/** Real, live counts for social proof — never hand-authored numbers. Null
+ * while loading or on failure; callers decide their own fallback copy for
+ * small/zero counts (an honest "12" doesn't read as confident marketing —
+ * see the threshold logic in Home.tsx). */
+export function usePublicStats(): PublicStats | null {
+  const [stats, setStats] = useState<PublicStats | null>(null)
+  useEffect(() => {
+    getPublicStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+  }, [])
+  return stats
+}
 
 export type LandingPath = '/' | '/pricing' | '/faq'
 
@@ -12,11 +28,27 @@ export interface LandingNavProps {
   onGetStarted: () => void
 }
 
-const NAV_LINKS: { href: LandingPath; label: string }[] = [
+// Features and For Institutions live as sections on the homepage, not
+// separate pages — clicking them from elsewhere navigates to '/' first,
+// then smooth-scrolls to the section once it's mounted.
+const NAV_LINKS: { href: LandingPath; hash?: string; label: string }[] = [
   { href: '/', label: 'Home' },
+  { href: '/', hash: 'features', label: 'Features' },
   { href: '/pricing', label: 'Pricing' },
   { href: '/faq', label: 'FAQ' },
+  { href: '/', hash: 'institutions', label: 'For Institutions' },
 ]
+
+function scrollToHash(hash: string) {
+  // A double rAF (rather than a fixed timeout) waits for exactly one paint
+  // after Home mounts before the target section can possibly exist in the
+  // DOM — reliable regardless of how fast or slow that mount happens to be.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  })
+}
 
 export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps) {
   const [scrolled, setScrolled] = useState(false)
@@ -46,10 +78,13 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
         <nav className="hidden items-center gap-1 sm:flex">
           {NAV_LINKS.map((l) => (
             <button
-              key={l.href}
-              onClick={() => go(l.href)}
+              key={l.label}
+              onClick={() => {
+                go(l.href)
+                if (l.hash) scrollToHash(l.hash)
+              }}
               className={`rounded-lg px-3 py-1.5 text-[13.5px] font-medium transition-colors ${
-                path === l.href ? 'text-white' : 'text-white/60 hover:text-white'
+                path === l.href && !l.hash ? 'text-white' : 'text-white/60 hover:text-white'
               }`}
             >
               {l.label}
@@ -59,16 +94,17 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
         <div className="flex items-center gap-2">
           <button
             onClick={onSignIn}
-            className="rounded-lg px-3 py-1.5 text-[13.5px] font-medium text-white/70 transition-colors hover:text-white"
+            className="group relative overflow-hidden rounded-lg px-3 py-1.5 text-[13.5px] font-medium text-white/70 transition-colors hover:text-white"
           >
-            Sign in
+            <span className="relative">Sign in</span>
+            <span className="pointer-events-none absolute inset-0 -translate-x-full bg-white/[0.08] transition-transform duration-300 group-hover:translate-x-0" />
           </button>
           <button
             onClick={onGetStarted}
-            className="group flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-[13px] font-semibold text-[#0a0a0a] shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.35)]"
+            className="group relative flex items-center gap-1.5 overflow-hidden rounded-full bg-white px-4 py-1.5 text-[13px] font-semibold text-[#0a0a0a] shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] active:scale-[0.98]"
           >
             Get started
-            <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight size={13} className="transition-transform duration-300 group-hover:translate-x-1" />
           </button>
         </div>
       </div>
@@ -84,11 +120,14 @@ export function LandingFooter({ go }: { go: (to: LandingPath) => void }) {
           <BermiMark size={16} className="text-white/70" />
           <span className="text-[13px]">Bermi AI</span>
         </div>
-        <nav className="flex items-center gap-4">
+        <nav className="flex flex-wrap items-center justify-center gap-4">
           {NAV_LINKS.map((l) => (
             <button
-              key={l.href}
-              onClick={() => go(l.href)}
+              key={l.label}
+              onClick={() => {
+                go(l.href)
+                if (l.hash) scrollToHash(l.hash)
+              }}
               className="text-[12.5px] text-white/50 transition-colors hover:text-white"
             >
               {l.label}
@@ -101,6 +140,50 @@ export function LandingFooter({ go }: { go: (to: LandingPath) => void }) {
         </p>
       </div>
     </footer>
+  )
+}
+
+/** The solid-white primary CTA used across the marketing site — a subtle
+ * scale + glow on hover, a light press-down on click, no external animation
+ * library needed. */
+export function PrimaryCta({
+  onClick,
+  children,
+  className = '',
+}: {
+  onClick: () => void
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-2.5 text-[14px] font-semibold text-[#0a0a0a] shadow-[0_0_30px_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_0_34px_rgba(255,255,255,0.35)] active:scale-[0.98] ${className}`}
+    >
+      {children}
+      <ArrowRight size={15} className="transition-transform duration-300 group-hover:translate-x-1" />
+    </button>
+  )
+}
+
+/** The outlined secondary CTA — pairs with PrimaryCta wherever two actions
+ * are offered side by side. */
+export function SecondaryCta({
+  onClick,
+  children,
+  className = '',
+}: {
+  onClick: () => void
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border border-white/15 bg-white/[0.04] px-6 py-2.5 text-[14px] font-medium text-white/85 backdrop-blur transition-all duration-300 hover:scale-[1.02] hover:bg-white/[0.08] active:scale-[0.98] ${className}`}
+    >
+      {children}
+    </button>
   )
 }
 
