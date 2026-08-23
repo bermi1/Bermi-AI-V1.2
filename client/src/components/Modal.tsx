@@ -20,11 +20,11 @@ export function Modal({ title, subtitle, onClose, children, wide }: ModalProps) 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 md:items-center md:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm md:items-center md:p-6"
       onClick={onClose}
     >
       <div
-        className={`flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-surface-raised shadow-2xl animate-fade-up md:rounded-2xl ${
+        className={`flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-surface-raised shadow-2xl animate-sheet-in md:rounded-2xl ${
           wide ? 'md:max-w-3xl' : 'md:max-w-lg'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -60,4 +60,4 @@ export const primaryBtnCls =
   'rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40'
 
 export const ghostBtnCls =
-  'rounded-xl border border-edge px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken'
+  'rounded-xl border border-edge px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-40'

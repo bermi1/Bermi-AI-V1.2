@@ -203,6 +203,57 @@ body {
   animation: fade-up 0.25s ease-out;
 }
 
+/* Sheets/modals "materialize" (scale + fade) rather than just fading in —
+   reads as a real surface arriving, not a flat opacity change. */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-sheet-in {
+  animation: sheet-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------- Press feedback ----------
+   Feedback lives on the press itself, not on release — every button gets
+   an instant, subtle "give" the moment it's touched. */
+button:not(:disabled) {
+  transition: transform 100ms ease-out;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-sheet-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  button:not(:disabled):active {
+    transform: none;
+  }
+}
+
+/* ---------- Typography — tighten tracking as headings get bigger ----------
+   Large text reads too loose at 0 tracking; small text wants to stay near 0.
+   Only sets a default — any explicit Tailwind tracking-* class on a heading
+   still wins (class specificity beats this element selector). */
+h1,
+h2 {
+  letter-spacing: -0.02em;
+}
+h3,
+h4 {
+  letter-spacing: -0.01em;
+}
+
 @keyframes blink-cursor {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
