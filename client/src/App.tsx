@@ -13,6 +13,7 @@ import { NicheModal } from './components/NicheModal'
 import { BrainEditor } from './components/BrainEditor'
 import { AuthPage } from './components/AuthPage'
 import { LandingPage } from './components/LandingPage'
+import { Welcome } from './components/Welcome'
 import { VerifyEmailPage } from './components/VerifyEmailPage'
 import { LearnPortal } from './learn/LearnPortal'
 import { AdminDashboard } from './admin/AdminDashboard'
@@ -39,7 +40,8 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [verificationRequired, setVerificationRequired] = useState(false)
-  const [showAuth, setShowAuth] = useState(() => new URLSearchParams(window.location.search).has('auth_error'))
+  // Signed-out front door: a short intro slider, then sign in / sign up.
+  const [screen, setScreen] = useState<'welcome' | 'login' | 'signup'>(() => (new URLSearchParams(window.location.search).has('auth_error') ? 'login' : 'welcome'))
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
     try {
@@ -80,18 +82,14 @@ export default function App() {
   }
 
   if (!user) {
-    // No marketing home page: signed-out visitors land straight on sign in /
-    // sign up. /pricing and /faq stay reachable (and prerendered) for search.
+    // /pricing and /faq stay reachable (and prerendered) for search; everything
+    // else starts at the intro slider.
     const p = window.location.pathname
-    const publicInfo = (p === '/pricing' || p === '/faq') && !showAuth
-    return publicInfo ? (
-      <LandingPage onSignIn={() => setShowAuth(true)} onGetStarted={() => setShowAuth(true)} />
-    ) : (
-      <AuthPage
-        onAuthed={checkAuth}
-        onBack={p === '/pricing' || p === '/faq' ? () => setShowAuth(false) : undefined}
-      />
-    )
+    if ((p === '/pricing' || p === '/faq') && screen === 'welcome') {
+      return <LandingPage onSignIn={() => setScreen('login')} onGetStarted={() => setScreen('signup')} />
+    }
+    if (screen === 'welcome') return <Welcome onSignIn={() => setScreen('login')} onGetStarted={() => setScreen('signup')} />
+    return <AuthPage key={screen} initialView={screen} onAuthed={checkAuth} onBack={() => setScreen('welcome')} />
   }
 
   if (verificationRequired && !user.email_verified) {

@@ -551,3 +551,63 @@ html[data-motion='reduce'] *::after {
 
 @media (min-width: 640px) { .tile, .tile-accent { border-radius: 1.75rem; } }
 .tile-accent { border-radius: 1.5rem; }
+
+/* ---------- Aurora full-screen backdrop (welcome + sign in) ---------- */
+.aurora {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(80% 60% at 80% -10%, color-mix(in srgb, var(--primary) 70%, #000) 0%, transparent 65%),
+    radial-gradient(70% 55% at 0% 100%, color-mix(in srgb, var(--primary) 42%, #000) 0%, transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--primary) 22%, var(--hero-ink)) 0%, var(--hero-ink) 70%);
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.aurora::before {
+  width: 340px; height: 340px; left: -120px; top: 18%;
+  background: color-mix(in srgb, var(--primary) 75%, #fff);
+  animation: aurora-drift 14s ease-in-out infinite alternate;
+}
+.aurora::after {
+  width: 300px; height: 300px; right: -110px; bottom: 6%;
+  background: color-mix(in srgb, var(--primary) 55%, #b06bff);
+  animation: aurora-drift 18s ease-in-out infinite alternate-reverse;
+}
+@keyframes aurora-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(40px, -30px, 0) scale(1.15); }
+}
+@keyframes welcome-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes welcome-pulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+@keyframes welcome-spin {
+  to { transform: rotate(360deg); }
+}
+.glass-field {
+  width: 100%;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 0.09);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  color: #fff;
+  padding: 0.85rem 1rem;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.glass-field::placeholder { color: rgb(255 255 255 / 0.5); }
+.glass-field:focus { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.13); }
