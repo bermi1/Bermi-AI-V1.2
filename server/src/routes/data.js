@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { storage } from '../storage/index.js'
+import { exportLifeData } from './life.js'
 
 export const dataRouter = Router()
 
@@ -41,6 +42,7 @@ dataRouter.get('/data/export', async (req, res, next) => {
       conversations: withMessages,
       documents,
       knowledge_bases: brains,
+      life_os: await exportLifeData(userId),
     }
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Content-Disposition', 'attachment; filename="bermi-data-export.json"')
@@ -63,6 +65,7 @@ dataRouter.post('/data/wipe', async (req, res, next) => {
     for (const b of await storage.listBrains(userId)) {
       await storage.deleteBrain(userId, b.id)
     }
+    await storage.deleteAllLifeItems(userId).catch(() => {}) // table may not be provisioned yet
     await storage.deleteSettingsByPrefix(`u:${userId}:`)
     res.json({ ok: true })
   } catch (err) {
@@ -83,6 +86,7 @@ dataRouter.post('/data/delete-account', async (req, res, next) => {
     for (const b of await storage.listBrains(userId)) {
       await storage.deleteBrain(userId, b.id)
     }
+    await storage.deleteAllLifeItems(userId).catch(() => {})
     await storage.deleteSettingsByPrefix(`u:${userId}:`)
     await storage.deleteUser(userId)
     res.json({ ok: true })

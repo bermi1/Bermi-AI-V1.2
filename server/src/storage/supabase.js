@@ -17,6 +17,9 @@ const T = {
   lessons: 'bermi_lessons',
   enrollments: 'bermi_enrollments',
   certificates: 'bermi_certificates',
+  life_items: 'bermi_life_items',
+  credit_ledger: 'bermi_credit_ledger',
+  audit_log: 'bermi_audit_log',
 }
 
 /**
@@ -296,6 +299,124 @@ export class SupabaseStorage {
   async deleteBrain(userId, id) {
     await this.#one(this.sb.from(T.brains).delete().eq('user_id', userId).eq('id', id))
     return true
+  }
+
+  // --- Life OS: generic per-user items (see server/migrations/001_life_os.sql) ---
+  async listLifeItems(userId, kind, { from, to, limit = 500 } = {}) {
+    let q = this.sb
+      .from(T.life_items)
+      .select('id, kind, data, when_key, created_at, updated_at')
+      .eq('user_id', userId)
+      .eq('kind', kind)
+      .order('when_key', { ascending: true, nullsFirst: true })
+      .order('created_at', { ascending: true })
+      .limit(limit)
+    if (from) q = q.gte('when_key', from)
+    if (to) q = q.lte('when_key', to)
+    return this.#one(q)
+  }
+  async getLifeItem(userId, id) {
+    const rows = await this.#one(
+      this.sb
+        .from(T.life_items)
+        .select('id, kind, data, when_key, created_at, updated_at')
+        .eq('user_id', userId)
+        .eq('id', id)
+        .limit(1),
+    )
+    return rows[0] ?? null
+  }
+  async upsertLifeItem(userId, { id, kind, data, when_key }) {
+    await this.#one(
+      this.sb
+        .from(T.life_items)
+        .upsert({ user_id: userId, id, kind, data, when_key: when_key ?? null, updated_at: new Date().toISOString() }),
+    )
+  }
+  async deleteLifeItem(userId, id) {
+    const rows = await this.#one(
+      this.sb.from(T.life_items).delete().eq('user_id', userId).eq('id', id).select('id'),
+    )
+    return rows.length > 0
+  }
+  async deleteAllLifeItems(userId) {
+    await this.#one(this.sb.from(T.life_items).delete().eq('user_id', userId))
+  }
+  async lifeAdoption() {
+    const { data, error } = await this.sb.rpc('bermi_life_adoption')
+    if (error) throw new Error(`Supabase: ${error.message}`)
+    return data.map((r) => ({ kind: r.kind, users: Number(r.users), items: Number(r.items) }))
+  }
+
+  // --- Credits: atomic, idempotent ledger (advisory-locked SQL function) ---
+  async creditBalance(userId) {
+    const rows = await this.#one(this.sb.from(T.credit_ledger).select('amount').eq('user_id', userId))
+    return rows.reduce((n, r) => n + r.amount, 0)
+  }
+  async creditApply({ userId, idemKey, kind, amount, feature = null, ref = null, meta = null, requireBalance = false }) {
+    const { data, error } = await this.sb.rpc('bermi_credit_apply', {
+      p_user: userId,
+      p_idem: idemKey,
+      p_kind: kind,
+      p_amount: amount,
+      p_feature: feature,
+      p_ref: ref,
+      p_meta: meta,
+      p_require_balance: requireBalance,
+    })
+    if (error) throw new Error(`Supabase: ${error.message}`)
+    const r = data[0]
+    return { ok: r.ok, duplicate: r.duplicate, balance: r.balance }
+  }
+  async creditLedger(userId, limit = 50) {
+    return this.#one(
+      this.sb
+        .from(T.credit_ledger)
+        .select('id, kind, amount, feature, ref, meta, created_at')
+        .eq('user_id', userId)
+        .order('id', { ascending: false })
+        .limit(limit),
+    )
+  }
+  async creditUsageByFeature(sinceIso) {
+    const { data, error } = await this.sb.rpc('bermi_credit_usage', { p_since: sinceIso })
+    if (error) throw new Error(`Supabase: ${error.message}`)
+    return data.map((r) => ({ feature: r.feature, n: Number(r.n), spent: Number(r.spent) }))
+  }
+  async creditOutcomes(sinceIso) {
+    const rows = await this.#one(
+      this.sb
+        .from(T.credit_ledger)
+        .select('kind, feature')
+        .in('kind', ['reserve', 'refund'])
+        .gte('created_at', sinceIso)
+        .limit(20000),
+    )
+    const by = new Map()
+    for (const r of rows) {
+      const f = r.feature ?? 'other'
+      const cur = by.get(f) ?? { feature: f, requests: 0, refunded: 0 }
+      if (r.kind === 'reserve') cur.requests++
+      else cur.refunded++
+      by.set(f, cur)
+    }
+    return [...by.values()]
+  }
+  async creditSpentSince(sinceIso) {
+    const rows = await this.creditUsageByFeature(sinceIso)
+    return rows.reduce((n, r) => n + r.spent, 0)
+  }
+  async auditLog({ actor, action, target = null, meta = null }) {
+    await this.#one(this.sb.from(T.audit_log).insert({ actor, action, target, meta }))
+  }
+  async listAudit(limit = 100) {
+    return this.#one(
+      this.sb
+        .from(T.audit_log)
+        .select('id, actor, action, target, meta, created_at')
+        .order('id', { ascending: false })
+        .limit(limit),
+    )
   }
 
   // --- connectors ---

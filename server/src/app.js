@@ -26,6 +26,8 @@ import { ttsRouter } from './routes/tts.js'
 import { sttRouter } from './routes/stt.js'
 import { voicesRouter } from './routes/voices.js'
 import { newsRouter } from './routes/news.js'
+import { lifeRouter } from './routes/life.js'
+import { admin2Router } from './routes/admin2.js'
 import { refreshAllSources } from './news.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -105,6 +107,8 @@ app.use('/api', ttsRouter)
 app.use('/api', sttRouter)
 app.use('/api', voicesRouter)
 app.use('/api', newsRouter)
+app.use('/api', lifeRouter)
+app.use('/api', admin2Router)
 
 // Async route errors land here instead of crashing the process.
 app.use((err, _req, res, _next) => {

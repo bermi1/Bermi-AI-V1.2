@@ -125,6 +125,27 @@ export class SqliteStorage {
         learner_name TEXT NOT NULL, course_title TEXT NOT NULL, institution_name TEXT NOT NULL,
         score REAL, issued_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS life_items (
+        user_id TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL,
+        data TEXT NOT NULL, when_key TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS life_items_kind ON life_items (user_id, kind, when_key);
+      CREATE TABLE IF NOT EXISTS credit_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL, idem_key TEXT NOT NULL, kind TEXT NOT NULL,
+        amount INTEGER NOT NULL, feature TEXT, ref TEXT, meta TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (user_id, idem_key)
+      );
+      CREATE INDEX IF NOT EXISTS credit_ledger_user ON credit_ledger (user_id, id);
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, meta TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `)
     // Older databases predate per-user scoping / email verification.
     const migrations = [
@@ -208,6 +229,114 @@ export class SqliteStorage {
       .all()
       .map((u) => ({ ...u, email_verified: Boolean(u.email_verified) }))
   }
+
+  // --- Life OS: generic per-user items (tasks, events, goals, ...) ---
+  // One table keyed by (user_id, id) with a validated-on-write JSON payload;
+  // `when_key` is a sortable ISO string the router derives per kind.
+  async listLifeItems(userId, kind, { from, to, limit = 500 } = {}) {
+    const rows = this.db
+      .prepare(
+        `SELECT id, kind, data, when_key, created_at, updated_at FROM life_items
+         WHERE user_id = ? AND kind = ? AND (? IS NULL OR when_key >= ?) AND (? IS NULL OR when_key <= ?)
+         ORDER BY when_key, created_at LIMIT ?`,
+      )
+      .all(userId, kind, from ?? null, from ?? null, to ?? null, to ?? null, limit)
+    return rows.map((r) => ({ ...r, data: JSON.parse(r.data) }))
+  }
+  async getLifeItem(userId, id) {
+    const r = this.db
+      .prepare('SELECT id, kind, data, when_key, created_at, updated_at FROM life_items WHERE user_id = ? AND id = ?')
+      .get(userId, id)
+    return r ? { ...r, data: JSON.parse(r.data) } : null
+  }
+  async upsertLifeItem(userId, { id, kind, data, when_key }) {
+    this.db
+      .prepare(
+        `INSERT INTO life_items (user_id, id, kind, data, when_key) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, id) DO UPDATE SET data = excluded.data, when_key = excluded.when_key,
+           updated_at = datetime('now')`,
+      )
+      .run(userId, id, kind, JSON.stringify(data), when_key ?? null)
+  }
+  async deleteLifeItem(userId, id) {
+    return this.db.prepare('DELETE FROM life_items WHERE user_id = ? AND id = ?').run(userId, id).changes > 0
+  }
+  async deleteAllLifeItems(userId) {
+    this.db.prepare('DELETE FROM life_items WHERE user_id = ?').run(userId)
+  }
+  async lifeAdoption() {
+    // Distinct users per kind — real feature-adoption numbers for the admin.
+    return this.db
+      .prepare('SELECT kind, COUNT(DISTINCT user_id) AS users, COUNT(*) AS items FROM life_items GROUP BY kind')
+      .all()
+  }
+
+  // --- Credits: append-only ledger, balance = SUM(amount) ---
+  // better-sqlite3 is synchronous and one-writer, so a transaction here is
+  // atomic: concurrent requests cannot overspend the same balance.
+  async creditBalance(userId) {
+    return this.db.prepare('SELECT COALESCE(SUM(amount), 0) AS b FROM credit_ledger WHERE user_id = ?').get(userId).b
+  }
+  async creditApply({ userId, idemKey, kind, amount, feature = null, ref = null, meta = null, requireBalance = false }) {
+    const tx = this.db.transaction(() => {
+      const dup = this.db
+        .prepare('SELECT 1 FROM credit_ledger WHERE user_id = ? AND idem_key = ?')
+        .get(userId, idemKey)
+      const bal = this.db.prepare('SELECT COALESCE(SUM(amount), 0) AS b FROM credit_ledger WHERE user_id = ?').get(userId).b
+      if (dup) return { ok: true, duplicate: true, balance: bal }
+      if (requireBalance && bal + amount < 0) return { ok: false, duplicate: false, balance: bal }
+      this.db
+        .prepare(
+          'INSERT INTO credit_ledger (user_id, idem_key, kind, amount, feature, ref, meta) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(userId, idemKey, kind, amount, feature, ref, meta ? JSON.stringify(meta) : null)
+      return { ok: true, duplicate: false, balance: bal + amount }
+    })
+    return tx()
+  }
+  async creditLedger(userId, limit = 50) {
+    return this.db
+      .prepare('SELECT id, kind, amount, feature, ref, meta, created_at FROM credit_ledger WHERE user_id = ? ORDER BY id DESC LIMIT ?')
+      .all(userId, limit)
+      .map((r) => ({ ...r, meta: r.meta ? JSON.parse(r.meta) : null }))
+  }
+  async creditUsageByFeature(sinceIso) {
+    return this.db
+      .prepare(
+        `SELECT COALESCE(feature, 'other') AS feature, COUNT(*) AS n, -SUM(amount) AS spent
+         FROM credit_ledger WHERE kind IN ('reserve','settle','refund') AND created_at >= ? GROUP BY feature`,
+      )
+      .all(sinceIso)
+  }
+  // Requests vs provider-failure refunds, per feature — the basis for the
+  // admin's real AI failure rate (every failed call writes a refund row).
+  async creditOutcomes(sinceIso) {
+    return this.db
+      .prepare(
+        `SELECT COALESCE(feature, 'other') AS feature,
+                SUM(CASE WHEN kind = 'reserve' THEN 1 ELSE 0 END) AS requests,
+                SUM(CASE WHEN kind = 'refund' THEN 1 ELSE 0 END) AS refunded
+         FROM credit_ledger WHERE kind IN ('reserve','refund') AND created_at >= ? GROUP BY feature`,
+      )
+      .all(sinceIso)
+  }
+  async creditSpentSince(sinceIso) {
+    return this.db
+      .prepare(`SELECT COALESCE(-SUM(amount), 0) AS s FROM credit_ledger WHERE kind IN ('reserve','settle','refund') AND created_at >= ?`)
+      .get(sinceIso).s
+  }
+  async auditLog({ actor, action, target = null, meta = null }) {
+    this.db
+      .prepare('INSERT INTO audit_log (actor, action, target, meta) VALUES (?, ?, ?, ?)')
+      .run(actor, action, target, meta ? JSON.stringify(meta) : null)
+  }
+  async listAudit(limit = 100) {
+    return this.db
+      .prepare('SELECT id, actor, action, target, meta, created_at FROM audit_log ORDER BY id DESC LIMIT ?')
+      .all(limit)
+      .map((r) => ({ ...r, meta: r.meta ? JSON.parse(r.meta) : null }))
+  }
+
   async adminStats() {
     const count = (t) => {
       try {
