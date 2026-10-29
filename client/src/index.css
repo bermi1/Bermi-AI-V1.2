@@ -469,3 +469,17 @@ html[data-motion='reduce'] *::after {
 
 /* Shared keyboard focus ring in the theme colour. */
 :focus-visible { outline-color: var(--primary); }
+
+/* Life OS assistant visuals */
+@keyframes bermi-orb {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes bermi-bar {
+  from { transform: scaleY(0.55); }
+  to { transform: scaleY(1.15); }
+}
+@keyframes bermi-breathe {
+  0%, 100% { transform: scale(0.62); }
+  50% { transform: scale(1); }
+}

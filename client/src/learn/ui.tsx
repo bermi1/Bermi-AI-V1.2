@@ -139,14 +139,14 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 
 // Hand a lesson/course off to Bermi AI's Study Mode. The portal is the B2B
 // console; the actual learning happens in the main app. We stash the context
-// and do a full navigation to '/', where the workspace picks it up on mount.
+// and do a full navigation to '/chat', where the workspace picks it up on mount.
 export function handoffToStudy(payload: { title: string; prompt: string }) {
   try {
     localStorage.setItem('bermi-study-handoff', JSON.stringify(payload))
   } catch {
     /* quota — ignore */
   }
-  window.location.assign('/')
+  window.location.assign('/chat')
 }
 
 export function EmptyState({ icon, title, body }: { icon: ReactNode; title: string; body?: string }) {

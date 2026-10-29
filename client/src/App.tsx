@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
+import { Home, LayoutGrid, Loader2, Menu, MessageSquare, SquarePen } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { InputBar } from './components/InputBar'
@@ -19,6 +19,7 @@ import { AdminDashboard } from './admin/AdminDashboard'
 import { StudyHud, StudyToast } from './components/StudyHud'
 import { BermiMark } from './components/Logo'
 import { PrefsSync } from './lib/theme'
+import { LifeShell, tabFromPath } from './life/LifeShell'
 import * as api from './lib/api'
 import type { StudyAwardEvent } from './lib/api'
 import type {
@@ -98,9 +99,10 @@ export default function App() {
   )
 }
 
-// The Learn portal is a separate destination under /learn with its own landing
-// page and navigation; everything else is the chat workspace. We watch the
-// pathname so entering/leaving the portal swaps the whole shell.
+// Routes: `/` and `/my/*` are the Life OS (My Day / Learning / Money / Wellbeing);
+// `/chat` is the full chat workspace; `/portal` is the learning portal and
+// `/admin` Bermi Control. We watch the pathname so entering/leaving a
+// destination swaps the whole shell.
 function Router({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
   const [path, setPath] = useState(window.location.pathname)
 
@@ -112,20 +114,27 @@ function Router({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void
 
   const go = useCallback((to: string) => {
     window.history.pushState(null, '', to)
-    setPath(to)
+    setPath(to.split('?')[0])
     window.scrollTo(0, 0)
   }, [])
 
   if (path.startsWith('/portal') || path.startsWith('/learn')) {
-    return <LearnPortal user={user} onExit={() => go('/')} />
+    return <LearnPortal user={user} onExit={() => go('/chat')} />
   }
   if (path.startsWith('/admin')) {
     return <AdminDashboard onExit={() => go('/')} selfEmail={user.email} />
   }
-  return <Workspace user={user} onSignedOut={onSignedOut} />
+  // Returning from a connector OAuth flow lands on `/?connected=…`; that opens
+  // Settings inside the chat workspace.
+  const search = window.location.search
+  const connectorReturn = /[?&](connected|connector_error)=?/.test(search)
+  if (path.startsWith('/chat') || connectorReturn) {
+    return <Workspace user={user} onSignedOut={onSignedOut} onHome={() => go('/my/day')} />
+  }
+  return <LifeShell user={user} tab={tabFromPath(path)} go={go} onSignedOut={onSignedOut} />
 }
 
-function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => void }) {
+function Workspace({ user, onSignedOut, onHome }: { user: AuthUser; onSignedOut: () => void; onHome: () => void }) {
   const [view, setView] = useState<'chat' | 'dashboard'>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -417,21 +426,25 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
   useEffect(() => {
     if (handoffDone.current || !selectedModel || streaming) return
     let payload: { prompt?: string } | null = null
+    let chatOnly = false
     try {
-      const raw = localStorage.getItem('bermi-study-handoff')
+      // Life OS companion → "open the full chat" with the words typed so far.
+      const chat = localStorage.getItem('bermi-chat-handoff')
+      const raw = chat ?? localStorage.getItem('bermi-study-handoff')
+      chatOnly = !!chat
       if (raw) payload = JSON.parse(raw)
     } catch {
       /* ignore */
     }
     if (!payload?.prompt) return
     handoffDone.current = true
-    localStorage.removeItem('bermi-study-handoff')
-    setStudy(true)
+    localStorage.removeItem(chatOnly ? 'bermi-chat-handoff' : 'bermi-study-handoff')
+    if (!chatOnly) setStudy(true)
     setView('chat')
     setActiveId(null)
     setMessages([])
     const prompt = payload.prompt
-    setTimeout(() => send(prompt, { study: true }), 60)
+    setTimeout(() => send(prompt, { study: !chatOnly }), 60)
   }, [selectedModel, streaming, send])
 
   const deleteDocument = useCallback(
@@ -475,6 +488,14 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
         )}
         <header className="flex items-center justify-between border-b border-edge px-3 py-2.5 md:px-4">
           <div className="flex min-w-0 items-center gap-1">
+            <button
+              onClick={onHome}
+              className="rounded-lg p-2 text-ink-muted hover:bg-surface-sunken"
+              aria-label="Back to My Day"
+              title="Back to My Day"
+            >
+              <Home size={18} />
+            </button>
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               className="rounded-lg p-2 text-ink-muted hover:bg-surface-sunken"
