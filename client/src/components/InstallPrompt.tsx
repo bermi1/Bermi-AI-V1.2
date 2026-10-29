@@ -99,7 +99,7 @@ export function InstallPrompt() {
         {platform === 'android' ? (
           <button
             onClick={install}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12.5px] font-semibold text-white hover:bg-primary-hover"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12.5px] font-semibold text-on-primary hover:bg-primary-hover"
           >
             <Download size={14} /> Install
           </button>

@@ -118,9 +118,9 @@ export function VoiceMode({ onClose, onTranscript, thinking, speaking, voiceErro
       <div
         className={`flex h-24 w-24 items-center justify-center rounded-full shadow-lg transition-all ${
           phase === 'listening'
-            ? 'scale-110 bg-primary text-white'
+            ? 'scale-110 bg-primary text-on-primary'
             : phase === 'speaking'
-              ? 'bg-primary/80 text-white'
+              ? 'bg-primary/80 text-on-primary'
               : 'bg-surface-sunken text-ink-faint'
         }`}
       >

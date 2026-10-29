@@ -68,7 +68,7 @@ export function StudioViewer({
             <a
               key={id}
               href={api.studioDownloadUrl(doc.id, id)}
-              className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+              className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover"
             >
               <Download size={14} />
               {label}

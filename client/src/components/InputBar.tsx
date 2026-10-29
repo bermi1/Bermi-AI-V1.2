@@ -258,7 +258,7 @@ export function InputBar({
                 onClick={() => onToggleStudy(!study)}
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
                   study
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-on-primary'
                     : 'text-ink-faint hover:bg-surface-sunken hover:text-ink-muted'
                 }`}
                 title="Study Mode — learn step by step and earn XP"
@@ -310,7 +310,7 @@ export function InputBar({
               <button
                 onClick={submit}
                 disabled={(!text.trim() && attachments.length === 0) || uploading}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white transition-colors hover:bg-primary-hover disabled:opacity-30"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-30"
                 aria-label="Send message"
               >
                 <ArrowUp size={17} strokeWidth={2.5} />

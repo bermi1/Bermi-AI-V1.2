@@ -103,7 +103,7 @@ export function InstitutionStudio({ navigate }: { navigate: (r: LearnRoute) => v
         <>
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-on-primary">
                 <Building2 size={22} />
               </div>
               <div>
@@ -801,7 +801,7 @@ function InstitutionQuickCourseModal({
           <button
             onClick={submit}
             disabled={busy || !topic.trim()}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
           >
             {busy && <Loader2 size={14} className="animate-spin" />} {busy ? 'Generating…' : `Generate full ${kind}`}
           </button>

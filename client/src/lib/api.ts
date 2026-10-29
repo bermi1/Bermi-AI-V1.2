@@ -51,7 +51,7 @@ export const setSessionToken = (token: string | null) => {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
-async function apiFetch(
+export async function apiFetch(
   url: string,
   init?: RequestInit,
   timeoutMs = 20_000,
@@ -85,7 +85,7 @@ export class ApiError extends Error {
   email?: string
 }
 
-async function json<T>(res: Response): Promise<T> {
+export async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = new ApiError(res.statusText)
     try {
@@ -1001,3 +1001,23 @@ export const learnLearnersExportUrl = (institutionId: string) => {
   const token = getSessionToken()
   return `/api/learn/institutions/${institutionId}/analytics/export.csv${token ? `?token=${token}` : ''}`
 }
+
+
+// ---------- Personalisation (theme / appearance preferences) ----------
+// Stored per account so a theme chosen on one device follows the user.
+
+export const getPrefs = () =>
+  apiFetch('/api/life/prefs', undefined, 8_000)
+    .then((r) => json<{ prefs: Record<string, unknown> | null }>(r))
+    .then((r) => r.prefs)
+
+export const savePrefs = (prefs: object) =>
+  apiFetch(
+    '/api/life/prefs',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefs }),
+    },
+    8_000,
+  ).then((r) => json<{ ok: true }>(r))

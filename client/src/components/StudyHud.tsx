@@ -7,7 +7,7 @@ export function StudyHud({ stats }: { stats: StudyStats }) {
   return (
     <div className="border-b border-edge bg-primary-soft/40 px-4 py-2">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-white">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-on-primary">
           <GraduationCap size={16} />
         </div>
         <div className="min-w-0 flex-1">
@@ -52,7 +52,7 @@ export function StudyToast({
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
       <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-primary/30 bg-surface-raised px-4 py-2.5 shadow-lg animate-fade-up">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary">
           {leveledUp ? <GraduationCap size={18} /> : <Star size={16} />}
         </div>
         <div className="text-[13px]">

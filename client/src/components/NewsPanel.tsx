@@ -67,7 +67,7 @@ export function NewsPanel() {
             key={r.id}
             onClick={() => setRegion(r.id)}
             className={`flex items-center gap-1 rounded-full px-3 py-1 text-[12.5px] font-medium transition-colors ${
-              region === r.id ? 'bg-primary text-white' : 'bg-surface-sunken text-ink-muted hover:bg-surface'
+              region === r.id ? 'bg-primary text-on-primary' : 'bg-surface-sunken text-ink-muted hover:bg-surface'
             }`}
           >
             {r.id === 'all' && <Globe2 size={11} />}

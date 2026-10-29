@@ -166,7 +166,7 @@ export function DashboardPage({
             </button>
             <button
               onClick={onNewStudio}
-              className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-white shadow-sm transition-colors hover:bg-primary-hover"
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-hover"
             >
               <Wand2 size={15} />
               Create document
@@ -237,7 +237,7 @@ export function DashboardPage({
           onClick={onOpenNiche}
           className="mb-8 flex w-full items-center gap-4 rounded-2xl border border-edge bg-gradient-to-br from-primary-soft/60 to-surface-raised p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
         >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
             <Compass size={22} />
           </div>
           <div className="min-w-0 flex-1">
@@ -247,7 +247,7 @@ export function DashboardPage({
               growth plan — saved so Bermi coaches you toward it.
             </p>
           </div>
-          <span className="shrink-0 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-white">
+          <span className="shrink-0 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-on-primary">
             Start
           </span>
         </button>
@@ -462,7 +462,7 @@ export function DashboardPage({
                   {c.status === 'available' && c.id === 'google' ? (
                     <a
                       href={api.googleAuthUrl()}
-                      className="rounded-lg bg-primary px-3 py-1.5 text-[12px] font-medium text-white hover:bg-primary-hover"
+                      className="rounded-lg bg-primary px-3 py-1.5 text-[12px] font-medium text-on-primary hover:bg-primary-hover"
                     >
                       Connect
                     </a>

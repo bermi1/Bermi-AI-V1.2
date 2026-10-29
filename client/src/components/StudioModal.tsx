@@ -65,7 +65,7 @@ export function StudioModal({ onClose, onSaved }: StudioModalProps) {
               <a
                 key={id}
                 href={api.studioDownloadUrl(doc.id, id)}
-                className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+                className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-[13.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover"
               >
                 <Download size={14} />
                 {label}
@@ -106,7 +106,7 @@ export function StudioModal({ onClose, onSaved }: StudioModalProps) {
                 onClick={() => setKind(k.id)}
                 className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
                   kind === k.id
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-on-primary'
                     : 'border border-edge text-ink-muted hover:bg-surface-sunken'
                 }`}
               >

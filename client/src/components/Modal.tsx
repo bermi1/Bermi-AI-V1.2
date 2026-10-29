@@ -57,7 +57,7 @@ export const inputCls =
 export const labelCls = 'mb-1 block text-[12.5px] font-medium text-ink-muted'
 
 export const primaryBtnCls =
-  'rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40'
+  'rounded-xl bg-primary px-4 py-2 text-sm font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-40'
 
 export const ghostBtnCls =
   'rounded-xl border border-edge px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-40'

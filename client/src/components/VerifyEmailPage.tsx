@@ -72,7 +72,7 @@ export function VerifyEmailPage({ user, onVerified, onSignOut }: VerifyEmailPage
           <button
             type="submit"
             disabled={busy || code.length !== 6}
-            className="mt-4 w-full rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
+            className="mt-4 w-full rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-40"
           >
             {busy ? 'Verifying…' : 'Verify email'}
           </button>

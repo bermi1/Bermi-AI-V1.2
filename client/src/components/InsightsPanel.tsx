@@ -158,7 +158,7 @@ export function InsightsPanel() {
                 key={p}
                 onClick={() => setPeriod(p)}
                 className={`rounded-md px-3 py-1 text-[12.5px] font-medium capitalize transition-colors ${
-                  period === p ? 'bg-primary text-white' : 'text-ink-muted hover:bg-surface-sunken'
+                  period === p ? 'bg-primary text-on-primary' : 'text-ink-muted hover:bg-surface-sunken'
                 }`}
               >
                 {p === 'day' ? 'Today' : 'This week'}
@@ -168,7 +168,7 @@ export function InsightsPanel() {
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-50"
           >
             {refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {refreshing ? 'Analyzing…' : report ? 'Refresh' : 'Analyze'}
@@ -189,7 +189,7 @@ export function InsightsPanel() {
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="mt-4 flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-white hover:bg-primary-hover disabled:opacity-50"
+            className="mt-4 flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-on-primary hover:bg-primary-hover disabled:opacity-50"
           >
             {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             {refreshing ? 'Analyzing…' : 'Run my check-in'}

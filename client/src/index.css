@@ -5,42 +5,166 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Bermi AI color system — deep blue-purple on warm neutrals */
-  --primary: #3b2fbf;
-  --primary-hover: #2e2494;
-  --primary-soft: #edebfb;
-
-  --surface: #fafaf8;
-  --surface-raised: #ffffff;
-  --surface-sunken: #f1f0eb;
-
-  --ink: #1c1c1a;
-  --ink-muted: #5c5b56;
-  --ink-faint: #8d8c85;
-
-  --edge: #e6e5df;
-  --edge-strong: #d4d3cb;
-
+/* ---------- Design tokens ----------
+   Five brand themes x light/dark. Theme (`data-accent`) and appearance
+   (`data-theme`) are independent preferences. Selectors are attribute-based
+   so ANY element can carry its own theme — the Appearance settings use that
+   for live previews. Values validated for WCAG AA (see docs/theming.md). */
+:root,
+[data-accent="blue"] {
+  --primary: #3159EA;
+  --primary-hover: #2748C8;
+  --primary-soft: #EEF2FF;
+  --surface: #F6F8FC;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #ECF0F8;
+  --ink: #152039;
+  --ink-muted: #5A667E;
+  --ink-faint: #7C879C;
+  --edge: #E3E8F1;
+  --edge-strong: #CDD5E4;
+  --on-primary: #FFFFFF;
   color-scheme: light;
 }
 
-[data-theme='dark'] {
-  --primary: #6a5df2;
-  --primary-hover: #8479f5;
-  --primary-soft: #2a2554;
+[data-theme="dark"],
+[data-accent="blue"][data-theme="dark"] {
+  --primary: #7497FF;
+  --primary-hover: #93AEFF;
+  --primary-soft: #1B2A57;
+  --surface: #0E1529;
+  --surface-raised: #151E38;
+  --surface-sunken: #0A101F;
+  --ink: #EAF0FF;
+  --ink-muted: #A3AFCB;
+  --ink-faint: #7280A3;
+  --edge: #232E4E;
+  --edge-strong: #35446E;
+  --on-primary: #0B1220;
+  color-scheme: dark;
+}
 
-  --surface: #1c1c20;
-  --surface-raised: #26262c;
-  --surface-sunken: #161619;
+[data-accent="orange"] {
+  --primary: #BF3F0A;
+  --primary-hover: #9F3308;
+  --primary-soft: #FFF1E8;
+  --surface: #FFF9F4;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #FAEFE6;
+  --ink: #2A1A12;
+  --ink-muted: #6E5A4D;
+  --ink-faint: #8E7A6C;
+  --edge: #F0E2D7;
+  --edge-strong: #E1CDBD;
+  --on-primary: #FFFFFF;
+  color-scheme: light;
+}
+[data-accent="orange"][data-theme="dark"] {
+  --primary: #FF8A4C;
+  --primary-hover: #FFA473;
+  --primary-soft: #3A2316;
+  --surface: #16110E;
+  --surface-raised: #201813;
+  --surface-sunken: #100C0A;
+  --ink: #F7EEE7;
+  --ink-muted: #B8A89B;
+  --ink-faint: #8C7C6F;
+  --edge: #362B23;
+  --edge-strong: #4A3B30;
+  --on-primary: #0B1220;
+  color-scheme: dark;
+}
 
-  --ink: #ececea;
-  --ink-muted: #a5a4a0;
-  --ink-faint: #6f6e6a;
+[data-accent="rose"] {
+  --primary: #C2255C;
+  --primary-hover: #A51E4D;
+  --primary-soft: #FFE9F1;
+  --surface: #FCF8FA;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #F6ECF1;
+  --ink: #2B1822;
+  --ink-muted: #6F5864;
+  --ink-faint: #8F7A86;
+  --edge: #EEE0E7;
+  --edge-strong: #DDC6D1;
+  --on-primary: #FFFFFF;
+  color-scheme: light;
+}
+[data-accent="rose"][data-theme="dark"] {
+  --primary: #FF6F9F;
+  --primary-hover: #FF8DB3;
+  --primary-soft: #3A1727;
+  --surface: #180F16;
+  --surface-raised: #231620;
+  --surface-sunken: #120A10;
+  --ink: #F9ECF2;
+  --ink-muted: #BBA5B1;
+  --ink-faint: #8F7885;
+  --edge: #37242F;
+  --edge-strong: #4B3342;
+  --on-primary: #0B1220;
+  color-scheme: dark;
+}
 
-  --edge: #33333a;
-  --edge-strong: #45454e;
+[data-accent="violet"] {
+  --primary: #6741D9;
+  --primary-hover: #5530BD;
+  --primary-soft: #EFEAFD;
+  --surface: #F8F7FD;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #EEECF9;
+  --ink: #1C1735;
+  --ink-muted: #625F80;
+  --ink-faint: #827F9E;
+  --edge: #E3DFF3;
+  --edge-strong: #D0CAE8;
+  --on-primary: #FFFFFF;
+  color-scheme: light;
+}
+[data-accent="violet"][data-theme="dark"] {
+  --primary: #A084FF;
+  --primary-hover: #B7A0FF;
+  --primary-soft: #251C4D;
+  --surface: #0F0D21;
+  --surface-raised: #181532;
+  --surface-sunken: #0A0917;
+  --ink: #EFEBFF;
+  --ink-muted: #A9A5C8;
+  --ink-faint: #7C789F;
+  --edge: #262244;
+  --edge-strong: #383263;
+  --on-primary: #0B1220;
+  color-scheme: dark;
+}
 
+[data-accent="teal"] {
+  --primary: #0B7A75;
+  --primary-hover: #08635F;
+  --primary-soft: #E1F4F2;
+  --surface: #F5FAF9;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #E9F2F0;
+  --ink: #10262A;
+  --ink-muted: #51686B;
+  --ink-faint: #738A8D;
+  --edge: #DAE8E6;
+  --edge-strong: #C3D8D5;
+  --on-primary: #FFFFFF;
+  color-scheme: light;
+}
+[data-accent="teal"][data-theme="dark"] {
+  --primary: #2DD4BF;
+  --primary-hover: #5EEAD4;
+  --primary-soft: #10332F;
+  --surface: #0A1A1C;
+  --surface-raised: #102427;
+  --surface-sunken: #071213;
+  --ink: #E6F6F4;
+  --ink-muted: #9DB8B6;
+  --ink-faint: #6F8D8B;
+  --edge: #1D3336;
+  --edge-strong: #2B4A4D;
+  --on-primary: #0B1220;
   color-scheme: dark;
 }
 
@@ -325,3 +449,23 @@ h4 {
     animation: none;
   }
 }
+
+
+/* ---------- Personalisation attributes (set by lib/theme.tsx) ---------- */
+html[data-text='large'] { font-size: 112.5%; }
+html[data-text='xlarge'] { font-size: 125%; }
+html { --row-y: 0.75rem; }
+html[data-density='compact'] { --row-y: 0.4rem; }
+
+/* "Reduce motion" in Settings behaves like the OS setting. */
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Shared keyboard focus ring in the theme colour. */
+:focus-visible { outline-color: var(--primary); }

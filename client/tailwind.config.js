@@ -10,6 +10,7 @@ export default {
           hover: 'var(--primary-hover)',
           soft: 'var(--primary-soft)',
         },
+        'on-primary': 'var(--on-primary)',
         surface: {
           DEFAULT: 'var(--surface)',
           raised: 'var(--surface-raised)',
@@ -30,8 +31,10 @@ export default {
         serif: ['Charter', 'Georgia', 'Cambria', '"Times New Roman"', 'serif'],
       },
       borderRadius: {
-        xl: '0.875rem',
-        '2xl': '1.125rem',
+        lg: '0.75rem',
+        xl: '1rem',
+        '2xl': '1.25rem',
+        '3xl': '1.625rem',
       },
     },
   },

@@ -37,7 +37,7 @@ export function MyLearningPanel({ onStudyCourse }: { onStudyCourse: (title: stri
         </p>
         <button
           onClick={() => setBuildOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-white hover:bg-primary-hover"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-medium text-on-primary hover:bg-primary-hover"
         >
           <Plus size={14} /> Build a course
         </button>
@@ -348,7 +348,7 @@ function BuildCourseWizard({ onClose, onCreated }: { onClose: () => void; onCrea
             <button
               onClick={submit}
               disabled={busy || !data.topic.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
             >
               {busy && <Loader2 size={14} className="animate-spin" />} {busy ? 'Building your course…' : 'Create course'}
             </button>
@@ -356,7 +356,7 @@ function BuildCourseWizard({ onClose, onCreated }: { onClose: () => void; onCrea
             <button
               onClick={() => setStep(step + 1)}
               disabled={!canNext}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
             >
               Next <ArrowRight size={14} />
             </button>

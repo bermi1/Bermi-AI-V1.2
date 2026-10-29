@@ -49,12 +49,12 @@ export function NicheModal({ onClose, onSaved }: { onClose: () => void; onSaved:
     return (
       <Modal title="Your niche" subtitle="Saved to a knowledge base so Bermi remembers it" onClose={onClose} wide>
         <div className="space-y-5">
-          <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-hover p-5 text-white">
-            <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-white/80">
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-hover p-5 text-on-primary">
+            <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wide opacity-80">
               <Target size={14} /> Your niche
             </div>
             <h3 className="mt-1 font-serif text-[24px] font-medium">{report.niche}</h3>
-            <p className="mt-1 text-[14px] text-white/90">{report.tagline}</p>
+            <p className="mt-1 text-[14px] opacity-90">{report.tagline}</p>
           </div>
 
           {report.why_you && <p className="text-[13.5px] leading-relaxed text-ink-muted">{report.why_you}</p>}

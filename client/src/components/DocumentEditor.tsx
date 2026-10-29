@@ -105,7 +105,7 @@ export function DocumentEditor({ documentId, onClose, onSaved }: DocumentEditorP
                 onClick={() => loadVersion(v.version)}
                 className={`rounded-lg px-2 py-1 text-xs font-medium ${
                   v.version === viewingVersion
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-on-primary'
                     : 'text-ink-muted hover:bg-surface-sunken'
                 }`}
               >

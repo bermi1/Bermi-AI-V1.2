@@ -22,7 +22,7 @@ export function StudyPanel({ onStartStudy }: { onStartStudy: () => void }) {
         </div>
         <button
           onClick={onStartStudy}
-          className="rounded-lg bg-primary px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover"
+          className="rounded-lg bg-primary px-3.5 py-1.5 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover"
         >
           {started ? 'Continue learning' : 'Start studying'}
         </button>

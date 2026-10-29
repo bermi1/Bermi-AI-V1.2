@@ -29,7 +29,7 @@ export function CertificateView({ code, navigate }: { code: string; navigate: (r
 
       <div className="overflow-hidden rounded-3xl border-2 border-primary/30 bg-surface-raised shadow-lg">
         <div className="border-b border-edge bg-gradient-to-br from-primary/8 to-transparent px-8 py-10 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-white">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-on-primary">
             <Award size={28} />
           </div>
           <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-primary">Certificate of Completion</p>

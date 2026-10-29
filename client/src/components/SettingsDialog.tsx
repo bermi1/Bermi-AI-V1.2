@@ -1,3 +1,4 @@
+import { AppearanceSettings } from './AppearanceSettings'
 import { useEffect, useState } from 'react'
 import {
   Check,
@@ -6,22 +7,18 @@ import {
   Loader2,
   LogOut,
   Mic,
-  Monitor,
-  Moon,
   Palette,
   Plug,
   Plus,
   ShieldCheck,
   Sparkles,
   Square,
-  Sun,
   Trash2,
   User,
   X,
   Cpu,
 } from 'lucide-react'
 import { inputCls, labelCls, primaryBtnCls } from './Modal'
-import { useTheme, type ThemePreference } from '../lib/theme'
 import { useVoiceRecorder } from '../lib/useVoiceRecorder'
 import * as api from '../lib/api'
 import type { Connector, ModelOption, Profile, SettingsInfo } from '../lib/types'
@@ -119,7 +116,7 @@ export function SettingsDialog({
           {tab === 'profile' && (
             <ProfileTab onProfileSaved={onProfileSaved} onSignOut={onSignOut} />
           )}
-          {tab === 'appearance' && <AppearanceTab />}
+          {tab === 'appearance' && <AppearanceSettings />}
           {tab === 'models' && (
             <ModelsTab
               models={models}
@@ -257,44 +254,6 @@ function ProfileTab({
 
 // ---------------- Appearance ----------------
 
-const themeOptions: { value: ThemePreference; label: string; icon: typeof Sun; hint: string }[] = [
-  { value: 'light', label: 'Light', icon: Sun, hint: 'Warm paper white' },
-  { value: 'dark', label: 'Dark', icon: Moon, hint: 'Charcoal night' },
-  { value: 'system', label: 'System', icon: Monitor, hint: 'Match your device' },
-]
-
-function AppearanceTab() {
-  const { preference, setPreference } = useTheme()
-  return (
-    <div>
-      <SectionTitle title="Appearance" subtitle="How Bermi looks on this device." />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {themeOptions.map(({ value, label, icon: Icon, hint }) => (
-          <button
-            key={value}
-            onClick={() => setPreference(value)}
-            className={`flex flex-col items-start gap-2 rounded-xl border px-4 py-4 text-left transition-colors ${
-              preference === value
-                ? 'border-primary bg-primary-soft'
-                : 'border-edge hover:bg-surface-sunken'
-            }`}
-          >
-            <Icon size={18} className={preference === value ? 'text-primary' : 'text-ink-muted'} />
-            <div>
-              <div
-                className={`text-sm font-semibold ${preference === value ? 'text-primary' : ''}`}
-              >
-                {label}
-              </div>
-              <div className="text-xs text-ink-faint">{hint}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // ---------------- Models ----------------
 
 function ModelsTab({
@@ -345,7 +304,7 @@ function ModelsTab({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{m.label}</span>
                 {m.id === selectedModel && (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
                     Default
                   </span>
                 )}
@@ -581,7 +540,7 @@ function VoiceTab() {
                     <div className="flex items-center gap-2 text-[13.5px] font-medium">
                       {v.title}
                       {active && (
-                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
                           Active
                         </span>
                       )}
@@ -685,7 +644,7 @@ function ConnectorsTab() {
                 ) : c.status === 'available' && c.id === 'google' ? (
                   <a
                     href={api.googleAuthUrl()}
-                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
+                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-hover"
                   >
                     Connect {c.label}
                   </a>

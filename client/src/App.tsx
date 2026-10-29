@@ -18,6 +18,7 @@ import { LearnPortal } from './learn/LearnPortal'
 import { AdminDashboard } from './admin/AdminDashboard'
 import { StudyHud, StudyToast } from './components/StudyHud'
 import { BermiMark } from './components/Logo'
+import { PrefsSync } from './lib/theme'
 import * as api from './lib/api'
 import type { StudyAwardEvent } from './lib/api'
 import type {
@@ -89,7 +90,12 @@ export default function App() {
     return <VerifyEmailPage user={user} onVerified={setUser} onSignOut={signOut} />
   }
 
-  return <Router user={user} onSignedOut={() => setUser(null)} />
+  return (
+    <>
+      <PrefsSync />
+      <Router user={user} onSignedOut={() => setUser(null)} />
+    </>
+  )
 }
 
 // The Learn portal is a separate destination under /learn with its own landing
@@ -514,7 +520,7 @@ function Workspace({ user, onSignedOut }: { user: AuthUser; onSignedOut: () => v
               <LayoutGrid size={15} />
               <span className="hidden sm:inline">Dashboard</span>
               {documents.length > 0 && (
-                <span className="rounded-full bg-primary px-1.5 text-[10.5px] font-semibold text-white">
+                <span className="rounded-full bg-primary px-1.5 text-[10.5px] font-semibold text-on-primary">
                   {documents.length}
                 </span>
               )}

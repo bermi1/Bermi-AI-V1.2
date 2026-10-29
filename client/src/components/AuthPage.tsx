@@ -109,7 +109,7 @@ export function AuthPage({ onAuthed, onBack }: AuthPageProps) {
           )}
           <button
             onClick={() => switchView('login')}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover"
           >
             I've confirmed — sign in
             <ArrowRight size={16} />
@@ -223,7 +223,7 @@ export function AuthPage({ onAuthed, onBack }: AuthPageProps) {
           <button
             type="submit"
             disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[14.5px] font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:opacity-50"
           >
             {busy ? 'One moment…' : view === 'login' ? 'Sign in' : 'Create account'}
             {!busy && <ArrowRight size={16} />}

@@ -1,9 +1,13 @@
+import { useId } from 'react'
+import { ACCENT_META, useOptionalTheme, type Accent } from '../lib/theme'
+
 /**
  * The Bermi "b + sparkle" mark. `BermiMark` renders in currentColor so it
  * adapts to context; `BermiTile` is the app-icon treatment (brand blue tile,
  * white mark) used for avatars and the favicon.
  */
 export function BermiMark({ size = 24, className }: { size?: number; className?: string }) {
+  const maskId = useId()
   return (
     <svg
       viewBox="0 0 512 512"
@@ -14,7 +18,7 @@ export function BermiMark({ size = 24, className }: { size?: number; className?:
       focusable="false"
     >
       <defs>
-        <mask id="bermi-mark-mask">
+        <mask id={maskId}>
           <rect width="512" height="512" fill="black" />
           <rect x="143" y="61" width="72" height="256" rx="36" fill="white" />
           <circle cx="286" cy="307" r="143" fill="white" />
@@ -25,12 +29,25 @@ export function BermiMark({ size = 24, className }: { size?: number; className?:
           />
         </mask>
       </defs>
-      <rect width="512" height="512" fill="currentColor" mask="url(#bermi-mark-mask)" />
+      <rect width="512" height="512" fill="currentColor" mask={`url(#${maskId})`} />
     </svg>
   )
 }
 
-export function BermiTile({ size = 32, className }: { size?: number; className?: string }) {
+/** App-icon treatment. Uses the icon variant the user picked in Settings
+ * unless an explicit `accent` is given (e.g. for the picker itself). */
+export function BermiTile({
+  size = 32,
+  className,
+  accent,
+}: {
+  size?: number
+  className?: string
+  accent?: Accent
+}) {
+  const maskId = useId()
+  const theme = useOptionalTheme()
+  const fill = ACCENT_META[accent ?? theme?.prefs.icon ?? 'blue'].icon
   return (
     <svg
       viewBox="0 0 512 512"
@@ -41,7 +58,7 @@ export function BermiTile({ size = 32, className }: { size?: number; className?:
       focusable="false"
     >
       <defs>
-        <mask id="bermi-tile-mask">
+        <mask id={maskId}>
           <rect width="512" height="512" fill="black" />
           <rect x="143" y="61" width="72" height="256" rx="36" fill="white" />
           <circle cx="286" cy="307" r="143" fill="white" />
@@ -52,8 +69,8 @@ export function BermiTile({ size = 32, className }: { size?: number; className?:
           />
         </mask>
       </defs>
-      <rect width="512" height="512" rx="118" fill="#1B3FD6" />
-      <rect width="512" height="512" fill="#ffffff" mask="url(#bermi-tile-mask)" />
+      <rect width="512" height="512" rx="118" fill={fill} />
+      <rect width="512" height="512" fill="#ffffff" mask={`url(#${maskId})`} />
     </svg>
   )
 }

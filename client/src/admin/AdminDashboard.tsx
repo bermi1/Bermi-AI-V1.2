@@ -203,7 +203,7 @@ function UsersTab({
                   <tr key={u.id} className="border-t border-edge">
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-white">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-on-primary">
                           {u.name?.[0]?.toUpperCase() || 'U'}
                         </div>
                         <div className="min-w-0">
@@ -543,7 +543,7 @@ function ProviderKeysPanel() {
         <button
           onClick={addKey}
           disabled={busy || !key.trim()}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add key
         </button>
@@ -609,7 +609,7 @@ function QuotaPanel() {
         <button
           onClick={save}
           disabled={busy || Number(input) === perHour || !(Number(input) > 0)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
         >
           {busy && <Loader2 size={14} className="animate-spin" />} {saved ? 'Saved' : 'Save'}
         </button>
@@ -823,7 +823,7 @@ function ResetPasswordModal({ user, onClose }: { user: AdminUser; onClose: () =>
               <button
                 onClick={submit}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary hover:bg-primary-hover disabled:opacity-50"
               >
                 {busy && <Loader2 size={14} className="animate-spin" />} Set password
               </button>

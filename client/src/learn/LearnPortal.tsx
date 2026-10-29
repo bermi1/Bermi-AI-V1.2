@@ -134,7 +134,7 @@ function PortalSidebar({
         {/* Brand */}
         <div className="flex items-center justify-between px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
           <button onClick={() => navigate({ name: 'landing' })} className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-on-primary">
               <BermiMark size={18} />
             </div>
             <div className="text-left leading-none">
@@ -176,7 +176,7 @@ function PortalSidebar({
             <MessageSquare size={16} /> Back to Bermi Chat
           </button>
           <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[13px] font-semibold text-white">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[13px] font-semibold text-on-primary">
               {user.name?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="min-w-0 flex-1">
@@ -304,7 +304,7 @@ function InstitutionLibrary({ slug, navigate }: { slug: string; navigate: (r: Le
           </button>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary">
                 <Building2 size={26} />
               </div>
               <div>
