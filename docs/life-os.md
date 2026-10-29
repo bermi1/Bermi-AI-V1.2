@@ -27,6 +27,19 @@ Append-only ledger, idempotency keys, atomic reservation, refund on any provider
 and global daily cap (Bermi Control). Priced features: `companion_plan`, `study_materials`, `idea_shape`
 (editable in Bermi Control). Deterministic features (scheduling, budgets, planner, flashcard review) are free.
 
+## Free AI, agent and voice
+
+- **Free-first providers**: Groq, Cerebras and NVIDIA NIM are tried before OpenRouter (whose models are billed). The NVIDIA key
+  can be named `NVIDIA_API_KEY` or `NVIDIA_NIM`. Keys can also be added in Bermi Control without a redeploy.
+- **Small tokens**: the companion uses the small `bermi-fast` model with a 700-token reply cap and at most 3 tool calls per request;
+  tool results are truncated. Early-access plan: 150 credits a month (editable in Bermi Control).
+- **Agent**: `server/src/life/agent.js`. The model may call read-only tools (`schedule`, `free_slots`, `money`) on the signed-in
+  person's own data, then answers and/or *proposes* changes. It never writes: proposals still go through validation, conflict
+  checks and the person's confirmation. Turning off "use my goals and schedule as context" disables the tools.
+- **Voice**: on-device speech recognition when the browser has it (otherwise Bermi's transcription), English or Kiswahili.
+  Voice mode sends what you say, reads the reply aloud and listens for "confirm" / "cancel". "Open my money" style commands run
+  on the device with no AI and no credits.
+
 ## Content
 
 - Books/concepts/verses/sessions are seeded and layered with admin overrides; only `published` items reach users.

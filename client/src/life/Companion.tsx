@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, CalendarClock, Check, Flag, ListTodo, Mic, MessageSquare, PiggyBank, Send, Square } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Check, Eye, Flag, Headphones, ListTodo, Mic, MessageSquare, PiggyBank, Send, Square } from 'lucide-react'
 import { lifeApi, LifeError, todayYmd, type Proposal, type ProposedAction } from './api'
 import { btn, field, notifyLifeChanged, Sheet, Spinner, useToast, fmtDateShort, fmtMoney, fmtTime } from './ui'
 import { newIdemKey } from './hooks'
@@ -21,6 +21,8 @@ const SUGGESTIONS = [
   'Study for 2 hours tomorrow afternoon',
   'Lecture Monday 10:00 to 12:00',
   'Save TZS 40,000 in two weeks',
+  'What’s on tomorrow?',
+  'Find me an hour to study on Friday',
   'Remind me to call mum at 6pm',
 ]
 
@@ -41,7 +43,41 @@ const speechCtor = (): SR | null => {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
-export function CompanionProvider({ children, onOpenChat }: { children: ReactNode; onOpenChat: (text?: string) => void }) {
+// ---------------------------------------------------------------- voice commands
+// Simple spoken commands are understood on the device (no AI, no credits), in
+// English and a little Kiswahili. Anything else is treated as a request to plan.
+
+export type VoiceCommand = { type: 'nav'; to: string; label: string } | { type: 'confirm' } | { type: 'cancel' } | { type: 'stop' } | null
+
+export function parseVoiceCommand(raw: string, hasProposal: boolean): VoiceCommand {
+  const t = raw.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  if (!t) return null
+  if (/^(stop listening|stop voice|voice off|acha kusikiliza)$/.test(t)) return { type: 'stop' }
+  if (hasProposal) {
+    if (/^(yes|yeah|yep|confirm|confirmed|do it|go ahead|apply|apply it|add it|add them|looks good|ok|okay|sawa|ndiyo|ndio|thibitisha)( please)?$/.test(t)) return { type: 'confirm' }
+    if (/^(no|nope|cancel|discard|never ?mind|forget it|hapana|ghairi)( please)?$/.test(t)) return { type: 'cancel' }
+  }
+  const nav = t.match(/^(?:open|go to|show|take me to|fungua|nenda)(?: me)?(?: my| the)? (.+)$/)
+  if (nav) {
+    const w = nav[1]
+    if (/(^| )(day|today|schedule|calendar|planner|siku)( |$)/.test(w)) return { type: 'nav', to: '/my/day', label: 'My Day' }
+    if (/(learning|study|audiobooks?|books|beats|music|masomo)/.test(w)) return { type: 'nav', to: '/my/learning', label: 'My Learning' }
+    if (/(money|budget|savings|finance|ideas?|idea lab|pesa)/.test(w)) return { type: 'nav', to: '/my/money', label: 'My Money' }
+    if (/(wellbeing|well being|mood|breathing|breathe|meditation|habits)/.test(w)) return { type: 'nav', to: '/my/wellbeing', label: 'My Wellbeing' }
+    if (/(chat|conversation|full chat)/.test(w)) return { type: 'nav', to: '/chat', label: 'the full chat' }
+  }
+  return null
+}
+
+const stepLabel = (s: { tool: string; args: Record<string, unknown> }) => {
+  const d = typeof s.args?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.args.date) ? fmtDateShort(s.args.date) : ''
+  if (s.tool === 'schedule') return `Looked at your schedule${d ? ` for ${d}` : ''}`
+  if (s.tool === 'free_slots') return `Looked for open time${d ? ` on ${d}` : ''}`
+  if (s.tool === 'money') return 'Checked this month’s budget'
+  return 'Checked your plan'
+}
+
+export function CompanionProvider({ children, onOpenChat, onNavigate }: { children: ReactNode; onOpenChat: (text?: string) => void; onNavigate: (to: string) => void }) {
   const [open, setOpen] = useState(false)
   const [prefill, setPrefill] = useState('')
   const ctl = useMemo<Ctl>(
@@ -56,7 +92,7 @@ export function CompanionProvider({ children, onOpenChat }: { children: ReactNod
   return (
     <CompanionCtx.Provider value={ctl}>
       {children}
-      <CompanionSheet open={open} prefill={prefill} onClose={() => setOpen(false)} onOpenChat={onOpenChat} />
+      <CompanionSheet open={open} prefill={prefill} onClose={() => setOpen(false)} onOpenChat={onOpenChat} onNavigate={onNavigate} />
     </CompanionCtx.Provider>
   )
 }
@@ -123,7 +159,7 @@ function Orb({ state, style }: { state: 'idle' | 'listening' | 'thinking'; style
   )
 }
 
-function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean; prefill: string; onClose: () => void; onOpenChat: (t?: string) => void }) {
+function CompanionSheet({ open, prefill, onClose, onOpenChat, onNavigate }: { open: boolean; prefill: string; onClose: () => void; onOpenChat: (t?: string) => void; onNavigate: (to: string) => void }) {
   const toast = useToast()
   const theme = useOptionalTheme()
   const [text, setText] = useState('')
@@ -143,53 +179,104 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
     }
   }, [open, prefill])
 
-  // Voice: the browser's own recogniser when there is one (fast, on-device in
-  // many browsers); otherwise record a clip and use Bermi's transcription.
+  // ---- Voice -----------------------------------------------------------
+  // The browser's own recogniser when there is one (fast, on-device in many
+  // browsers); otherwise record a clip and use Bermi's transcription. In Voice
+  // mode a spoken request is sent straight away, the reply is read aloud, and
+  // "confirm" / "cancel" can be said instead of tapped. Simple commands such as
+  // "open my money" are handled on the device — no AI, no credits.
   const [listening, setListening] = useState(false)
+  const [voiceMode, setVoiceMode] = useState(() => { try { return localStorage.getItem('bermi-voice-mode') === '1' } catch { return false } })
+  const [lang, setLang] = useState<'auto' | 'sw-TZ' | 'en-US'>(() => { try { return (localStorage.getItem('bermi-voice-lang') as 'auto' | 'sw-TZ' | 'en-US') || 'auto' } catch { return 'auto' } })
   const recRef = useRef<InstanceType<SR> | null>(null)
-  const clip = useVoiceRecorder(async (blob) => {
-    const t = await transcribeAudio(blob)
-    if (t) setText((cur) => (cur ? `${cur} ${t}` : t))
-  })
+  const proposalRef = useRef<Proposal | null>(null)
+  proposalRef.current = proposal
+  const voiceRef = useRef(voiceMode)
+  voiceRef.current = voiceMode
+  const langTag = () => (lang === 'auto' ? navigator.language || 'en-US' : lang)
+  const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window
   const canNative = typeof window !== 'undefined' && !!speechCtor()
   const canClip = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
   const voiceOk = canNative || canClip
 
+  const say = (t: string, then?: () => void) => {
+    if (!canSpeak || !voiceRef.current || !t) return then?.()
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(t)
+    u.lang = langTag()
+    u.rate = 1.02
+    u.onend = () => then?.()
+    u.onerror = () => then?.()
+    window.speechSynthesis.speak(u)
+  }
+
+  const clip = useVoiceRecorder(async (blob) => {
+    const t = await transcribeAudio(blob)
+    if (t) handleSpoken(t)
+  })
+
+  const listenOnce = () => {
+    if (!canNative || listening) return
+    const Ctor = speechCtor()!
+    const rec = new Ctor()
+    rec.lang = langTag()
+    rec.interimResults = false
+    rec.continuous = false
+    rec.onresult = (e) => {
+      const t = Array.from(e.results).map((r) => r[0].transcript).join(' ').trim()
+      if (t) handleSpoken(t)
+    }
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microphone access is blocked. You can still type.', 'error')
+      else if (e.error !== 'aborted' && e.error !== 'no-speech') toast("Couldn't hear that — try again or type it.", 'error')
+    }
+    rec.onend = () => setListening(false)
+    recRef.current = rec
+    setListening(true)
+    try { rec.start() } catch { setListening(false) }
+  }
+
   const toggleVoice = () => {
     if (canNative) {
-      if (listening) {
-        recRef.current?.stop()
-        return
-      }
-      const Ctor = speechCtor()!
-      const rec = new Ctor()
-      rec.lang = navigator.language || 'en-US'
-      rec.interimResults = false
-      rec.continuous = false
-      rec.onresult = (e) => {
-        const t = Array.from(e.results).map((r) => r[0].transcript).join(' ').trim()
-        if (t) setText((cur) => (cur ? `${cur} ${t}` : t))
-      }
-      rec.onerror = (e) => {
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microphone access is blocked. You can still type.', 'error')
-        else if (e.error !== 'aborted' && e.error !== 'no-speech') toast("Couldn't hear that — try again or type it.", 'error')
-      }
-      rec.onend = () => setListening(false)
-      recRef.current = rec
-      setListening(true)
-      rec.start()
+      if (listening) recRef.current?.stop()
+      else listenOnce()
     } else if (clip.phase === 'recording') clip.stop()
     else clip.start()
   }
-  useEffect(() => () => recRef.current?.stop(), [])
-  useEffect(() => {
-    if (clip.error) toast(clip.error, 'error')
-  }, [clip.error, toast])
+
+  const handleSpoken = (spoken: string) => {
+    const cmd = parseVoiceCommand(spoken, !!proposalRef.current?.actions.length)
+    if (cmd?.type === 'nav') {
+      say(`Opening ${cmd.label}.`)
+      onClose()
+      onNavigate(cmd.to)
+      return
+    }
+    if (cmd?.type === 'confirm') return void confirmRef.current()
+    if (cmd?.type === 'cancel') {
+      setProposal(null)
+      say('Okay, I won’t add anything.')
+      return
+    }
+    if (cmd?.type === 'stop') {
+      setVoiceMode(false)
+      voiceRef.current = false
+      window.speechSynthesis?.cancel()
+      return
+    }
+    setText((cur) => (voiceRef.current ? spoken : cur ? `${cur} ${spoken}` : spoken))
+    if (voiceRef.current) void submit(spoken)
+  }
+
+  useEffect(() => () => { recRef.current?.stop(); window.speechSynthesis?.cancel() }, [])
+  useEffect(() => { if (!open) { recRef.current?.stop(); window.speechSynthesis?.cancel() } }, [open])
+  useEffect(() => { if (clip.error) toast(clip.error, 'error') }, [clip.error, toast])
+  useEffect(() => { try { localStorage.setItem('bermi-voice-mode', voiceMode ? '1' : '0'); localStorage.setItem('bermi-voice-lang', lang) } catch { /* ignore */ } }, [voiceMode, lang])
 
   const state = busy ? 'thinking' : listening || clip.phase === 'recording' ? 'listening' : 'idle'
 
-  const submit = async () => {
-    const t = text.trim()
+  const submit = async (override?: string) => {
+    const t = (override ?? text).trim()
     if (!t || busy) return
     setBusy(true)
     setError(null)
@@ -199,9 +286,17 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
       const p = await lifeApi.plan({ text: t, date: todayYmd(now), time: now.toTimeString().slice(0, 5), idemKey: idem.current })
       setProposal(p)
       idem.current = newIdemKey()
+      if (voiceRef.current) {
+        const n = p.actions.length
+        const line = n
+          ? `${p.summary || 'Here is what I would add.'} That is ${n} item${n === 1 ? '' : 's'}${p.conflicts.length ? `, with ${p.conflicts.length} overlap${p.conflicts.length === 1 ? '' : 's'}` : ''}. Say confirm to add, or cancel.`
+          : p.summary || p.message || 'I could not find anything to add.'
+        say(line, n ? listenOnce : undefined)
+      }
     } catch (e) {
       const le = e as LifeError
       setError({ message: le.message, refunded: le.refunded })
+      say(le.message)
       // The same words after a failure are a fresh attempt.
       idem.current = newIdemKey()
     } finally {
@@ -210,15 +305,17 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
   }
 
   const confirm = async () => {
-    if (!proposal?.actions.length) return
+    const pr = proposalRef.current
+    if (!pr?.actions.length) return
     setApplying(true)
     try {
-      const r = await lifeApi.apply(proposal.actions)
+      const r = await lifeApi.apply(pr.actions)
       const failed = r.results.filter((x) => !x.ok)
       if (failed.length) toast(`${r.applied} added, ${failed.length} couldn't be saved: ${failed[0].error ?? 'invalid'}`, 'error')
       else toast(r.applied === 1 ? 'Added' : `${r.applied} things added`)
       notifyLifeChanged()
       if (r.applied > 0) {
+        say(r.applied === 1 ? 'Done. Added.' : `Done. Added ${r.applied} items.`)
         setProposal(null)
         setText('')
         onClose()
@@ -229,13 +326,15 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
       setApplying(false)
     }
   }
+  const confirmRef = useRef(confirm)
+  confirmRef.current = confirm
 
   return (
     <Sheet open={open} onClose={onClose} title="Bermi" side>
       <div className="flex min-h-full flex-col">
         <Orb state={state} style={theme?.prefs.assistant ?? 'orb'} />
         <p className="mt-3 text-center text-[13.5px] text-ink-muted" aria-live="polite">
-          {state === 'listening' ? 'Listening…' : state === 'thinking' ? 'Working out a plan…' : 'Tell me what to plan. I’ll show you before anything changes.'}
+          {state === 'listening' ? 'Listening…' : state === 'thinking' ? 'Thinking it through…' : voiceMode ? 'Voice mode: say what you need, then “confirm” or “cancel”.' : 'Ask a question or tell me what to plan. I’ll show you before anything changes.'}
         </p>
 
         <div className="mt-4">
@@ -246,7 +345,7 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
             }}
             rows={3}
             maxLength={600}
@@ -267,10 +366,30 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
                 <span className="hidden sm:inline">{state === 'listening' ? 'Stop' : 'Speak'}</span>
               </button>
             )}
-            <button type="button" onClick={submit} disabled={!text.trim() || busy} className={`${btn.primary} ml-auto`}>
-              {busy ? <Spinner /> : <Send size={15} />} Plan it
+            {voiceOk && canSpeak && (
+              <button
+                type="button"
+                onClick={() => { setVoiceMode((v) => !v); window.speechSynthesis?.cancel() }}
+                aria-pressed={voiceMode}
+                aria-label="Voice mode: send what I say and read replies aloud"
+                title="Voice mode: sends what you say, reads replies aloud, and listens for confirm / cancel"
+                className={`${btn.ghost} !px-3 ${voiceMode ? '!border-primary !bg-primary-soft !text-primary' : ''}`}
+              >
+                <Headphones size={16} /> <span className="hidden sm:inline">Voice mode</span>
+              </button>
+            )}
+            <button type="button" onClick={() => void submit()} disabled={!text.trim() || busy} className={`${btn.primary} ml-auto`}>
+              {busy ? <Spinner /> : <Send size={15} />} Ask
             </button>
           </div>
+          {voiceOk && (
+            <div role="radiogroup" aria-label="Voice language" className="mt-2 flex items-center gap-1.5 text-[12px] text-ink-muted">
+              <span>Voice:</span>
+              {([['auto', 'Auto'], ['en-US', 'English'], ['sw-TZ', 'Kiswahili']] as const).map(([v, l]) => (
+                <button key={v} role="radio" aria-checked={lang === v} onClick={() => setLang(v)} className={`min-h-[30px] rounded-full px-2.5 font-medium ${lang === v ? 'bg-primary-soft text-primary' : 'bg-surface-sunken hover:text-ink'}`}>{l}</button>
+              ))}
+            </div>
+          )}
           {!voiceOk && <p className="mt-2 text-[12px] text-ink-faint">Voice input isn’t available in this browser — typing works everywhere.</p>}
         </div>
 
@@ -297,7 +416,12 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
         {proposal && (
           <div className="mt-5" aria-live="polite">
             <p className="text-[14px] font-medium">{proposal.summary || 'Here’s what I’d add:'}</p>
-            {proposal.actions.length === 0 ? (
+            {proposal.steps && proposal.steps.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-[12px] text-ink-muted" aria-label="What I looked at">
+                {proposal.steps.map((s, i) => <li key={i} className="flex items-center gap-1.5"><Eye size={12} aria-hidden /> {stepLabel(s)}</li>)}
+              </ul>
+            )}
+            {proposal.answered && proposal.actions.length === 0 ? null : proposal.actions.length === 0 ? (
               <p className="mt-2 text-[13.5px] text-ink-muted">{proposal.message || 'I couldn’t turn that into something to add. Try giving a day and a time.'}</p>
             ) : (
               <ul className="mt-3 divide-y divide-edge rounded-2xl border border-edge">
@@ -332,7 +456,7 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat }: { open: boolean;
             )}
             {proposal.actions.length > 0 && (
               <div className="mt-4 flex gap-2">
-                <button type="button" onClick={confirm} disabled={applying} className={`${btn.primary} flex-1`}>
+                <button type="button" onClick={() => void confirm()} disabled={applying} className={`${btn.primary} flex-1`}>
                   {applying ? <Spinner /> : <Check size={16} />} Confirm
                 </button>
                 <button type="button" onClick={() => setProposal(null)} className={btn.ghost}>Discard</button>

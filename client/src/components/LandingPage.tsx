@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Faq } from '../landing/Faq'
-import { Home } from '../landing/Home'
 import { Pricing } from '../landing/Pricing'
 import { LandingFooter, LandingNav } from '../landing/shared'
 import type { LandingPath } from '../landing/shared'
@@ -11,12 +10,12 @@ interface LandingPageProps {
 }
 
 function isLandingPath(p: string): p is LandingPath {
-  return p === '/' || p === '/pricing' || p === '/faq'
+  return p === '/pricing' || p === '/faq'
 }
 
 export function LandingPage({ onSignIn, onGetStarted }: LandingPageProps) {
   const [path, setPath] = useState<LandingPath>(() =>
-    isLandingPath(window.location.pathname) ? window.location.pathname : '/',
+    isLandingPath(window.location.pathname) ? window.location.pathname : '/pricing',
   )
 
   useEffect(() => {
@@ -37,7 +36,6 @@ export function LandingPage({ onSignIn, onGetStarted }: LandingPageProps) {
   return (
     <div className="min-h-dvh bg-[#07070c] text-white">
       <LandingNav path={path} go={go} onSignIn={onSignIn} onGetStarted={onGetStarted} />
-      {path === '/' && <Home onSignIn={onSignIn} onGetStarted={onGetStarted} />}
       {path === '/pricing' && <Pricing onGetStarted={onGetStarted} />}
       {path === '/faq' && <Faq />}
       <LandingFooter go={go} />

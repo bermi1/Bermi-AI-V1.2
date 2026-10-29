@@ -80,10 +80,17 @@ export default function App() {
   }
 
   if (!user) {
-    return showAuth ? (
-      <AuthPage onAuthed={checkAuth} onBack={() => setShowAuth(false)} />
-    ) : (
+    // No marketing home page: signed-out visitors land straight on sign in /
+    // sign up. /pricing and /faq stay reachable (and prerendered) for search.
+    const p = window.location.pathname
+    const publicInfo = (p === '/pricing' || p === '/faq') && !showAuth
+    return publicInfo ? (
       <LandingPage onSignIn={() => setShowAuth(true)} onGetStarted={() => setShowAuth(true)} />
+    ) : (
+      <AuthPage
+        onAuthed={checkAuth}
+        onBack={p === '/pricing' || p === '/faq' ? () => setShowAuth(false) : undefined}
+      />
     )
   }
 

@@ -19,7 +19,7 @@ export function usePublicStats(): PublicStats | null {
   return stats
 }
 
-export type LandingPath = '/' | '/pricing' | '/faq'
+export type LandingPath = '/pricing' | '/faq'
 
 export interface LandingNavProps {
   path: LandingPath
@@ -28,27 +28,10 @@ export interface LandingNavProps {
   onGetStarted: () => void
 }
 
-// Features and For Institutions live as sections on the homepage, not
-// separate pages — clicking them from elsewhere navigates to '/' first,
-// then smooth-scrolls to the section once it's mounted.
-const NAV_LINKS: { href: LandingPath; hash?: string; label: string }[] = [
-  { href: '/', label: 'Home' },
-  { href: '/', hash: 'features', label: 'Features' },
+const NAV_LINKS: { href: LandingPath; label: string }[] = [
   { href: '/pricing', label: 'Pricing' },
   { href: '/faq', label: 'FAQ' },
-  { href: '/', hash: 'institutions', label: 'For Institutions' },
 ]
-
-function scrollToHash(hash: string) {
-  // A double rAF (rather than a fixed timeout) waits for exactly one paint
-  // after Home mounts before the target section can possibly exist in the
-  // DOM — reliable regardless of how fast or slow that mount happens to be.
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  })
-}
 
 export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps) {
   const [scrolled, setScrolled] = useState(false)
@@ -68,9 +51,9 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
         }`}
       >
         <button
-          onClick={() => go('/')}
+          onClick={onSignIn}
           className="flex items-center gap-2"
-          aria-label="Bermi AI home"
+          aria-label="Bermi AI — open the app"
         >
           <BermiMark size={22} className="text-white" />
           <span className="text-[15px] font-semibold tracking-tight text-white">Bermi AI</span>
@@ -79,12 +62,9 @@ export function LandingNav({ path, go, onSignIn, onGetStarted }: LandingNavProps
           {NAV_LINKS.map((l) => (
             <button
               key={l.label}
-              onClick={() => {
-                go(l.href)
-                if (l.hash) scrollToHash(l.hash)
-              }}
+              onClick={() => go(l.href)}
               className={`rounded-lg px-3 py-1.5 text-[13.5px] font-medium transition-colors ${
-                path === l.href && !l.hash ? 'text-white' : 'text-white/60 hover:text-white'
+                path === l.href ? 'text-white' : 'text-white/60 hover:text-white'
               }`}
             >
               {l.label}
@@ -124,10 +104,7 @@ export function LandingFooter({ go }: { go: (to: LandingPath) => void }) {
           {NAV_LINKS.map((l) => (
             <button
               key={l.label}
-              onClick={() => {
-                go(l.href)
-                if (l.hash) scrollToHash(l.hash)
-              }}
+              onClick={() => go(l.href)}
               className="text-[12.5px] text-white/50 transition-colors hover:text-white"
             >
               {l.label}

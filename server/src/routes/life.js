@@ -9,6 +9,7 @@ import { dayBlocks, findConflicts, freeSlots, busyMinutes, checkProposal, occurs
 import { planSaving, monthSummary, contributed } from '../life/money.js'
 import { publishedContent, pickDaily } from '../life/content.js'
 import { sanitizeKit } from '../life/kinds.js'
+import { runAgent, contextAllowed } from '../life/agent.js'
 
 export const lifeRouter = Router()
 
@@ -243,9 +244,9 @@ const ACTION_KINDS = ['task', 'event', 'saving', 'goal']
 const PLAN_PROMPT = (today, nowTime) =>
   `You turn a person's plain-language description of their day or plans into structured actions for a planner app.
 Today's date is ${today}; the current local time is ${nowTime}.
-Reply with ONLY a JSON object, no prose, no code fences:
-{"summary": "one friendly sentence", "actions": [ ... ]}
-Each action is one of:
+You are a careful planning assistant. You can look at the person's own plan with tools before answering, and you can only PROPOSE changes — the person confirms them.
+If the person asks a question (for example "what's on tomorrow?" or "when am I free?"), answer it briefly in "say" and leave "actions" empty.
+Use "say" (one or two friendly sentences) for your reply. Each action is one of:
 {"type":"event","title":str,"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","eventType":"lecture|meeting|deadline|group|personal|study|errand"}
 {"type":"task","title":str,"date":"YYYY-MM-DD"|null,"time":"HH:MM"|null,"durationMin":int|null}
 {"type":"saving","title":str,"targetAmount":number,"dueDate":"YYYY-MM-DD","currency":"TZS"}
@@ -312,15 +313,20 @@ lifeRouter.post(
     }
 
     let raw
+    let parsed = null
+    let steps = []
     try {
-      raw = await complete({
-        model: 'bermi-fast',
-        maxTokens: 900,
-        messages: [
-          { role: 'system', content: PLAN_PROMPT(today, nowTime) },
-          { role: 'user', content: text },
-        ],
+      const run = await runAgent({
+        uid: req.user.id,
+        system: PLAN_PROMPT(today, nowTime),
+        text,
+        today,
+        useTools: await contextAllowed(req.user.id),
+        complete,
       })
+      raw = run.raw
+      parsed = run.final
+      steps = run.steps
     } catch (err) {
       await credits.refund(req.user.id, reservation, `provider error: ${err.message}`)
       return res.status(502).json({
@@ -335,11 +341,16 @@ lifeRouter.post(
       return res.status(503).json({ code: 'ai_unavailable', error: 'AI is not configured on this server. You can still add items yourself — your credits were not used.', refunded: true })
     }
 
-    const parsed = extractJson(raw)
     const proposed = (Array.isArray(parsed?.actions) ? parsed.actions : []).slice(0, 12).map((a) => normaliseAction(a, today)).filter(Boolean)
+    const say = String(parsed?.say ?? parsed?.summary ?? '').slice(0, 500)
     if (!proposed.length) {
+      // A real answer to a question is useful work and keeps its (small) cost;
+      // only a reply with nothing in it is refunded.
+      if (say) {
+        return res.json({ summary: say, answered: true, actions: [], conflicts: [], steps, creditsUsed: reservation.cost, balance: reservation.balance })
+      }
       await credits.refund(req.user.id, reservation, 'no usable actions')
-      return res.json({ summary: '', actions: [], conflicts: [], refunded: true, message: "I couldn't find anything to schedule in that. Try mentioning what, and roughly when." })
+      return res.json({ summary: '', actions: [], conflicts: [], steps, refunded: true, message: "I couldn't find anything to schedule in that. Try mentioning what, and roughly when." })
     }
 
     // Deterministic conflict check against what's already planned that day.
@@ -362,7 +373,8 @@ lifeRouter.post(
     for (const [day, list] of byDay) conflicts.push(...checkProposal(day, { events, tasks }, list).map((c) => ({ ...c, date: day })))
 
     res.json({
-      summary: String(parsed?.summary ?? '').slice(0, 300),
+      summary: say.slice(0, 300),
+      steps,
       actions: proposed.map((p, i) => ({ id: `a${i}`, type: p.type, kind: p.kind, data: p.data })),
       conflicts,
       creditsUsed: reservation.cost,

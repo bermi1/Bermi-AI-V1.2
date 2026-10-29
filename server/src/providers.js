@@ -183,7 +183,9 @@ async function cerebrasProvider() {
 }
 
 async function nvidiaProvider() {
-  const keys = await envOrSetting(numberedEnvKeys('NVIDIA_API_KEY'), 'nvidia_api_key')
+  // `NVIDIA_NIM` is accepted as an alias: that is the name the Vercel project
+  // was configured with, and NVIDIA_API_KEY was the only name read before.
+  const keys = await envOrSetting([...numberedEnvKeys('NVIDIA_API_KEY'), ...numberedEnvKeys('NVIDIA_NIM', 5)], 'nvidia_api_key')
   if (!keys.length) return null
   return {
     id: 'nvidia',
@@ -239,7 +241,8 @@ export const MANAGED_KEY_PROVIDERS = [
 ]
 
 export function envKeyCount(envBase) {
-  return numberedEnvKeys(envBase).flatMap((k) => parseKeys(process.env[k])).length
+  const names = envBase === 'NVIDIA_API_KEY' ? [...numberedEnvKeys(envBase), ...numberedEnvKeys('NVIDIA_NIM', 5)] : numberedEnvKeys(envBase)
+  return names.flatMap((k) => parseKeys(process.env[k])).length
 }
 
 export async function addStoredKey(settingKey, newKey) {
@@ -262,11 +265,13 @@ export async function removeStoredKey(settingKey, index) {
 
 /** All configured providers, in preference order. Unconfigured ones are skipped. */
 export async function listProviders() {
+  // Free-tier providers first, so everyday use costs nothing; OpenRouter's
+  // models are billed now, so it's the fallback (and the only web-search one).
   const all = await Promise.all([
-    openrouterProvider(),
     groqProvider(),
     cerebrasProvider(),
     nvidiaProvider(),
+    openrouterProvider(),
     localProvider(),
   ])
   return all.filter(Boolean)

@@ -44,6 +44,7 @@ export function LifeShell(props: Props) {
   return (
     <ToastProvider>
       <CompanionProvider
+        onNavigate={props.go}
         onOpenChat={(text) => {
           if (text) {
             try {

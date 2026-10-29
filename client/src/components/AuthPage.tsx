@@ -144,17 +144,17 @@ export function AuthPage({ onAuthed, onBack }: AuthPageProps) {
             onClick={onBack}
             disabled={!onBack}
             className="mb-5 rounded-full disabled:cursor-default"
-            aria-label={onBack ? 'Back to home' : undefined}
+            aria-label={onBack ? 'Back' : undefined}
           >
             <BermiMark size={56} className="text-primary" />
           </button>
           <h1 className="font-serif text-[28px] font-medium leading-tight tracking-tight md:text-[32px]">
-            {view === 'login' ? 'Welcome back' : 'Your ideas, amplified'}
+            {view === 'login' ? 'Welcome back' : 'Your life, better organized'}
           </h1>
           <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
             {view === 'login'
-              ? 'Sign in to continue to Bermi AI.'
-              : 'Create your Bermi AI account — chat, documents, and your own AI brains.'}
+              ? 'Sign in to pick up where you left off.'
+              : 'Your life better organized, your potential better supported — plan your day, learn, manage your money and look after your wellbeing. Free for early users.'}
           </p>
         </div>
 

@@ -238,6 +238,8 @@ export interface ProposedAction {
 }
 export interface Proposal {
   summary: string
+  answered?: boolean
+  steps?: { tool: string; args: Record<string, unknown> }[]
   actions: ProposedAction[]
   conflicts: (Block & { date: string })[]
   creditsUsed?: number

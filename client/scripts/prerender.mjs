@@ -20,13 +20,6 @@ const ssrOutDir = path.join(root, '.ssr-tmp')
 
 const PAGES = [
   {
-    path: '/',
-    outFile: path.join(distDir, 'index.html'),
-    title: 'Your life better organized, your potential better supported',
-    description:
-      'Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported.',
-  },
-  {
     path: '/pricing',
     outFile: path.join(distDir, 'pricing', 'index.html'),
     title: 'Pricing',

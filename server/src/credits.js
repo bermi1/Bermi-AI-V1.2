@@ -10,7 +10,7 @@ import { storage } from './storage/index.js'
 
 export const DEFAULT_ENTITLEMENTS = {
   plans: {
-    free: { label: 'Free', monthlyCredits: 60 },
+    free: { label: 'Free (early access)', monthlyCredits: 150 },
     plus: { label: 'Plus', monthlyCredits: 600 },
     pro: { label: 'Pro', monthlyCredits: 2500 },
     sponsored: { label: 'Sponsored access', monthlyCredits: 300 },

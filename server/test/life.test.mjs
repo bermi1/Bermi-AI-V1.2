@@ -171,14 +171,15 @@ test('credits: monthly grant, atomic reservation under concurrency, idempotency,
   assert.equal((await plan.json()).refunded, true)
   assert.equal((await (await api('/life/credits')).json()).balance, c0.balance, 'failed AI request is refunded')
 
-  // Concurrency: balance 60, cost 2 → 40 parallel requests must never overspend,
-  // and the ledger can never go negative.
+  // Concurrency: more parallel requests than the balance can pay for must never
+  // overspend, and the ledger can never go negative.
   const { reserve } = await import('../src/credits.js')
   const { storage } = await import('../src/storage/index.js')
   const me = await (await api('/auth/me')).json()
-  const results = await Promise.all(Array.from({ length: 40 }, (_, i) => reserve(me.user.id, { feature: 'companion_plan', idemKey: `race-${i}` })))
+  const affordable = Math.floor(c0.balance / c0.costs.companion_plan)
+  const results = await Promise.all(Array.from({ length: affordable + 10 }, (_, i) => reserve(me.user.id, { feature: 'companion_plan', idemKey: `race-${i}` })))
   const won = results.filter((r) => r.ok).length
-  assert.equal(won, 30, 'exactly balance/cost reservations succeed')
+  assert.equal(won, affordable, 'exactly balance/cost reservations succeed')
   assert.equal(await storage.creditBalance(me.user.id), 0)
   assert.ok(results.filter((r) => !r.ok).every((r) => r.code === 'insufficient_credits'))
 
@@ -340,4 +341,47 @@ test('admin metrics never break out private feature adoption', async (t) => {
   const kinds = (m.adoption ?? []).map((r) => r.kind)
   assert.ok(kinds.includes('task'))
   for (const k of ['cycle', 'mood', 'idea', 'note', 'wellbeing_prefs', 'budget']) assert.equal(kinds.includes(k), false, `${k} must not be listed`)
+})
+
+test('agent: bounded, read-only tool loop that only ever proposes', async (t) => {
+  const { server, api, user } = await boot()
+  t.after(() => server.close())
+  await api('/life/items', { method: 'POST', body: JSON.stringify({ kind: 'event', data: { title: 'Statistics lecture', type: 'lecture', date: '2026-11-02', start: '08:00', end: '10:00' } }) })
+  const { runAgent, MAX_STEPS } = await import('../src/life/agent.js')
+
+  const seen = []
+  let n = 0
+  const scripted = async ({ messages }) => {
+    seen.push(messages.at(-1).content)
+    return n++ === 0 ? '{"tool":"schedule","args":{"date":"2026-11-02"}}' : '{"final":{"say":"You have a lecture at 08:00.","actions":[]}}'
+  }
+  const ok = await runAgent({ uid: user.id, system: 's', text: "what's on Monday?", today: '2026-11-02', useTools: true, complete: scripted })
+  assert.equal(ok.steps.length, 1)
+  assert.match(seen[1], /Statistics lecture/, "the tool result carries the user's own data")
+  assert.match(ok.final.say, /lecture/)
+
+  // A model that never stops calling tools is cut off after MAX_STEPS.
+  let calls = 0
+  const looping = async () => { calls++; return '{"tool":"schedule","args":{"date":"2026-11-02"}}' }
+  const capped = await runAgent({ uid: user.id, system: 's', text: 'x', today: '2026-11-02', useTools: true, complete: looping })
+  assert.equal(capped.steps.length, MAX_STEPS)
+  assert.equal(calls, MAX_STEPS + 1)
+
+  // With context switched off, or for an unknown tool, nothing is read.
+  const off = await runAgent({ uid: user.id, system: 's', text: 'x', today: '2026-11-02', useTools: false, complete: looping })
+  assert.equal(off.steps.length, 0)
+  const bogus = await runAgent({ uid: user.id, system: 's', text: 'x', today: '2026-11-02', useTools: true, complete: async () => '{"tool":"delete_everything","args":{}}' })
+  assert.equal(bogus.steps.length, 0)
+})
+
+test('free-first provider order and the NVIDIA_NIM key alias', async () => {
+  process.env.NVIDIA_NIM = 'nvapi-test-key'
+  process.env.GROQ_API_KEY = 'gsk_test'
+  process.env.OPENROUTER_API_KEY = 'or_test'
+  const { listProviders } = await import('../src/providers.js')
+  const ids = (await listProviders()).map((p) => p.id)
+  assert.ok(ids.includes('nvidia'), 'a key named NVIDIA_NIM must configure the NVIDIA provider')
+  assert.ok(ids.indexOf('groq') < ids.indexOf('openrouter'), 'free providers are tried before OpenRouter')
+  assert.ok(ids.indexOf('nvidia') < ids.indexOf('openrouter'))
+  delete process.env.NVIDIA_NIM; delete process.env.GROQ_API_KEY; delete process.env.OPENROUTER_API_KEY
 })
