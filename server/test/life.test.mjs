@@ -97,7 +97,11 @@ async function boot(emailOverride) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'Life Tester', email, password: 'correct-horse-battery' }),
   })
-  const body = await res.json()
+  let body = await res.json()
+  if (!body.token && emailOverride) {
+    // The fixed admin account already exists from an earlier run — sign in instead.
+    body = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'correct-horse-battery' }) })).json()
+  }
   const token = body.token
   assert.ok(token, `signup should return a session token (got ${JSON.stringify(body)})`)
   const api = (path, init = {}) =>
@@ -117,7 +121,13 @@ test('life API: auth required, prefs round trip, item CRUD, day view with confli
   assert.equal(bad.status, 400)
   const prefs = { mode: 'dark', accent: 'violet', icon: 'rose', density: 'compact', motion: 'reduce', textSize: 'large', assistant: 'wave', updatedAt: 123 }
   assert.equal((await api('/life/prefs', { method: 'PUT', body: JSON.stringify({ prefs }) })).status, 200)
-  assert.deepEqual((await (await api('/life/prefs')).json()).prefs, prefs)
+  assert.deepEqual((await (await api('/life/prefs')).json()).prefs, { ...prefs, custom: '#7a3ff2' })
+  // Any-colour theme: a valid hex is stored, junk falls back to the default.
+  const custom = { ...prefs, accent: 'custom', custom: '#12AB34', updatedAt: 124 }
+  assert.equal((await api('/life/prefs', { method: 'PUT', body: JSON.stringify({ prefs: custom }) })).status, 200)
+  assert.equal((await (await api('/life/prefs')).json()).prefs.custom, '#12ab34')
+  await api('/life/prefs', { method: 'PUT', body: JSON.stringify({ prefs: { ...custom, custom: 'javascript:alert(1)' } }) })
+  assert.equal((await (await api('/life/prefs')).json()).prefs.custom, '#7a3ff2')
 
   const mk = async (kind, data) => (await (await api('/life/items', { method: 'POST', body: JSON.stringify({ kind, data }) })).json()).item
   const lecture = await mk('event', { title: 'Lecture', type: 'lecture', date: '2026-11-02', start: '08:00', end: '10:00' })
@@ -211,6 +221,9 @@ test('admin control: server-enforced roles, audited credit adjustments, content 
   const member = await boot()
   t.after(() => { boss.server.close(); staff.server.close(); member.server.close() })
 
+  // Start from a clean slate so reruns against the same dev database stay deterministic.
+  await boss.api('/admin/ctl/roles', { method: 'PUT', body: JSON.stringify({ roles: {} }) })
+
   // Ordinary users and role-less staff get nothing — enforced server-side.
   assert.equal((await member.api('/admin/ctl/metrics')).status, 403)
   assert.equal((await staff.api('/admin/ctl/content')).status, 403)
@@ -265,4 +278,66 @@ test('study planner places sessions only in free time inside the chosen window',
   const mon = r.actions.filter((a) => a.data.date === '2026-11-02')
   for (const a of mon) assert.ok(a.data.time >= '19:00', 'never schedules over the lab')
   assert.equal(r.shortfallMinutes, 0)
+})
+
+
+// ------------------------------------------------------- ideas, cycle, playlist
+
+test('ideas and cycle entries are validated; shaped output is sanitised', () => {
+  const idea = sanitizeItem('idea', { title: ' Printing stall ', raw: 'x'.repeat(10), category: 'business', experiments: [{ text: 'Ask 5 people', done: true, result: '4 said yes' }], shaped: { summary: 's', experiments: ['a', 'b'], evil: 1 } })
+  assert.equal(idea.data.title, 'Printing stall')
+  assert.equal('evil' in idea.data.shaped, false)
+  assert.equal(idea.data.shaped.experiments.length, 2)
+  assert.throws(() => sanitizeItem('idea', { title: 'x', category: 'crypto-moonshot' }), /one of/)
+  const log = sanitizeItem('cycle', { date: '2026-11-02', kind: 'log', flow: 'heavy', symptoms: ['Cramps'], mood: 3 })
+  assert.equal(log.data.flow, 'heavy')
+  assert.throws(() => sanitizeItem('cycle', { date: '2026-11-02', kind: 'log', flow: 'torrential' }), /one of/)
+  assert.throws(() => sanitizeItem('wellbeing_prefs', { cycleLength: 5 }), /between/)
+})
+
+test('idea shaping refunds when AI is unavailable and bulk-delete removes only that kind', async (t) => {
+  const { server, api } = await boot()
+  t.after(() => server.close())
+  const mk = async (kind, data) => (await (await api('/life/items', { method: 'POST', body: JSON.stringify({ kind, data }) })).json()).item
+  const idea = await mk('idea', { title: 'Side business', raw: 'I want to resell second-hand phones to students near campus and test demand first.', category: 'business' })
+  const before = (await (await api('/life/credits')).json()).balance
+  const r = await api(`/life/ideas/${idea.id}/shape`, { method: 'POST', body: JSON.stringify({ idemKey: randomUUID() }) })
+  assert.ok([502, 503].includes(r.status), 'no provider configured in tests → honest failure')
+  assert.equal((await r.json()).refunded, true)
+  assert.equal((await (await api('/life/credits')).json()).balance, before, 'failed AI calls are never charged')
+  const short = await mk('idea', { title: 'Thin', raw: 'too short', category: 'stock' })
+  assert.equal((await api(`/life/ideas/${short.id}/shape`, { method: 'POST', body: '{}' })).status, 400)
+
+  await mk('cycle', { date: '2026-10-01', kind: 'period_start' })
+  await mk('cycle', { date: '2026-10-29', kind: 'period_start' })
+  const del = await (await api('/life/kind/cycle', { method: 'DELETE' })).json()
+  assert.equal(del.removed, 2)
+  assert.equal((await (await api('/life/items?kind=cycle')).json()).items.length, 0)
+  assert.equal((await (await api('/life/items?kind=idea')).json()).items.length, 2, 'other kinds are untouched')
+  assert.equal((await api('/life/kind/notakind', { method: 'DELETE' })).status, 400)
+})
+
+test('focus audio library: 20+ links across the five moods, all https YouTube, attributed', async (t) => {
+  const { server, api } = await boot()
+  t.after(() => server.close())
+  const { audio } = await (await api('/life/content?date=2026-11-02')).json()
+  assert.ok(audio.length >= 20)
+  const cats = new Set(audio.map((a) => a.category))
+  for (const c of ['emotional', 'motivation', 'never-give-up', 'study', 'deep-focus']) assert.ok(cats.has(c), `missing ${c}`)
+  for (const a of audio) {
+    assert.match(a.url, /^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/)
+    assert.ok(a.license && a.attribution)
+  }
+  assert.equal(new Set(audio.map((a) => a.id)).size, audio.length, 'ids are unique')
+})
+
+test('admin metrics never break out private feature adoption', async (t) => {
+  const { server, api } = await boot('boss@example.com')
+  t.after(() => server.close())
+  await api('/life/items', { method: 'POST', body: JSON.stringify({ kind: 'cycle', data: { date: '2026-11-02', kind: 'period_start' } }) })
+  await api('/life/items', { method: 'POST', body: JSON.stringify({ kind: 'task', data: { title: 'x' } }) })
+  const m = await (await api('/admin/ctl/metrics')).json()
+  const kinds = (m.adoption ?? []).map((r) => r.kind)
+  assert.ok(kinds.includes('task'))
+  for (const k of ['cycle', 'mood', 'idea', 'note', 'wellbeing_prefs', 'budget']) assert.equal(kinds.includes(k), false, `${k} must not be listed`)
 })

@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, BookmarkCheck, BookOpen, Check, ChevronRight, ExternalLink, FileText, GraduationCap, Headphones, Layers, Lightbulb, Plus, RotateCcw, Sparkles, Target, Trash2, Upload, Volume2, VolumeX } from 'lucide-react'
+import { Bookmark, BookmarkCheck, BookOpen, Check, ChevronRight, ExternalLink, FileText, GraduationCap, Layers, Lightbulb, Plus, RotateCcw, Sparkles, Target, Trash2, Upload, Volume2, VolumeX } from 'lucide-react'
 import * as legacy from '../lib/api'
 import type { Enrollment } from '../lib/types'
 import {
-  lifeApi, LifeError, type AudioAsset, type Book, type Concept, type Kit, type NoteData, type ProfileData, type ProposedAction, type ReadingData, type SavedData, type SkillData, type Item,
+  lifeApi, LifeError, type Book, type Concept, type Kit, type NoteData, type ProfileData, type ProposedAction, type ReadingData, type SavedData, type SkillData, type Item,
 } from './api'
 import { useAct, useItems, useSingleton, useToday, newIdemKey } from './hooks'
+import { Audiobooks } from './Audiobooks'
+import { AudioLibrary } from './Player'
 import { SCENES, setVolume, soundscapeSupported, startScene, stopScene, type SceneId } from './soundscape'
-import { btn, Chip, EmptyState, ErrorState, field, fmtDateShort, fmtTime, PageHeader, Ring, Section, Sheet, Skeleton, Spinner, useAsync, notifyLifeChanged } from './ui'
+import { btn, Chip, EmptyState, ErrorState, field, fmtDateShort, fmtTime, Hero, HeroTabs, Ring, Section, Sheet, Skeleton, Spinner, useAsync, notifyLifeChanged } from './ui'
 
-type Tab = 'today' | 'notes' | 'library' | 'listen' | 'skills'
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'today', label: 'Today' }, { id: 'notes', label: 'Notes & study kits' }, { id: 'library', label: 'Library' }, { id: 'listen', label: 'Listen & focus' }, { id: 'skills', label: 'Skills' },
+type Tab = 'today' | 'notes' | 'library' | 'audiobooks' | 'listen' | 'skills'
+const TABS: { id: Tab; label: string; title?: string }[] = [
+  { id: 'today', label: 'Today' }, { id: 'notes', label: 'Notes', title: 'Notes & study kits' }, { id: 'library', label: 'Read', title: 'Reading library' }, { id: 'audiobooks', label: 'Audio', title: 'Audiobooks' }, { id: 'listen', label: 'Beats', title: 'Beats & focus sounds' }, { id: 'skills', label: 'Skills' },
 ]
 
 export function MyLearning({ go }: { go: (to: string) => void }) {
@@ -19,18 +21,14 @@ export function MyLearning({ go }: { go: (to: string) => void }) {
   useEffect(() => { try { sessionStorage.setItem('bermi-learn-tab', tab) } catch { /* ignore */ } }, [tab])
   return (
     <div>
-      <PageHeader title="My Learning" subtitle="Study smarter, read a little every day." />
-      <div role="tablist" aria-label="Learning sections" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" id={`lt-${t.id}`} aria-selected={tab === t.id} aria-controls="lt-panel" onClick={() => setTab(t.id)} className={`min-h-[40px] shrink-0 rounded-full px-4 text-[13.5px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${tab === t.id ? 'bg-primary text-on-primary' : 'bg-surface-sunken text-ink-muted hover:text-ink'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" id="lt-panel" aria-labelledby={`lt-${tab}`} className="pt-2">
+      <Hero kicker="Study smarter, read a little every day" title="My Learning">
+        <HeroTabs label="Learning sections" tabs={TABS} value={tab} onChange={setTab} panelId="lt-panel" />
+      </Hero>
+      <div role="tabpanel" id="lt-panel" aria-labelledby={`lt-${tab}`}>
         {tab === 'today' && <Today go={go} />}
         {tab === 'notes' && <Notes />}
         {tab === 'library' && <Library />}
+        {tab === 'audiobooks' && <AudiobookShelf />}
         {tab === 'listen' && <Listen />}
         {tab === 'skills' && <Skills />}
       </div>
@@ -61,7 +59,7 @@ function Today({ go }: { go: (to: string) => void }) {
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div>
         <Section title="Today’s idea">
           {content.loading && !content.data ? <Skeleton className="h-48" /> : content.error && !content.data ? <ErrorState error={content.error} onRetry={() => content.reload()} compact /> : !d ? (
@@ -376,7 +374,7 @@ function Library() {
       {content.error && !content.data ? <ErrorState error={content.error} onRetry={() => content.reload()} /> : content.loading && !content.data ? <Skeleton className="h-40" /> : books.length === 0 ? (
         <EmptyState icon={<BookOpen size={26} />} title="The library is empty" body="Books appear here once they’re published by the Bermi team." />
       ) : (
-        <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-10 md:grid-cols-2">
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-4 md:grid-cols-2">
           {books.map((b) => {
             const r = byBook.get(b.id)
             return (
@@ -442,33 +440,23 @@ function BookSheet({ book, reading, concepts, onClose, onChanged }: { book: Book
 
 // ------------------------------------------------------------- listen & focus
 
+function AudiobookShelf() {
+  const today = useToday()
+  const content = useAsync(() => lifeApi.content(today), [today])
+  return (
+    <Section title="Audiobooks">
+      {content.loading && !content.data ? <Skeleton className="h-52" /> : content.error && !content.data ? <ErrorState error={content.error} onRetry={() => content.reload()} compact /> : <Audiobooks books={content.data?.audiobooks ?? []} />}
+    </Section>
+  )
+}
+
 function Listen() {
   const today = useToday()
   const content = useAsync(() => lifeApi.content(today), [today])
-  const audio = content.data?.audio ?? []
-  const [now, setNow] = useState<AudioAsset | null>(null)
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 lg:grid-cols-2">
-      <Section title="Audio learning">
-        {content.loading && !content.data ? <Skeleton className="h-24" /> : content.error && !content.data ? <ErrorState error={content.error} onRetry={() => content.reload()} compact /> : audio.length === 0 ? (
-          <EmptyState icon={<Headphones size={26} />} title="No audio lessons yet" body="Audio only appears here once the Bermi team has uploaded content with a licence we can show. Nothing is auto-generated or borrowed." />
-        ) : (
-          <>
-            <ul className="divide-y divide-edge">
-              {audio.map((a) => (
-                <li key={a.id}><button onClick={() => setNow(a)} aria-pressed={now?.id === a.id} className="flex min-h-[56px] w-full items-center gap-3 py-2.5 text-left"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary"><Headphones size={18} /></span><span className="min-w-0 flex-1"><span className="block truncate text-[14.5px] font-medium">{a.title}</span><span className="block truncate text-[12.5px] text-ink-muted">{[a.author, a.minutes ? `${a.minutes} min` : null].filter(Boolean).join(' · ')}</span></span></button></li>
-              ))}
-            </ul>
-            {now && (
-              <div className="mt-3 rounded-2xl bg-surface-sunken p-3.5">
-                <p className="mb-2 text-[13.5px] font-medium">{now.title}</p>
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <audio key={now.id} controls autoPlay src={now.url} preload="none" className="w-full" />
-                <p className="mt-2 text-[11.5px] text-ink-faint">{now.attribution || now.license}</p>
-              </div>
-            )}
-          </>
-        )}
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <Section title="Beats & audio">
+        {content.loading && !content.data ? <Skeleton className="h-24" /> : content.error && !content.data ? <ErrorState error={content.error} onRetry={() => content.reload()} compact /> : <AudioLibrary audio={content.data?.audio ?? []} />}
       </Section>
       <Section title="Focus sounds"><Focus /></Section>
     </div>

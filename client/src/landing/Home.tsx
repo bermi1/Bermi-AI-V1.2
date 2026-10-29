@@ -280,8 +280,8 @@ const ecosystem = [
 
 export function Home({ onSignIn, onGetStarted }: HomeProps) {
   useDocumentMeta(
-    'From Conversation to Real Mastery',
-    'Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path. Build custom AI brains, publish courses as an institution, and track real, measurable competence.',
+    'Your life better organized, your potential better supported',
+    'Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported.',
   )
   const heroRef = useRef<HTMLDivElement>(null)
 
@@ -306,17 +306,17 @@ export function Home({ onSignIn, onGetStarted }: HomeProps) {
         <div className="mx-auto max-w-xl text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-white/70 backdrop-blur">
             <Sparkles size={13} className="text-white/70" />
-            The complete AI learning powerhouse
+            Your personal life OS
           </span>
           <h1 className="mt-5 text-[36px] font-semibold leading-[1.08] tracking-tight text-white md:text-[56px]">
-            From conversation
+            Your life better organized,
             <br />
-            to real mastery.
+            your potential better supported.
           </h1>
           <p className="mx-auto mt-4 max-w-md text-[14.5px] leading-relaxed text-white/60">
-            Bermi AI turns any chat or document into a structured, mastery-gated learning path —
-            so people and institutions get measurable skill, not just explanations or
-            certificates.
+            Bermi plans your day, helps you learn, keeps your money plan honest and looks after
+            your wellbeing — with an AI companion that proposes and you approve. It still turns
+            any chat or document into a mastery-gated learning path.
           </p>
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <PrimaryCta onClick={onGetStarted} className="w-full sm:w-auto">

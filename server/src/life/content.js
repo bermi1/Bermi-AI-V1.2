@@ -15,6 +15,7 @@ import { storage } from '../storage/index.js'
 // Admin edits live in one settings row ("content:library") layered over these
 // seeds, so deploying new code never overwrites editorial changes.
 
+import { SEED_PLAYLIST, SEED_AUDIOBOOKS } from './playlist.js'
 const gut = (q) => `https://www.gutenberg.org/ebooks/search/?query=${encodeURIComponent(q)}`
 
 export const SEED_BOOKS = [
@@ -174,9 +175,9 @@ async function readOverrides() {
   try {
     const raw = await storage.getSetting(KEY)
     const parsed = raw ? JSON.parse(raw) : {}
-    return { books: parsed.books ?? [], concepts: parsed.concepts ?? [], verses: parsed.verses ?? [], sessions: parsed.sessions ?? [], audio: parsed.audio ?? [] }
+    return { books: parsed.books ?? [], concepts: parsed.concepts ?? [], verses: parsed.verses ?? [], sessions: parsed.sessions ?? [], audio: parsed.audio ?? [], audiobooks: parsed.audiobooks ?? [] }
   } catch {
-    return { books: [], concepts: [], verses: [], sessions: [], audio: [] }
+    return { books: [], concepts: [], verses: [], sessions: [], audio: [], audiobooks: [] }
   }
 }
 
@@ -194,7 +195,8 @@ export async function allContent() {
     concepts: layer(SEED_CONCEPTS, o.concepts),
     verses: layer(SEED_VERSES, o.verses),
     sessions: layer(SEED_SESSIONS, o.sessions),
-    audio: layer([], o.audio),
+    audio: layer(SEED_PLAYLIST, o.audio),
+    audiobooks: layer(SEED_AUDIOBOOKS, o.audiobooks),
   }
 }
 
@@ -203,7 +205,7 @@ const published = (xs) => xs.filter((x) => x.status === 'published')
 /** What users may see: published items only. */
 export async function publishedContent() {
   const a = await allContent()
-  return { books: published(a.books), concepts: published(a.concepts), verses: published(a.verses), sessions: published(a.sessions), audio: published(a.audio) }
+  return { books: published(a.books), concepts: published(a.concepts), verses: published(a.verses), sessions: published(a.sessions), audio: published(a.audio), audiobooks: published(a.audiobooks) }
 }
 
 export async function saveOverride(collection, item) {

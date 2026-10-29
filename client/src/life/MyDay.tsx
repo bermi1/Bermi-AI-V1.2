@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Circle, Clock, Pause, Play, Plus, Repeat, Sparkles, Target, Timer, Trash2 } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Check, Circle, Clock, Pause, Play, Plus, Repeat, Sparkles, Target, Timer, Trash2 } from 'lucide-react'
 import type { AuthUser } from '../lib/types'
-import { addDays, lifeApi, type DayView, type EventData, type EventType, type GoalData, type Item, type Recurring, type TaskData } from './api'
+import { addDays, lifeApi, type DayView, type EventData, type EventType, type FocusData, type GoalData, type Item, type Recurring, type TaskData } from './api'
 import { useCompanion } from './Companion'
 import { useAct, useNow, useToday } from './hooks'
 import {
-  btn, Chip, EmptyState, ErrorState, field, fmtDateLong, fmtDuration, fmtTime, minToTime, PageHeader, Ring, Section, Sheet, Skeleton, Spinner, toMin, useAsync, notifyLifeChanged,
+  BarBlobs, btn, Chip, DayStrip, EmptyState, ErrorState, field, fmtDateLong, fmtDuration, fmtTime, Hero, minToTime, Ring, Section, Sheet, Skeleton, Spinner, toMin, useAsync, notifyLifeChanged,
 } from './ui'
 
 const greeting = (h: number) => (h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
@@ -32,51 +32,48 @@ export function MyDay({ user, name }: { user: AuthUser; name: string }) {
 
   const day = q.data
 
+  const strip = useMemo(() => {
+    const base = Array.from({ length: 14 }, (_, i) => addDays(today, i - 3))
+    return base.includes(date) ? base : [date, ...base].sort()
+  }, [today, date])
+
   return (
     <div>
-      <PageHeader
-        title={isToday ? `${greeting(now.getHours())}${first ? `, ${first}` : ''}` : fmtDateLong(date)}
-        subtitle={isToday ? fmtDateLong(date) : date < today ? 'Looking back' : 'Looking ahead'}
-        actions={
-          <>
-            <div className="flex items-center">
-              <button className={btn.icon} onClick={() => setDate(addDays(date, -1))} aria-label="Previous day"><ChevronLeft size={18} /></button>
-              <button className={btn.icon} onClick={() => setDate(addDays(date, 1))} aria-label="Next day"><ChevronRight size={18} /></button>
-            </div>
-            {!isToday && <button className={btn.ghost} onClick={() => setDate(today)}>Today</button>}
-          </>
-        }
-      />
+      <Hero
+        kicker={isToday ? fmtDateLong(date) : date < today ? 'Looking back' : 'Looking ahead'}
+        title={isToday ? <>{greeting(now.getHours())}{first ? <>,<br />{first}</> : ''}</> : fmtDateLong(date)}
+        actions={!isToday ? <button className="rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur hover:bg-white/25" onClick={() => setDate(today)}>Back to today</button> : undefined}
+      >
+        <DayStrip days={strip} value={date} today={today} onPick={setDate} />
+        {day && <HeroTiles day={day} isToday={isToday} now={now} date={date} today={today} onAsk={() => openCompanion()} />}
+      </Hero>
 
       {q.loading && !day ? (
-        <div aria-busy="true" className="space-y-4"><Skeleton className="h-24" /><Skeleton className="h-52" /></div>
+        <div aria-busy="true" className="space-y-4"><Skeleton className="h-52 !rounded-[1.75rem]" /><Skeleton className="h-40 !rounded-[1.75rem]" /></div>
       ) : q.error && !day ? (
         <ErrorState error={q.error} onRetry={() => q.reload()} />
       ) : day ? (
-        <>
-          <Overview day={day} isToday={isToday} now={now} onAsk={() => openCompanion()} />
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-x-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div>
-              <Section
-                title="Schedule"
-                action={
-                  <div className="flex gap-2">
-                    <button className={btn.soft} onClick={() => setSheet('event')}><CalendarClock size={15} /> Event</button>
-                    <button className={btn.primary} onClick={() => setSheet('task')}><Plus size={15} /> Task</button>
-                  </div>
-                }
-              >
-                <Timeline day={day} act={act} reload={() => q.reload(true)} />
-              </Section>
-              <Inbox day={day} act={act} reload={() => q.reload(true)} />
-            </div>
-            <div>
-              <FocusTimer onLogged={() => q.reload(true)} />
-              <Reflect day={day} date={date} now={now} reload={() => q.reload(true)} />
-              <Goals goals={day.goals} reload={() => q.reload(true)} />
-            </div>
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+          <div>
+            <Section
+              title="Schedule"
+              action={
+                <div className="flex gap-2">
+                  <button className={btn.soft} onClick={() => setSheet('event')}><CalendarClock size={15} /> Event</button>
+                  <button className={btn.primary} onClick={() => setSheet('task')}><Plus size={15} /> Task</button>
+                </div>
+              }
+            >
+              <Timeline day={day} act={act} reload={() => q.reload(true)} />
+            </Section>
+            <Inbox day={day} act={act} reload={() => q.reload(true)} />
           </div>
-        </>
+          <div>
+            <FocusTimer onLogged={() => { q.reload(true); notifyLifeChanged() }} />
+            <Reflect day={day} date={date} now={now} reload={() => q.reload(true)} />
+            <Goals goals={day.goals} reload={() => q.reload(true)} />
+          </div>
+        </div>
       ) : null}
 
       <ItemSheet kind={sheet} date={date} day={day} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); q.reload(true) }} />
@@ -84,9 +81,9 @@ export function MyDay({ user, name }: { user: AuthUser; name: string }) {
   )
 }
 
-// ------------------------------------------------------------- overview
+// ------------------------------------------------------------- hero tiles
 
-function Overview({ day, isToday, now, onAsk }: { day: DayView; isToday: boolean; now: Date; onAsk: () => void }) {
+function HeroTiles({ day, isToday, now, date, today, onAsk }: { day: DayView; isToday: boolean; now: Date; date: string; today: string; onAsk: () => void }) {
   const nowMin = now.getHours() * 60 + now.getMinutes()
   const timed = useMemo(() => {
     const e = day.events.map((x) => ({ title: x.data.title, start: x.data.start, end: x.data.end }))
@@ -96,72 +93,67 @@ function Overview({ day, isToday, now, onAsk }: { day: DayView; isToday: boolean
   const next = isToday ? timed.find((b) => toMin(b.end) > nowMin) : timed[0]
   const doneN = day.tasks.filter((t) => t.doneToday).length
   const totalN = day.tasks.length
-  const waking = 16 * 60
-  const busy = Math.min(day.busyMinutes, waking)
-  const focus = Math.min(day.focusMinutes, waking - busy)
-  const free = Math.max(waking - busy - focus, 0)
   const biggest = [...day.freeSlots].sort((a, b) => toMin(b.end) - toMin(b.start) - (toMin(a.end) - toMin(a.start)))[0]
   const upcomingFree = isToday ? day.freeSlots.find((s) => toMin(s.end) - Math.max(toMin(s.start), nowMin) >= 45) : biggest
 
   // Deterministic, explainable suggestion — no AI involved.
   const suggestion = day.conflicts.length
-    ? `You have ${day.conflicts.length} overlap${day.conflicts.length > 1 ? 's' : ''} today. Resolve ${day.conflicts.length > 1 ? 'them' : 'it'} first.`
+    ? `${day.conflicts.length} overlap${day.conflicts.length > 1 ? 's' : ''} to sort out.`
     : upcomingFree
-      ? `Your longest open window is ${fmtTime(upcomingFree.start)}–${fmtTime(upcomingFree.end)} (${fmtDuration(toMin(upcomingFree.end) - toMin(upcomingFree.start))}). A good place for your most important task.`
+      ? `Best open window: ${fmtTime(upcomingFree.start)}–${fmtTime(upcomingFree.end)} (${fmtDuration(toMin(upcomingFree.end) - toMin(upcomingFree.start))}).`
       : timed.length
-        ? 'Your day is packed. Protect a short break between commitments.'
-        : 'Nothing is scheduled. Add one thing that would make today a success.'
+        ? 'Packed day — protect a short break.'
+        : 'Nothing scheduled yet.'
+
+  // Real focus minutes for the 7 days ending on the viewed date.
+  const from = addDays(date, -6)
+  const focus = useAsync(() => lifeApi.items<FocusData>('focus', { from, to: date }), [from, date])
+  const week = Array.from({ length: 7 }, (_, i) => addDays(from, i))
+  const mins = week.map((d) => (focus.data ?? []).filter((f) => f.data.date === d).reduce((n, f) => n + f.data.minutes, 0))
+  const total = mins.reduce((a, b) => a + b, 0)
+  const labels = week.map((d) => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: 'narrow' }) })
+  void today
 
   return (
-    <section aria-label="Overview" className="grid grid-cols-[minmax(0,1fr)] gap-4 border-y border-edge py-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] md:gap-10">
-      <div>
-        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{isToday ? 'Up next' : 'First up'}</p>
+    <div className="mt-4 grid grid-cols-2 items-stretch gap-2.5 md:mt-5 md:grid-cols-[1.4fr_1fr_1fr] md:gap-3">
+      <div className="tile-glass col-span-2 p-3.5 md:col-span-1 md:p-4">
+        <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-white/60">{isToday ? 'Up next' : 'First up'}</p>
         {next ? (
-          <div className="mt-1.5">
-            <p className="text-[20px] font-semibold leading-snug tracking-tight">{next.title}</p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-[14px] text-ink-muted"><Clock size={14} /> {fmtTime(next.start)} – {fmtTime(next.end)}</p>
-          </div>
+          <>
+            <p className="mt-1 text-[17px] font-semibold leading-snug md:text-[19px]">{next.title}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[13.5px] text-white/75"><Clock size={13} aria-hidden /> {fmtTime(next.start)} – {fmtTime(next.end)}</p>
+          </>
         ) : (
-          <p className="mt-1.5 text-[16px] text-ink-muted">{isToday ? 'Nothing else timed today.' : 'Nothing timed.'}</p>
+          <p className="mt-1.5 text-[15px] text-white/75">{isToday ? 'Nothing else timed today.' : 'Nothing timed.'}</p>
         )}
-        <p className="mt-3 flex gap-2 text-[13.5px] text-ink-muted">
-          {day.conflicts.length ? <AlertTriangle size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden /> : <Sparkles size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden />}
-          <span>{suggestion}</span>
-        </p>
-        <button onClick={onAsk} className={`${btn.soft} mt-3`}><Sparkles size={15} /> Plan with Bermi</button>
+        <p className="mt-3 flex gap-1.5 text-[12.5px] text-white/70">{day.conflicts.length ? <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> : <Sparkles size={14} className="mt-0.5 shrink-0" aria-hidden />}<span>{suggestion}</span></p>
+        <button onClick={onAsk} className="mt-3 hidden min-h-[38px] items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0B1020] hover:bg-white/90 md:inline-flex"><Sparkles size={14} /> Plan with Bermi</button>
       </div>
-      <div>
-        <div className="flex items-center gap-4">
-          <Ring value={totalN ? (doneN / totalN) * 100 : 0} size={64} label={`${doneN} of ${totalN} tasks done`}>{totalN ? `${doneN}/${totalN}` : '–'}</Ring>
-          <div className="text-[13.5px]">
-            <p className="font-semibold">{totalN ? `${doneN} of ${totalN} tasks done` : 'No tasks today'}</p>
-            <p className="text-ink-muted">{fmtDuration(day.busyMinutes)} scheduled · {fmtDuration(day.focusMinutes)} focused</p>
-          </div>
+      <div className="tile-glass p-3.5 md:p-4">
+        <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-white/60">Tasks</p>
+        <div className="mt-3 flex items-center gap-3">
+          <HeroRing value={totalN ? (doneN / totalN) * 100 : 0} label={`${doneN} of ${totalN} tasks done`} />
+          <div><p className="text-[22px] font-semibold tabular-nums leading-none">{doneN}<span className="text-[15px] font-medium text-white/60">/{totalN}</span></p><p className="mt-1 text-[12.5px] text-white/70">done today</p></div>
         </div>
-        <AllocationBar busy={busy} focus={focus} free={free} />
+        <p className="mt-3 text-[12.5px] text-white/70">{fmtDuration(day.busyMinutes)} scheduled</p>
       </div>
-    </section>
+      <div className="tile-glass p-3.5 md:p-4">
+        <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-white/60">Focus · 7 days</p>
+        <p className="mt-1 text-[22px] font-semibold tabular-nums leading-none">{fmtDuration(total) || '0m'}</p>
+        <div className="mt-3"><BarBlobs onDark values={mins} labels={labels} highlight={6} label={`Focus minutes per day over the last week: ${mins.join(', ')}`} /></div>
+      </div>
+    </div>
   )
 }
 
-function AllocationBar({ busy, focus, free }: { busy: number; focus: number; free: number }) {
-  const total = busy + focus + free || 1
-  const parts = [
-    { label: 'Scheduled', v: busy, c: 'var(--primary)' },
-    { label: 'Focused', v: focus, c: '#16A779' },
-    { label: 'Open', v: free, c: 'var(--edge-strong)' },
-  ]
+function HeroRing({ value, label }: { value: number; label: string }) {
+  const r = 24
+  const c = 2 * Math.PI * r
   return (
-    <div className="mt-4">
-      <div role="img" aria-label={`Waking day (6am–10pm): ${parts.map((p) => `${p.label} ${fmtDuration(p.v)}`).join(', ')}`} className="flex h-2.5 overflow-hidden rounded-full bg-surface-sunken">
-        {parts.map((p) => (p.v > 0 ? <span key={p.label} style={{ width: `${(p.v / total) * 100}%`, background: p.c }} /> : null))}
-      </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-muted">
-        {parts.map((p) => (
-          <li key={p.label} className="flex items-center gap-1.5"><span aria-hidden className="h-2 w-2 rounded-full" style={{ background: p.c }} />{p.label} {fmtDuration(p.v)}</li>
-        ))}
-      </ul>
-    </div>
+    <svg viewBox="0 0 60 60" width="56" height="56" role="img" aria-label={label} className="-rotate-90 shrink-0">
+      <circle cx="30" cy="30" r={r} fill="none" stroke="rgb(255 255 255 / .18)" strokeWidth="7" />
+      <circle cx="30" cy="30" r={r} fill="none" stroke="#fff" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - Math.max(0, Math.min(100, value)) / 100)} style={{ transition: 'stroke-dashoffset .5s ease' }} />
+    </svg>
   )
 }
 
@@ -438,35 +430,45 @@ function FocusTimer({ onLogged }: { onLogged: () => void }) {
   const ss = String(Math.floor((left % 60_000) / 1000)).padStart(2, '0')
   const total = (run ? run.minutes : minutes) * 60_000
   return (
-    <Section title="Focus">
-      <div className="flex items-center gap-4">
-        <Ring value={run ? (1 - left / total) * 100 : 0} size={84} stroke={7} label={`Focus timer ${mm} minutes ${ss} seconds remaining`}>
-          <span className="text-[15px]">{mm}:{ss}</span>
-        </Ring>
+    <section className="tile-accent mb-3 p-4 sm:mb-4 sm:p-5" aria-label="Focus">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[16px] font-semibold tracking-tight">Focus</h2>
+        <Timer size={16} className="text-white/70" aria-hidden />
+      </div>
+      <div className="mt-4 flex items-center gap-4">
+        <div className="relative shrink-0" role="img" aria-label={`Focus timer ${mm} minutes ${ss} seconds remaining`}>
+          <svg viewBox="0 0 96 96" width="96" height="96" className="-rotate-90">
+            <circle cx="48" cy="48" r="41" fill="none" stroke="rgb(255 255 255 / .2)" strokeWidth="8" />
+            <circle cx="48" cy="48" r="41" fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeDasharray={2 * Math.PI * 41} strokeDashoffset={2 * Math.PI * 41 * (1 - (run ? 1 - left / total : 0))} style={{ transition: 'stroke-dashoffset .9s linear' }} />
+          </svg>
+          <span className="absolute inset-0 grid place-items-center text-[19px] font-semibold tabular-nums">{mm}:{ss}</span>
+        </div>
         <div className="min-w-0 flex-1">
           {!run ? (
             <>
               <div role="radiogroup" aria-label="Session length" className="flex flex-wrap gap-1.5">
-                {[15, 25, 45, 60].map((m) => <Chip key={m} active={minutes === m} onClick={() => setMinutes(m)}>{m} min</Chip>)}
+                {[15, 25, 45, 60].map((m) => (
+                  <button key={m} role="radio" aria-checked={minutes === m} onClick={() => setMinutes(m)} className={`min-h-[34px] rounded-full px-3 text-[13px] font-medium ${minutes === m ? 'bg-white text-[#0B1020]' : 'bg-white/15 text-white hover:bg-white/25'}`}>{m}m</button>
+                ))}
               </div>
               <div className="mt-2.5 flex gap-2">
-                <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} placeholder="Focusing on… (optional)" aria-label="What are you focusing on" className={`${field} !py-2`} />
-                <button className={btn.primary} onClick={start}><Play size={15} /> Start</button>
+                <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} placeholder="Focusing on…" aria-label="What are you focusing on" className="min-w-0 flex-1 rounded-full bg-white/15 px-3.5 py-2 text-[14px] text-white outline-none placeholder:text-white/60 focus-visible:ring-2 focus-visible:ring-white" />
+                <button className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white px-4 text-[13.5px] font-semibold text-[#0B1020]" onClick={start}><Play size={15} /> Start</button>
               </div>
             </>
           ) : (
             <>
-              <p className="truncate text-[14px] font-medium">{run.label || 'Focus session'}</p>
-              <div className="mt-2 flex gap-2">
-                {run.paused != null ? <button className={btn.primary} onClick={resume}><Play size={15} /> Resume</button> : <button className={btn.soft} onClick={pause}><Pause size={15} /> Pause</button>}
-                <button className={btn.ghost} onClick={stop}>Finish</button>
+              <p className="truncate text-[15px] font-medium">{run.label || 'Focus session'}</p>
+              <div className="mt-2.5 flex gap-2">
+                {run.paused != null ? <button className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white px-4 text-[13.5px] font-semibold text-[#0B1020]" onClick={resume}><Play size={15} /> Resume</button> : <button className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white/20 px-4 text-[13.5px] font-semibold text-white" onClick={pause}><Pause size={15} /> Pause</button>}
+                <button className="min-h-[40px] rounded-full bg-white/15 px-4 text-[13.5px] font-medium text-white" onClick={stop}>Finish</button>
               </div>
             </>
           )}
         </div>
       </div>
-      <p className="mt-2 flex items-center gap-1.5 text-[12px] text-ink-faint"><Timer size={12} /> Time is logged only when you finish or the timer ends.</p>
-    </Section>
+      <p className="mt-3 text-[12px] text-white/65">Time is logged only when you finish or the timer ends.</p>
+    </section>
   )
 }
 const ymd = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}` }

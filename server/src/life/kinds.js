@@ -79,6 +79,23 @@ function sanitizeKit(k) {
   }
 }
 
+/** Idea "shaped" output from the AI — validated whoever supplies it. */
+function sanitizeShaped(k) {
+  if (k == null) return null
+  if (typeof k !== 'object') throw new ValidationError('shaped must be an object')
+  const list = (v, n, len) => (Array.isArray(v) ? v.slice(0, n).map((x) => str(x, len)).filter(Boolean) : [])
+  return {
+    summary: str(k.summary, 800),
+    valueProposition: str(k.valueProposition, 500),
+    assumptions: list(k.assumptions, 8, 240),
+    experiments: list(k.experiments, 8, 300),
+    risks: list(k.risks, 8, 240),
+    firstSteps: list(k.firstSteps, 6, 240),
+    questions: list(k.questions, 8, 240),
+    generatedAt: typeof k.generatedAt === 'string' ? k.generatedAt.slice(0, 30) : new Date().toISOString(),
+  }
+}
+
 const EVENT_TYPES = ['lecture', 'meeting', 'deadline', 'group', 'personal', 'study', 'errand']
 
 export const KINDS = {
@@ -295,6 +312,8 @@ export const KINDS = {
         cycleEnabled: d.cycleEnabled == null ? Boolean(prev?.cycleEnabled) : Boolean(d.cycleEnabled),
         bedtime: d.bedtime === undefined ? (prev?.bedtime ?? '22:30') : (time(d.bedtime, 'bedtime') ?? '22:30'),
         wakeTime: d.wakeTime === undefined ? (prev?.wakeTime ?? '06:30') : (time(d.wakeTime, 'wakeTime') ?? '06:30'),
+        cycleLength: d.cycleLength === undefined ? (prev?.cycleLength ?? 28) : num(d.cycleLength, 'cycleLength', { min: 21, max: 45, int: true }),
+        periodLength: d.periodLength === undefined ? (prev?.periodLength ?? 5) : num(d.periodLength, 'periodLength', { min: 2, max: 10, int: true }),
       }
     },
     whenKey: () => '0',
@@ -359,15 +378,39 @@ export const KINDS = {
     },
     whenKey: () => '0',
   },
+  // Raw thoughts (business, investing, stocks, anything) turned into something
+  // testable. Private diary-style entries; the shaped output is educational
+  // structure only, never financial advice.
+  idea: {
+    max: 500,
+    sanitize(d, prev) {
+      const exps = Array.isArray(d.experiments ?? prev?.experiments) ? (d.experiments ?? prev.experiments).slice(0, 20) : []
+      return {
+        title: str(d.title ?? prev?.title, 160, { required: true, field: 'title' }),
+        raw: str(d.raw ?? prev?.raw ?? '', 6000),
+        category: oneOf(d.category ?? prev?.category, ['business', 'invest', 'stock', 'savings', 'other'], 'other', 'category'),
+        status: oneOf(d.status ?? prev?.status, ['seed', 'testing', 'validated', 'parked'], 'seed', 'status'),
+        value: str(d.value ?? prev?.value ?? '', 1000),
+        shaped: d.shaped === undefined ? (prev?.shaped ?? null) : sanitizeShaped(d.shaped),
+        experiments: exps.map((e) => ({ text: str(e?.text, 300, { required: true, field: 'experiment' }), done: Boolean(e?.done), result: str(e?.result ?? '', 600) })),
+        date: date(d.date ?? prev?.date, 'date'),
+      }
+    },
+    whenKey: (d) => d.date ?? '0',
+  },
   // Optional, private, user-consented. Dates only; estimates are never
   // presented as medical advice (see the screen's disclaimer).
   cycle: {
-    max: 400,
+    max: 1500,
     sanitize(d, prev) {
+      const syms = Array.isArray(d.symptoms ?? prev?.symptoms) ? (d.symptoms ?? prev.symptoms).slice(0, 12) : []
       return {
         date: date(d.date ?? prev?.date, 'date', { required: true }),
-        kind: oneOf(d.kind ?? prev?.kind, ['period_start', 'period_end', 'symptom'], 'period_start', 'kind'),
+        kind: oneOf(d.kind ?? prev?.kind, ['period_start', 'period_end', 'symptom', 'log'], 'period_start', 'kind'),
         note: str(d.note ?? prev?.note ?? '', 300),
+        flow: oneOf(d.flow ?? prev?.flow, ['', 'spotting', 'light', 'medium', 'heavy'], '', 'flow'),
+        symptoms: syms.map((x) => str(x, 30)).filter(Boolean),
+        mood: d.mood === undefined ? (prev?.mood ?? null) : d.mood === null ? null : num(d.mood, 'mood', { min: 1, max: 5, int: true }),
       }
     },
     whenKey: (d) => d.date,

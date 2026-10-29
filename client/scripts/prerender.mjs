@@ -22,9 +22,9 @@ const PAGES = [
   {
     path: '/',
     outFile: path.join(distDir, 'index.html'),
-    title: 'From Conversation to Real Mastery',
+    title: 'Your life better organized, your potential better supported',
     description:
-      'Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path. Build custom AI brains, publish courses as an institution, and track real, measurable competence.',
+      'Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported.',
   },
   {
     path: '/pricing',

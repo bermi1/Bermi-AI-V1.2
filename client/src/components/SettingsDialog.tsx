@@ -1,7 +1,9 @@
 import { AppearanceSettings } from './AppearanceSettings'
 import { useEffect, useState } from 'react'
 import {
+  Bell,
   Check,
+  Coins,
   Database,
   Download,
   Loader2,
@@ -19,11 +21,12 @@ import {
   Cpu,
 } from 'lucide-react'
 import { inputCls, labelCls, primaryBtnCls } from './Modal'
+import { CreditsTab, NotificationsTab, PersonalTab } from '../life/SettingsPanels'
 import { useVoiceRecorder } from '../lib/useVoiceRecorder'
 import * as api from '../lib/api'
 import type { Connector, ModelOption, Profile, SettingsInfo } from '../lib/types'
 
-type Tab = 'profile' | 'appearance' | 'models' | 'voice' | 'connectors' | 'data'
+type Tab = 'profile' | 'personal' | 'appearance' | 'credits' | 'notifications' | 'models' | 'voice' | 'connectors' | 'data'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -38,11 +41,14 @@ interface SettingsDialogProps {
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: 'profile', label: 'Profile', icon: User },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'personal', label: 'Personalisation', icon: Sparkles },
+  { id: 'appearance', label: 'Appearance & access', icon: Palette },
+  { id: 'credits', label: 'AI & credits', icon: Coins },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'models', label: 'Models', icon: Cpu },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'connectors', label: 'Connectors', icon: Plug },
-  { id: 'data', label: 'API & Data', icon: Database },
+  { id: 'data', label: 'Privacy & data', icon: Database },
 ]
 
 export function SettingsDialog({
@@ -116,7 +122,10 @@ export function SettingsDialog({
           {tab === 'profile' && (
             <ProfileTab onProfileSaved={onProfileSaved} onSignOut={onSignOut} />
           )}
+          {tab === 'personal' && <PersonalTab />}
           {tab === 'appearance' && <AppearanceSettings />}
+          {tab === 'credits' && <CreditsTab />}
+          {tab === 'notifications' && <NotificationsTab />}
           {tab === 'models' && (
             <ModelsTab
               models={models}

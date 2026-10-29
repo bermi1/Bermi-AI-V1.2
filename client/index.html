@@ -11,17 +11,17 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Bermi" />
-    <meta name="description" content="Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path." />
+    <meta name="description" content="Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported." />
     <link rel="canonical" href="https://bermiai.com/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bermi AI" />
-    <meta property="og:title" content="Bermi AI — From Conversation to Real Mastery" />
-    <meta property="og:description" content="Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path. Build custom AI brains, publish courses as an institution, and track real, measurable competence." />
+    <meta property="og:title" content="Bermi — Your life better organized, your potential better supported" />
+    <meta property="og:description" content="Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported." />
     <meta property="og:url" content="https://bermiai.com/" />
     <meta property="og:image" content="https://bermiai.com/icon-512.png" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Bermi AI — From Conversation to Real Mastery" />
-    <meta name="twitter:description" content="Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path. Build custom AI brains, publish courses as an institution, and track real, measurable competence." />
+    <meta name="twitter:title" content="Bermi — Your life better organized, your potential better supported" />
+    <meta name="twitter:description" content="Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported." />
     <meta name="twitter:image" content="https://bermiai.com/icon-512.png" />
     <script>
       // Apply saved appearance before first paint so there is no flash of the
@@ -33,6 +33,11 @@
         var h = document.documentElement
         h.dataset.theme = dark ? 'dark' : 'light'
         if (p.accent) h.dataset.accent = p.accent
+        if (p.accent === 'custom') {
+          var cv = JSON.parse(localStorage.getItem('bermi-custom-vars') || 'null')
+          var set = cv && cv[dark ? 'dark' : 'light']
+          if (set) for (var k in set) h.style.setProperty(k, set[k])
+        }
         if (p.density) h.dataset.density = p.density
         if (p.motion) h.dataset.motion = p.motion
         if (p.textSize) h.dataset.text = p.textSize
@@ -46,7 +51,7 @@
         "name": "Bermi AI",
         "applicationCategory": "EducationalApplication",
         "operatingSystem": "Web, iOS, Android",
-        "description": "Bermi AI is the complete AI learning powerhouse — turn any chat or document into a structured, mastery-gated learning path. Build custom AI brains, publish courses as an institution, and track real, measurable competence.",
+        "description": "Bermi is a personal life OS: plan your day, learn, manage your money and look after your wellbeing, with an AI companion that proposes and you approve. Your life better organized, your potential better supported.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "url": "https://bermiai.com/"
       }

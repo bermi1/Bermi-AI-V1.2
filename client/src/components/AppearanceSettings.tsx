@@ -159,6 +159,28 @@ export function AppearanceSettings() {
             <ThemeCard key={a} accent={a} selected={prefs.accent === a} onSelect={() => set({ accent: a })} />
           ))}
         </div>
+        <div className={`mt-3 flex items-center gap-3 rounded-2xl border p-3.5 ${prefs.accent === 'custom' ? 'border-primary bg-primary-soft' : 'border-edge'}`}>
+          <input
+            type="color"
+            value={prefs.custom}
+            onChange={(e) => set({ accent: 'custom', custom: e.target.value })}
+            aria-label="Pick any colour for your theme"
+            className="h-12 w-12 shrink-0 cursor-pointer rounded-xl border border-edge bg-transparent p-1"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-semibold">Any colour</p>
+            <p className="text-[12.5px] text-ink-muted">Pick your own. Bermi adjusts shades so text stays easy to read in light and dark.</p>
+          </div>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.accent === 'custom'}
+            onClick={() => set({ accent: 'custom' })}
+            className={`min-h-[40px] shrink-0 rounded-full px-4 text-[13px] font-semibold ${prefs.accent === 'custom' ? 'bg-primary text-on-primary' : 'bg-surface-sunken text-ink-muted hover:text-ink'}`}
+          >
+            {prefs.accent === 'custom' ? 'In use' : 'Use'}
+          </button>
+        </div>
       </Section>
 
       <Section

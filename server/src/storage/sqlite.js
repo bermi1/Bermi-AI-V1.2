@@ -261,6 +261,9 @@ export class SqliteStorage {
   async deleteLifeItem(userId, id) {
     return this.db.prepare('DELETE FROM life_items WHERE user_id = ? AND id = ?').run(userId, id).changes > 0
   }
+  async deleteLifeKind(userId, kind) {
+    return this.db.prepare('DELETE FROM life_items WHERE user_id = ? AND kind = ?').run(userId, kind).changes
+  }
   async deleteAllLifeItems(userId) {
     this.db.prepare('DELETE FROM life_items WHERE user_id = ?').run(userId)
   }

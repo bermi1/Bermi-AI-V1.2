@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Offline · Bermi</title>
+<style>
+  :root { color-scheme: light dark; --bg:#F6F8FC; --ink:#0F1730; --muted:#4A5575; --primary:#3159EA; --on:#fff }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0C1020; --ink:#EEF1FB; --muted:#A3ADCB; --primary:#7E9BFF; --on:#0C1020 } }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px; box-sizing:border-box }
+  main { max-width:380px; text-align:center }
+  h1 { font-size:22px; margin:0 0 8px }
+  p { color:var(--muted); margin:0 0 20px }
+  button { min-height:44px; padding:0 22px; border:0; border-radius:12px; background:var(--primary); color:var(--on); font:600 15px system-ui; cursor:pointer }
+</style>
+</head>
+<body>
+<main>
+  <h1>You’re offline</h1>
+  <p>Bermi needs a connection to load your plans, money and notes. Nothing you’ve saved is lost — reconnect and try again.</p>
+  <button onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>

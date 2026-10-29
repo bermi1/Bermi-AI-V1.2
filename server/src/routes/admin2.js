@@ -23,6 +23,7 @@ const ROLE_PERMS = {
   analytics: ['metrics.read'],
 }
 const SMALL_ADJUST_LIMIT = 50
+const PRIVATE_KINDS = new Set(['cycle', 'wellbeing_prefs', 'mood', 'gratitude', 'reflection', 'session', 'note', 'profile', 'notify_prefs', 'budget', 'expense', 'saving', 'idea', 'cycle'])
 
 async function roleOf(user) {
   if (isAdmin(user)) return 'super' // the owner allowlist always keeps full access
@@ -67,7 +68,9 @@ admin2Router.get('/admin/ctl/metrics', guard('metrics.read', async (req, res) =>
   const [stats, activity, adoption, usage, outcomes] = await Promise.all([
     storage.adminStats(),
     storage.adminActivity().catch(() => null),
-    storage.lifeAdoption().catch(() => null), // null → life tables not provisioned yet
+    // Distinct-user counts per feature. Kinds that describe health, faith or
+    // private reflection are left out entirely, even as aggregates.
+    storage.lifeAdoption().then((rows) => rows.filter((r) => !PRIVATE_KINDS.has(r.kind))).catch(() => null), // null → life tables not provisioned yet
     storage.creditUsageByFeature(since).catch(() => null),
     storage.creditOutcomes(since).catch(() => null),
   ])
@@ -207,6 +210,7 @@ const COLLECTIONS = {
   concepts: { required: ['bookId', 'concept', 'explanation'], strings: { bookId: 60, concept: 160, explanation: 1500, example: 800, action: 400, reflection: 300, source: 200, scheduledFor: 10 }, arrays: ['takeaways'] },
   verses: { required: ['tradition', 'reference', 'text', 'translation', 'license'], strings: { tradition: 20, reference: 80, text: 1500, translation: 80, license: 400, prompt: 300 } },
   sessions: { required: ['title', 'type', 'minutes'], strings: { title: 120, type: 20, blurb: 300, source: 200 }, numbers: ['minutes'], arrays: ['steps'] },
+  audiobooks: { required: ['title', 'author', 'archiveId', 'category', 'license'], strings: { title: 160, author: 120, archiveId: 100, category: 20, narrator: 120, blurb: 500, license: 300, sourceUrl: 400 }, numbers: ['year', 'minutes'] },
   audio: { required: ['title', 'url', 'license'], strings: { title: 160, author: 120, url: 500, license: 400, attribution: 300, category: 40 }, numbers: ['minutes'] },
 }
 const STATUSES = ['draft', 'review', 'published']
@@ -223,6 +227,7 @@ function cleanContent(collection, input) {
   for (const k of spec.required) if (out[k] == null || out[k] === '' || (typeof out[k] === 'number' && !Number.isFinite(out[k]))) throw bad(`${k} is required`)
   if (collection === 'verses' && !['christian', 'muslim', 'other'].includes(out.tradition)) throw bad('Unknown tradition')
   if (collection === 'audio' && !/^https:\/\//.test(out.url)) throw bad('Audio URL must be https')
+  if (collection === 'audiobooks' && !/^[A-Za-z0-9._-]{3,100}$/.test(out.archiveId)) throw bad('archiveId must be an Internet Archive identifier')
   if (out.scheduledFor && !/^\d{4}-\d{2}-\d{2}$/.test(out.scheduledFor)) throw bad('scheduledFor must be YYYY-MM-DD')
   return out
 }
@@ -245,7 +250,8 @@ admin2Router.put('/admin/ctl/content/:collection/:id', guard('content.write', as
     if (status === 'published') throw Object.assign(new Error('Only a reviewer can publish. Submit it for review instead.'), { status: 403 })
     return res.status(403).json({ error: 'This item is live. Ask a reviewer to change it.' })
   }
-  const saved = { ...item, id, status, updatedBy: req.user.email, updatedAt: new Date().toISOString() }
+  // `deleted: false` so re-creating an id that was deleted earlier brings it back.
+  const saved = { ...item, id, status, deleted: false, updatedBy: req.user.email, updatedAt: new Date().toISOString() }
   await saveOverride(collection, saved)
   await audit(req, 'content.save', `${collection}/${id}`, { status })
   res.json({ ok: true, item: saved })

@@ -55,7 +55,7 @@ lifeRouter.get(
 
 const PREF_ENUMS = {
   mode: ['light', 'dark', 'system'],
-  accent: ['blue', 'orange', 'rose', 'violet', 'teal'],
+  accent: ['blue', 'orange', 'rose', 'violet', 'teal', 'custom'],
   icon: ['blue', 'orange', 'rose', 'violet', 'teal'],
   density: ['comfortable', 'compact'],
   motion: ['system', 'reduce'],
@@ -73,6 +73,7 @@ lifeRouter.put(
       if (!allowed.includes(input[k])) throw new ValidationError(`Invalid value for ${k}`)
       clean[k] = input[k]
     }
+    clean.custom = /^#[0-9a-fA-F]{6}$/.test(input.custom ?? '') ? input.custom.toLowerCase() : '#7a3ff2'
     clean.updatedAt = Number.isFinite(input.updatedAt) ? input.updatedAt : Date.now()
     await storage.setSetting(PREFS_KEY(req.user.id), JSON.stringify(clean))
     res.json({ ok: true })
@@ -121,6 +122,15 @@ lifeRouter.patch(
     const { data: clean, when_key } = sanitizeItem(prev.kind, req.body?.data ?? {}, prev.data)
     await storage.upsertLifeItem(req.user.id, { id: prev.id, kind: prev.kind, data: clean, when_key })
     res.json({ item: await storage.getLifeItem(req.user.id, prev.id) })
+  }),
+)
+
+// Remove every item of one kind (e.g. "delete all my cycle data").
+lifeRouter.delete(
+  '/life/kind/:kind',
+  wrap(async (req, res) => {
+    if (!KINDS[req.params.kind]) throw new ValidationError('Unknown kind')
+    res.json({ ok: true, removed: await storage.deleteLifeKind(req.user.id, req.params.kind) })
   }),
 )
 
@@ -404,6 +414,7 @@ lifeRouter.get(
       books: c.books,
       sessions: c.sessions,
       audio: c.audio,
+      audiobooks: c.audiobooks,
       daily: concept ? { ...concept, book: c.books.find((b) => b.id === concept.bookId) ?? null } : null,
       concepts: c.concepts.map(({ id, bookId, concept: title }) => ({ id, bookId, title })),
     })
@@ -534,6 +545,65 @@ lifeRouter.post(
     const { data, when_key } = sanitizeItem('note', { kit }, note.data)
     await storage.upsertLifeItem(req.user.id, { id: note.id, kind: 'note', data, when_key })
     res.json({ item: await storage.getLifeItem(req.user.id, note.id), creditsUsed: reservation.cost })
+  }),
+)
+
+
+const IDEA_PROMPT = `You help a person turn a raw thought about a business, an investment, a stock or a savings plan into something they can test cheaply.
+Reply with ONLY a JSON object, no prose, no code fences:
+{"summary": str (<=500 chars, restate the idea clearly), "valueProposition": str (<=300 chars: who it helps and what value it creates, or for investing: what the person is trying to achieve), "assumptions": [str x3-6 things that must be true], "experiments": [str x3-6 small, cheap, time-boxed tests the person can run themselves, each with a clear signal of success], "risks": [str x3-5], "firstSteps": [str x3-4], "questions": [str x3-6 open questions to research]}
+STRICT RULES: use only what the person wrote plus general reasoning. Never invent facts, numbers, prices, market data, companies or returns. Never predict prices or promise or imply returns. Never tell the person to buy, sell or hold anything. For investing or stocks, frame everything as learning and risk management (paper-trading, reading filings, position-size limits, diversification, speaking to a licensed adviser), not as advice. Keep each item concise and practical.`
+
+const INVEST_NOTE = 'Educational structure only — not financial advice. Investments can lose money. Check anything important with a licensed adviser before you commit real money.'
+
+lifeRouter.post(
+  '/life/ideas/:id/shape',
+  rateLimit({ windowMs: 60_000, max: 6, message: 'Give the assistant a moment, then try again.' }),
+  wrap(async (req, res) => {
+    const idea = await storage.getLifeItem(req.user.id, req.params.id)
+    if (!idea || idea.kind !== 'idea') return res.status(404).json({ error: 'Idea not found' })
+    const text = `${idea.data.title}\n\n${idea.data.raw}`.trim()
+    if (idea.data.raw.trim().length < 30) throw new ValidationError('Write a little more first — a couple of sentences about the idea.')
+
+    const idemKey = String(req.body?.idemKey || randomUUID()).slice(0, 80)
+    const reservation = await credits.reserve(req.user.id, { feature: 'idea_shape', idemKey })
+    if (!reservation.ok) {
+      const status = reservation.code === 'insufficient_credits' ? 402 : reservation.code === 'duplicate' ? 409 : 503
+      return res.status(status).json({ code: reservation.code, error: reservation.message, balance: reservation.balance })
+    }
+    let raw
+    try {
+      raw = await complete({
+        model: 'bermi-core',
+        maxTokens: 1800,
+        messages: [
+          { role: 'system', content: IDEA_PROMPT },
+          { role: 'user', content: `Category: ${idea.data.category}\n\n${text.slice(0, 7000)}` },
+        ],
+      })
+    } catch (err) {
+      await credits.refund(req.user.id, reservation, `provider error: ${err.message}`)
+      return res.status(502).json({ code: 'ai_unavailable', error: err.friendly || 'The assistant could not be reached just now. Your credits were not used.', refunded: true, retryAfter: err.retryAfter ?? null })
+    }
+    if (raw == null) {
+      await credits.refund(req.user.id, reservation, 'no provider configured')
+      return res.status(503).json({ code: 'ai_unavailable', error: 'AI is not configured on this server. Your idea is safe and your credits were not used.', refunded: true })
+    }
+    const parsed = extractJson(raw)
+    let shaped = null
+    try {
+      shaped = parsed ? sanitizeItem('idea', { title: idea.data.title, shaped: parsed }, idea.data).data.shaped : null
+    } catch {
+      shaped = null
+    }
+    if (!shaped || (!shaped.summary && !shaped.experiments.length)) {
+      await credits.refund(req.user.id, reservation, 'unusable output')
+      return res.status(502).json({ code: 'ai_bad_output', error: "The assistant's answer couldn't be used this time. Your credits were not used — please try again.", refunded: true })
+    }
+    const { data, when_key } = sanitizeItem('idea', { shaped }, idea.data)
+    await storage.upsertLifeItem(req.user.id, { id: idea.id, kind: 'idea', data, when_key })
+    const item = await storage.getLifeItem(req.user.id, idea.id)
+    res.json({ item, creditsUsed: reservation.cost, notice: ['invest', 'stock', 'savings'].includes(idea.data.category) ? INVEST_NOTE : null })
   }),
 )
 

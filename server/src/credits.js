@@ -17,7 +17,7 @@ export const DEFAULT_ENTITLEMENTS = {
   },
   // Estimated cost per AI operation, in credits. Cheap, small-model work
   // costs little; heavier document work costs more.
-  costs: { companion_plan: 2, daily_concept: 1, study_materials: 5, quiz: 3, summarize: 3 },
+  costs: { companion_plan: 2, daily_concept: 1, study_materials: 5, idea_shape: 3, quiz: 3, summarize: 3 },
 }
 
 /** Central, admin-editable entitlement config (falls back to the defaults). */

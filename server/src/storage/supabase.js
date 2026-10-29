@@ -339,6 +339,10 @@ export class SupabaseStorage {
     )
     return rows.length > 0
   }
+  async deleteLifeKind(userId, kind) {
+    const rows = await this.#one(this.sb.from(T.life_items).delete().eq('user_id', userId).eq('kind', kind).select('id'))
+    return rows.length
+  }
   async deleteAllLifeItems(userId) {
     await this.#one(this.sb.from(T.life_items).delete().eq('user_id', userId))
   }

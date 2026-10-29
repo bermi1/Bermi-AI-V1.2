@@ -30,10 +30,12 @@ import type {
   ProviderHealth,
 } from '../lib/api'
 import { BermiMark } from '../components/Logo'
+import { CONTROL_TABS, can, ctlMe, ControlPanel, type ControlTab, type CtlMe } from './Control'
 
-type Tab = 'overview' | 'users' | 'engagement' | 'settings'
+type LegacyTab = 'overview' | 'users' | 'engagement' | 'settings'
+type Tab = LegacyTab | ControlTab
 
-const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
+const LEGACY_TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'engagement', label: 'Engagement', icon: BarChart3 },
@@ -42,9 +44,10 @@ const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
 
 export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; selfEmail: string }) {
   const [tab, setTab] = useState<Tab>('overview')
+  const [me, setMe] = useState<CtlMe | null>(null)
+  const [legacyOk, setLegacyOk] = useState<boolean | null>(null)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[] | null>(null)
-  const [denied, setDenied] = useState(false)
 
   const load = () =>
     api
@@ -52,19 +55,43 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
       .then((r) => {
         setStats(r.stats)
         setUsers(r.users)
+        setLegacyOk(true)
       })
       .catch((e) => {
-        if ((e as api.ApiError).message?.includes('Admin')) setDenied(true)
-        else setUsers([])
+        setLegacyOk(false)
+        if (!(e as api.ApiError).message?.includes('Admin')) setUsers([])
       })
 
   useEffect(() => {
     load()
+    ctlMe().then(setMe)
   }, [])
+
+  // Bermi Control tabs depend on the server-reported role; the classic admin
+  // tabs stay for the owner allowlist only.
+  const controlTabs = me ? CONTROL_TABS.filter((t) => can(me, t.perm)) : []
+  const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
+    ...(legacyOk ? LEGACY_TABS : []),
+    ...controlTabs.map((t) => ({ id: t.id as Tab, label: t.label, icon: ShieldAlert, group: 'Bermi Control' })),
+  ]
+  useEffect(() => {
+    if (tabs.length && !tabs.some((t) => t.id === tab)) setTab(tabs[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacyOk, me])
+  const denied = legacyOk === false && me != null && !me.role
+  const loading = legacyOk === null || me === null
+
+  if (loading) {
+    return (
+      <Shell tabs={tabs} tab={tab} onTab={setTab} onExit={onExit}>
+        <div className="flex justify-center py-24"><Loader2 className="animate-spin text-ink-faint" /></div>
+      </Shell>
+    )
+  }
 
   if (denied) {
     return (
-      <Shell tab={tab} onTab={setTab} onExit={onExit}>
+      <Shell tabs={tabs} tab={tab} onTab={setTab} onExit={onExit}>
         <div className="mx-auto mt-20 max-w-md rounded-2xl border border-edge bg-surface-raised p-8 text-center">
           <ShieldAlert size={32} className="mx-auto mb-3 text-amber-500" />
           <h2 className="text-[17px] font-semibold text-ink">Admins only</h2>
@@ -77,7 +104,8 @@ export function AdminDashboard({ onExit, selfEmail }: { onExit: () => void; self
   }
 
   return (
-    <Shell tab={tab} onTab={setTab} onExit={onExit}>
+    <Shell tabs={tabs} tab={tab} onTab={setTab} onExit={onExit}>
+      {me && controlTabs.some((t) => t.id === tab) && <ControlPanel tab={tab as ControlTab} me={me} />}
       {tab === 'overview' && <OverviewTab stats={stats} />}
       {tab === 'users' && <UsersTab users={users} selfEmail={selfEmail} onUsersChange={setUsers} onStatsChange={setStats} />}
       {tab === 'engagement' && <EngagementTab />}
@@ -692,11 +720,13 @@ function ProviderHealthPanel() {
 
 function Shell({
   children,
+  tabs,
   tab,
   onTab,
   onExit,
 }: {
   children: React.ReactNode
+  tabs: { id: Tab; label: string; icon: typeof LayoutDashboard; group?: string }[]
   tab: Tab
   onTab: (t: Tab) => void
   onExit: () => void
@@ -716,9 +746,12 @@ function Shell({
           <span className="text-[14.5px] font-bold text-ink">Bermi Admin</span>
         </div>
         <nav className="space-y-0.5 p-2.5">
-          {TABS.map((t) => (
+          {tabs.map((t, i) => (
+            <div key={t.id}>
+              {t.group && tabs[i - 1]?.group !== t.group && (
+                <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">{t.group}</p>
+              )}
             <button
-              key={t.id}
               onClick={() => {
                 onTab(t.id)
                 setNavOpen(false)
@@ -730,6 +763,7 @@ function Shell({
               <t.icon size={16} />
               {t.label}
             </button>
+            </div>
           ))}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 border-t border-edge p-2.5">
@@ -756,7 +790,7 @@ function Shell({
           >
             <LayoutDashboard size={18} />
           </button>
-          <span className="text-[14.5px] font-semibold text-ink">{TABS.find((t) => t.id === tab)?.label}</span>
+          <span className="text-[14.5px] font-semibold text-ink">{tabs.find((t) => t.id === tab)?.label}</span>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-8 md:px-8">
           <div className="mx-auto max-w-5xl">{children}</div>

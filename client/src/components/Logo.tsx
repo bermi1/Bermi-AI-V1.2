@@ -1,76 +1,44 @@
 import { useId } from 'react'
 import { ACCENT_META, useOptionalTheme, type Accent } from '../lib/theme'
+import { MARK } from '../lib/brand'
+
+const Shapes = () => (
+  <>
+    <path d={MARK.stem} />
+    <path fillRule="evenodd" d={MARK.bowl} />
+    <path d={MARK.spark} />
+  </>
+)
 
 /**
- * The Bermi "b + sparkle" mark. `BermiMark` renders in currentColor so it
- * adapts to context; `BermiTile` is the app-icon treatment (brand blue tile,
- * white mark) used for avatars and the favicon.
+ * The Bermi mark: a rounded "b" whose bowl is a ring, with a four-point spark
+ * above it (the assistant). Renders in currentColor so it adapts to context.
  */
 export function BermiMark({ size = 24, className }: { size?: number; className?: string }) {
-  const maskId = useId()
   return (
-    <svg
-      viewBox="0 0 512 512"
-      width={size}
-      height={size}
-      className={className}
-      aria-hidden
-      focusable="false"
-    >
-      <defs>
-        <mask id={maskId}>
-          <rect width="512" height="512" fill="black" />
-          <rect x="143" y="61" width="72" height="256" rx="36" fill="white" />
-          <circle cx="286" cy="307" r="143" fill="white" />
-          <circle cx="286" cy="307" r="72" fill="black" />
-          <path
-            fill="black"
-            d="M215 240 C222.5 285 237 299.5 282 307 C237 314.5 222.5 329 215 374 C207.5 329 193 314.5 148 307 C193 299.5 207.5 285 215 240 Z"
-          />
-        </mask>
-      </defs>
-      <rect width="512" height="512" fill="currentColor" mask={`url(#${maskId})`} />
+    <svg viewBox="0 0 512 512" width={size} height={size} className={className} fill="currentColor" aria-hidden focusable="false">
+      <Shapes />
     </svg>
   )
 }
 
-/** App-icon treatment. Uses the icon variant the user picked in Settings
- * unless an explicit `accent` is given (e.g. for the picker itself). */
-export function BermiTile({
-  size = 32,
-  className,
-  accent,
-}: {
-  size?: number
-  className?: string
-  accent?: Accent
-}) {
-  const maskId = useId()
+/** The mark in the chosen icon colour (soft gradient), with no tile around it.
+ * Uses the colour picked in Settings unless `accent` is given. */
+export function BermiTile({ size = 32, className, accent }: { size?: number; className?: string; accent?: Accent }) {
+  const id = useId()
   const theme = useOptionalTheme()
-  const fill = ACCENT_META[accent ?? theme?.prefs.icon ?? 'blue'].icon
+  const m = ACCENT_META[accent ?? theme?.prefs.icon ?? 'blue']
   return (
-    <svg
-      viewBox="0 0 512 512"
-      width={size}
-      height={size}
-      className={className}
-      aria-hidden
-      focusable="false"
-    >
+    <svg viewBox="40 40 440 460" width={size} height={(size * 460) / 440} className={className} aria-hidden focusable="false">
       <defs>
-        <mask id={maskId}>
-          <rect width="512" height="512" fill="black" />
-          <rect x="143" y="61" width="72" height="256" rx="36" fill="white" />
-          <circle cx="286" cy="307" r="143" fill="white" />
-          <circle cx="286" cy="307" r="72" fill="black" />
-          <path
-            fill="black"
-            d="M215 240 C222.5 285 237 299.5 282 307 C237 314.5 222.5 329 215 374 C207.5 329 193 314.5 148 307 C193 299.5 207.5 285 215 240 Z"
-          />
-        </mask>
+        <linearGradient id={`${id}g`} gradientUnits="userSpaceOnUse" x1="170" y1="60" x2="400" y2="480">
+          <stop offset="0" stopColor={m.from} />
+          <stop offset="1" stopColor={m.icon} />
+        </linearGradient>
       </defs>
-      <rect width="512" height="512" rx="118" fill={fill} />
-      <rect width="512" height="512" fill="#ffffff" mask={`url(#${maskId})`} />
+      <g fill={`url(#${id}g)`}>
+        <Shapes />
+      </g>
     </svg>
   )
 }

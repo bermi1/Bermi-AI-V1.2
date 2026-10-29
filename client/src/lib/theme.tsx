@@ -18,18 +18,24 @@ import * as api from './api'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export const ACCENTS = ['blue', 'orange', 'rose', 'violet', 'teal'] as const
 export type Accent = (typeof ACCENTS)[number]
+export type AccentChoice = Accent | 'custom'
 
-export const ACCENT_META: Record<Accent, { label: string; mood: string; icon: string }> = {
-  blue: { label: 'Bermi Blue', mood: 'Focused and trustworthy', icon: '#3159EA' },
-  orange: { label: 'Sunset Orange', mood: 'Energetic and motivating', icon: '#E25A12' },
-  rose: { label: 'Rose Pink', mood: 'Warm and expressive', icon: '#D6336C' },
-  violet: { label: 'Royal Violet', mood: 'Creative and elegant', icon: '#6741D9' },
-  teal: { label: 'Emerald Teal', mood: 'Calm and balanced', icon: '#0F8F88' },
+import { freeMarkSvg } from './brand'
+import { CUSTOM_VARS, customTokens, isHex } from './customTheme'
+
+export const ACCENT_META: Record<Accent, { label: string; mood: string; icon: string; from: string; to: string }> = {
+  blue: { label: 'Bermi Blue', mood: 'Focused and trustworthy', icon: '#3159EA', from: '#7C97FF', to: '#2340C6' },
+  orange: { label: 'Sunset Orange', mood: 'Energetic and motivating', icon: '#E25A12', from: '#FFA05C', to: '#D1450A' },
+  rose: { label: 'Rose Pink', mood: 'Warm and expressive', icon: '#D6336C', from: '#FF7AA6', to: '#B71C54' },
+  violet: { label: 'Royal Violet', mood: 'Creative and elegant', icon: '#6741D9', from: '#A184FF', to: '#512EC0' },
+  teal: { label: 'Emerald Teal', mood: 'Calm and balanced', icon: '#0F8F88', from: '#35CDBE', to: '#0A7872' },
 }
 
 export interface Prefs {
   mode: ThemePreference
-  accent: Accent
+  accent: AccentChoice
+  /** Used when accent is 'custom'. */
+  custom: string
   icon: Accent
   density: 'comfortable' | 'compact'
   motion: 'system' | 'reduce'
@@ -41,6 +47,7 @@ export interface Prefs {
 export const DEFAULT_PREFS: Prefs = {
   mode: 'system',
   accent: 'blue',
+  custom: '#7A3FF2',
   icon: 'blue',
   density: 'comfortable',
   motion: 'system',
@@ -58,7 +65,8 @@ export function sanitizePrefs(raw: unknown): Prefs {
     allowed.includes(v as T) ? (v as T) : fallback
   return {
     mode: pick(r.mode, ['light', 'dark', 'system'] as const, DEFAULT_PREFS.mode),
-    accent: pick(r.accent, ACCENTS, DEFAULT_PREFS.accent),
+    accent: pick<AccentChoice>(r.accent, [...ACCENTS, 'custom'], DEFAULT_PREFS.accent),
+    custom: isHex(r.custom) ? r.custom.toLowerCase() : DEFAULT_PREFS.custom,
     icon: pick(r.icon, ACCENTS, DEFAULT_PREFS.icon),
     density: pick(r.density, ['comfortable', 'compact'] as const, DEFAULT_PREFS.density),
     motion: pick(r.motion, ['system', 'reduce'] as const, DEFAULT_PREFS.motion),
@@ -109,10 +117,8 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 /** Mirrors the favicon to the chosen icon colour — in-app only. */
 function setFavicon(accent: Accent) {
-  const fill = ACCENT_META[accent].icon
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="118" fill="${fill}"/>` +
-    `<g fill="#fff"><rect x="143" y="61" width="72" height="256" rx="36"/><path fill-rule="evenodd" d="M286 164a143 143 0 1 0 0 286a143 143 0 0 0 0-286zm0 71a72 72 0 1 1 0 144a72 72 0 0 1 0-144z"/></g></svg>`
+  const m = ACCENT_META[accent]
+  const svg = freeMarkSvg(m.from, m.icon)
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (!link) {
     link = document.createElement('link')
@@ -157,6 +163,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const el = document.documentElement
     el.dataset.theme = resolved
     el.dataset.accent = prefs.accent
+    // "Any colour": computed tokens go inline; presets clear them.
+    if (prefs.accent === 'custom') {
+      const vars = customTokens(prefs.custom, resolved)
+      for (const k of CUSTOM_VARS) el.style.setProperty(k, vars[k])
+      try {
+        localStorage.setItem('bermi-custom-vars', JSON.stringify({ light: customTokens(prefs.custom, 'light'), dark: customTokens(prefs.custom, 'dark') }))
+      } catch {
+        /* ignore */
+      }
+    } else {
+      for (const k of CUSTOM_VARS) el.style.removeProperty(k)
+    }
     el.dataset.density = prefs.density
     el.dataset.motion = prefs.motion
     el.dataset.text = prefs.textSize
@@ -170,7 +188,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           .forEach((m) => m.setAttribute('content', surface))
       }
     })
-  }, [resolved, prefs.accent, prefs.density, prefs.motion, prefs.textSize, prefs.icon])
+  }, [resolved, prefs.accent, prefs.custom, prefs.density, prefs.motion, prefs.textSize, prefs.icon])
 
   const setPrefs = useCallback((patch: Partial<Prefs>) => {
     setPrefsState((cur) => sanitizePrefs({ ...cur, ...patch, updatedAt: Date.now() }))

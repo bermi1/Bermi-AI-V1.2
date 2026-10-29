@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { IdeaLab } from './IdeaLab'
 import { Check, Info, PiggyBank, Plus, Receipt, Scale, Trash2, Wallet, X } from 'lucide-react'
 import { lifeApi, todayYmd, type BudgetData, type ExpenseData, type MoneyView, type SavingData, type SavingPlan } from './api'
 import { useAct, useDebounced, useToday } from './hooks'
 import {
-  btn, Donut, EmptyState, ErrorState, field, fmtDateShort, fmtMoney, PageHeader, Ring, Section, Sheet, Skeleton, Spinner, seriesColor, useAsync, Chip,
+  btn, Donut, EmptyState, ErrorState, field, fmtCompact, fmtDateShort, fmtMoney, Gauge, Hero, HeroTabs, Ring, Section, Sheet, Skeleton, Spinner, seriesColor, useAsync, Chip,
 } from './ui'
 
 const DEFAULT_CATS = ['Food', 'Transport', 'Rent & bills', 'Study', 'Airtime & data', 'Savings', 'Other']
@@ -15,23 +16,39 @@ export function MyMoney() {
   const [setup, setSetup] = useState(false)
   const [expense, setExpense] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [view, setView] = useState<'plan' | 'ideas'>(() => (sessionStorage.getItem('bermi-money-view') === 'ideas' ? 'ideas' : 'plan'))
+  useEffect(() => { try { sessionStorage.setItem('bermi-money-view', view) } catch { /* ignore */ } }, [view])
   const m = q.data
   const cur = m?.summary.currency ?? 'TZS'
   const fmt = (n: number) => fmtMoney(n, cur)
   const reload = () => q.reload(true)
 
+  const avail = m?.summary.availableAfterPlan
   return (
     <div>
-      <PageHeader title="My Money" subtitle="Plan your month and your savings goals." actions={m?.budget ? <button className={btn.ghost} onClick={() => setSetup(true)}>Edit budget</button> : null} />
+      <Hero
+        kicker={view === 'ideas' ? 'Brainstorm, test, learn' : m?.budget ? (avail != null && avail < 0 ? 'Over plan this month by' : 'Left to plan this month') : 'Plan your month and your goals'}
+        title={view === 'ideas' ? 'Idea lab' : m?.budget ? (avail == null ? '—' : fmt(Math.abs(avail))) : 'My Money'}
+        actions={view === 'plan' && m?.budget ? <button className="rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur hover:bg-white/25" onClick={() => setSetup(true)}>Edit budget</button> : undefined}
+      >
+        <HeroTabs label="My Money sections" tabs={[{ id: 'plan' as const, label: 'Budget & savings' }, { id: 'ideas' as const, label: 'Idea lab' }]} value={view} onChange={setView} />
+        {view === 'plan' && m?.budget && (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[['Income', m.summary.income], ['Planned', m.summary.budgetedTotal], ['Upcoming', m.summary.upcomingTotal]].map(([l, v]) => (
+              <div key={l as string} className="tile-glass p-3.5">
+                <p className="text-[11.5px] font-medium uppercase tracking-[0.1em] text-white/60">{l}</p>
+                <p title={fmt(v as number)} className="mt-1 truncate text-[17px] font-semibold tabular-nums sm:text-[19px]">{fmtCompact(v as number, cur)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {view === 'plan' && <p className="mt-4 flex gap-2 text-[12.5px] leading-relaxed text-white/70">
+          <Info size={15} className="mt-0.5 shrink-0" aria-hidden />
+          <span>A <strong className="font-semibold text-white">planning tool</strong>. Bermi doesn’t hold, send or receive money and can’t see your bank or mobile-money balance — figures are what <em>you</em> enter. AI credits are a usage allowance, not money.</span>
+        </p>}
+      </Hero>
 
-      <div className="flex gap-2.5 rounded-2xl bg-surface-sunken p-3.5 text-[13px] text-ink-muted">
-        <Info size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden />
-        <p>
-          This is a <strong className="font-semibold text-ink">planning tool</strong>. Bermi doesn’t hold, send or receive money and can’t see your bank or mobile-money balance. Amounts here are what <em>you</em> enter. AI credits are a separate usage allowance — not money.
-        </p>
-      </div>
-
-      {q.loading && !m ? (
+      {view === 'ideas' ? <IdeaLab /> : q.loading && !m ? (
         <div aria-busy="true" className="mt-6 space-y-4"><Skeleton className="h-28" /><Skeleton className="h-48" /></div>
       ) : q.error && !m ? (
         <ErrorState error={q.error} onRetry={() => q.reload()} />
@@ -44,9 +61,9 @@ export function MyMoney() {
         />
       ) : m ? (
         <>
-          <Summary m={m} fmt={fmt} />
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 lg:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-4 lg:grid-cols-2">
             <div>
+              <Section title="Plan vs income"><PlanGauge m={m} fmt={fmt} /></Section>
               <Section title="Where it’s planned to go"><Allocation m={m} fmt={fmt} /></Section>
               <Section title="Can I afford it?"><Afford m={m} fmt={fmt} /></Section>
             </div>
@@ -69,21 +86,17 @@ export function MyMoney() {
   )
 }
 
-function Summary({ m, fmt }: { m: MoneyView; fmt: (n: number) => string }) {
+function PlanGauge({ m, fmt }: { m: MoneyView; fmt: (n: number) => string }) {
   const s = m.summary
-  const stat = (label: string, value: string, hint?: string) => (
-    <div className="py-4">
-      <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{label}</p>
-      <p className="mt-1 text-[22px] font-semibold tabular-nums tracking-tight">{value}</p>
-      {hint && <p className="text-[12px] text-ink-muted">{hint}</p>}
-    </div>
-  )
+  if (!s.income) return <p className="text-[13.5px] text-ink-muted">Add your monthly income to see how much of it your plan uses.</p>
+  const pct = Math.round((s.budgetedTotal / s.income) * 100)
   return (
-    <div className="mt-4 grid grid-cols-2 gap-x-6 border-b border-edge sm:grid-cols-4">
-      {stat('Monthly income', fmt(s.income), 'as you entered it')}
-      {stat('Planned', fmt(s.budgetedTotal), s.income ? `${Math.round((s.budgetedTotal / s.income) * 100)}% of income` : undefined)}
-      {stat('Upcoming this month', fmt(s.upcomingTotal), 'unpaid expenses')}
-      {stat('Left to plan', s.availableAfterPlan == null ? '—' : fmt(s.availableAfterPlan), s.availableAfterPlan == null ? 'add your income' : s.availableAfterPlan < 0 ? 'over plan' : 'after upcoming expenses')}
+    <div>
+      <Gauge value={Math.min(pct, 100)} label={`Your plan uses ${pct}% of your income`} tone={pct > 100 ? '#E5484D' : 'var(--primary)'}>
+        <p className="text-[34px] font-semibold leading-none tabular-nums">{pct}%</p>
+        <p className="mt-1 text-[12.5px] text-ink-muted">of income planned</p>
+      </Gauge>
+      <p className="mt-3 text-center text-[13px] text-ink-muted">{pct > 100 ? `Over by ${fmt(s.budgetedTotal - s.income)}` : `${fmt(Math.max(s.income - s.budgetedTotal, 0))} not yet assigned`}</p>
     </div>
   )
 }
@@ -169,7 +182,7 @@ function Savings({ m, fmt, act, reload }: { m: MoneyView; fmt: (n: number) => st
   const active = m.savings.filter((s) => s.data.status === 'active')
   if (!active.length) return <EmptyState icon={<PiggyBank size={26} />} title="No savings goals yet" body="Try “TZS 40,000 in two weeks”. Bermi works out what that means per week and whether it fits your plan." />
   return (
-    <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-10 divide-y divide-edge md:grid-cols-2 md:divide-y-0">
+    <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-4 divide-y divide-edge md:grid-cols-2 md:divide-y-0">
       {active.map((s) => {
         const pct = s.data.targetAmount ? (s.saved / s.data.targetAmount) * 100 : 0
         return (

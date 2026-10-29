@@ -88,6 +88,27 @@ export interface Kit {
   quiz: { q: string; options: string[]; answer: number; explain: string }[]
   generatedAt: string
 }
+export interface Shaped {
+  summary: string
+  valueProposition: string
+  assumptions: string[]
+  experiments: string[]
+  risks: string[]
+  firstSteps: string[]
+  questions: string[]
+  generatedAt: string
+}
+export type IdeaCategory = 'business' | 'invest' | 'stock' | 'savings' | 'other'
+export interface IdeaData {
+  title: string
+  raw: string
+  category: IdeaCategory
+  status: 'seed' | 'testing' | 'validated' | 'parked'
+  value: string
+  shaped: Shaped | null
+  experiments: { text: string; done: boolean; result: string }[]
+  date: string | null
+}
 export interface NoteData { title: string; course: string; body: string; date: string | null; kit: Kit | null }
 export interface SavedData { ref: string; label: string; type: 'concept' | 'audio' | 'verse' | 'session' }
 export interface SkillData { name: string; level: number; target: number; notes: string }
@@ -98,6 +119,8 @@ export interface WellbeingPrefs {
   cycleEnabled: boolean
   bedtime: string
   wakeTime: string
+  cycleLength: number
+  periodLength: number
 }
 export interface ProfileData {
   goals: string[]
@@ -119,7 +142,14 @@ export interface NotifyPrefs {
   quietStart: string
   quietEnd: string
 }
-export interface CycleData { date: string; kind: 'period_start' | 'period_end' | 'symptom'; note: string }
+export interface CycleData {
+  date: string
+  kind: 'period_start' | 'period_end' | 'symptom' | 'log'
+  note: string
+  flow: '' | 'spotting' | 'light' | 'medium' | 'heavy'
+  symptoms: string[]
+  mood: number | null
+}
 
 export interface Block {
   a: string
@@ -177,7 +207,21 @@ export interface Concept {
 }
 export interface GuidedSession { id: string; type: string; title: string; minutes: number; blurb: string; steps: string[] }
 export interface AudioAsset { id: string; title: string; author?: string; url: string; license: string; attribution?: string; category?: string; minutes?: number }
+export interface Audiobook {
+  id: string
+  archiveId: string
+  category: 'wealth' | 'motivation' | 'emotion' | 'laziness' | string
+  title: string
+  author: string
+  year?: number
+  minutes?: number
+  narrator?: string
+  blurb?: string
+  sourceUrl?: string
+  license: string
+}
 export interface ContentView {
+  audiobooks: Audiobook[]
   books: Book[]
   sessions: GuidedSession[]
   audio: AudioAsset[]
@@ -268,6 +312,7 @@ export const lifeApi = {
   update: <T>(id: string, data: Partial<T>) =>
     req<{ item: Item<T> }>(`/items/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }).then((r) => r.item),
   remove: (id: string) => req<{ ok: boolean }>(`/items/${id}`, { method: 'DELETE' }),
+  removeKind: (kind: string) => req<{ ok: boolean; removed: number }>(`/kind/${kind}`, { method: 'DELETE' }),
   money: (date: string) => req<MoneyView>(`/money?date=${date}`),
   checkSaving: (body: { target: number; due: string; today: string; saved?: number }) =>
     post<{ plan: SavingPlan }>('/money/check', body).then((r) => r.plan),
@@ -278,6 +323,8 @@ export const lifeApi = {
     post<{ actions: ProposedAction[]; plannedMinutes: number; shortfallMinutes: number; message: string | null }>('/learning/plan-sessions', body),
   studyKit: (noteId: string, idemKey: string) =>
     post<{ item: Item<NoteData>; creditsUsed: number }>(`/notes/${noteId}/study-kit`, { idemKey }, 90_000),
+  shapeIdea: (id: string, idemKey: string) =>
+    post<{ item: Item<IdeaData>; creditsUsed: number }>(`/ideas/${id}/shape`, { idemKey }, 90_000),
   credits: () => req<CreditsView>('/credits'),
   pushStatus: () => req<{ configured: boolean; scheduler: boolean }>('/push/status'),
   plan: (body: { text: string; date: string; time: string; idemKey: string }) =>

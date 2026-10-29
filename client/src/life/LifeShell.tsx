@@ -1,21 +1,24 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { BookOpen, CalendarDays, GraduationCap, HeartPulse, LogOut, MessageSquare, Settings, Shield, Sparkles, Wallet } from 'lucide-react'
 import { BermiMark } from '../components/Logo'
+import { ThemeQuick } from '../components/ThemeQuick'
 import { SettingsDialog } from '../components/SettingsDialog'
 import * as api from '../lib/api'
+import { useTheme } from '../lib/theme'
 import type { AuthUser, ModelOption } from '../lib/types'
 import { CompanionProvider, useCompanion, useCompanionShortcut } from './Companion'
-import { ToastProvider, Skeleton, Sheet, btn } from './ui'
+import { ToastProvider, Skeleton, Sheet, ShellCtl } from './ui'
 
 const MyDay = lazy(() => import('./MyDay').then((m) => ({ default: m.MyDay })))
 const MyLearning = lazy(() => import('./MyLearning').then((m) => ({ default: m.MyLearning })))
 const MyMoney = lazy(() => import('./MyMoney').then((m) => ({ default: m.MyMoney })))
+const MyCycle = lazy(() => import('./MyCycle').then((m) => ({ default: m.MyCycle })))
 const MyWellbeing = lazy(() => import('./MyWellbeing').then((m) => ({ default: m.MyWellbeing })))
 
-export type LifeTab = 'day' | 'learning' | 'money' | 'wellbeing'
-export const TAB_PATH: Record<LifeTab, string> = { day: '/my/day', learning: '/my/learning', money: '/my/money', wellbeing: '/my/wellbeing' }
+export type LifeTab = 'day' | 'learning' | 'money' | 'wellbeing' | 'cycle'
+export const TAB_PATH: Record<LifeTab, string> = { day: '/my/day', learning: '/my/learning', money: '/my/money', wellbeing: '/my/wellbeing', cycle: '/my/cycle' }
 
-const TABS: { id: LifeTab; label: string; icon: typeof CalendarDays }[] = [
+const TABS: { id: Exclude<LifeTab, 'cycle'>; label: string; icon: typeof CalendarDays }[] = [
   { id: 'day', label: 'My Day', icon: CalendarDays },
   { id: 'learning', label: 'My Learning', icon: BookOpen },
   { id: 'money', label: 'My Money', icon: Wallet },
@@ -26,6 +29,7 @@ export function tabFromPath(path: string): LifeTab {
   if (path.startsWith('/my/learning')) return 'learning'
   if (path.startsWith('/my/money')) return 'money'
   if (path.startsWith('/my/wellbeing')) return 'wellbeing'
+  if (path.startsWith('/my/cycle')) return 'cycle'
   return 'day'
 }
 
@@ -59,6 +63,7 @@ export function LifeShell(props: Props) {
 
 function Frame({ user, tab, go, onSignedOut }: Props) {
   const { open: openCompanion } = useCompanion()
+  const { resolved } = useTheme()
   useCompanionShortcut()
   const [account, setAccount] = useState(false)
   const [settings, setSettings] = useState(false)
@@ -81,55 +86,45 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
 
   // Keep the document title meaningful per screen (screen readers + tab strip).
   useEffect(() => {
-    const label = TABS.find((t) => t.id === tab)!.label
+    const label = tab === 'cycle' ? 'Period tracker' : TABS.find((t) => t.id === tab)!.label
     document.title = `${label} · Bermi`
   }, [tab])
 
   const signOut = () => api.logout().finally(onSignedOut)
 
   return (
-    <div className="flex min-h-dvh bg-surface text-ink">
+    <ShellCtl.Provider value={{ openAccount: () => setAccount(true), openChat: () => go('/chat') }}>
+    <div className="min-h-dvh bg-surface text-ink" {...(tab === 'cycle' ? { 'data-accent': 'rose', 'data-theme': resolved } : {})}>
       <a href="#life-main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-on-primary">
         Skip to content
       </a>
 
-      {/* Tablet + desktop rail */}
-      <aside className="sticky top-0 hidden h-dvh w-[76px] shrink-0 flex-col border-r border-edge px-3 py-5 md:flex xl:w-[236px] xl:px-4">
-        <button onClick={() => go('/my/day')} className="mb-6 flex items-center gap-2.5 rounded-xl px-1.5 py-1 xl:px-2" aria-label="Bermi home">
-          <BermiMark size={30} className="shrink-0 text-primary" />
-          <span className="hidden text-[17px] font-semibold tracking-tight xl:inline">Bermi</span>
+      {/* Tablet + desktop: floating dark rail */}
+      <aside className="dock fixed bottom-3 left-3 top-3 z-30 hidden w-[72px] flex-col rounded-[2rem] px-2.5 py-5 md:flex xl:w-[228px] xl:px-3.5">
+        <button onClick={() => go('/my/day')} className="mb-7 flex items-center gap-3 rounded-2xl px-1.5 xl:px-2" aria-label="Bermi home">
+          <BermiMark size={38} className="shrink-0 text-white" />
+          <span className="hidden text-[19px] font-semibold tracking-tight text-white xl:inline">Bermi</span>
         </button>
-        <nav aria-label="Primary" className="flex flex-col gap-1">
+        <nav aria-label="Primary" className="flex flex-col gap-1.5">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <RailLink key={id} active={tab === id} onClick={() => go(TAB_PATH[id])} icon={<Icon size={20} />} label={label} />
+            <RailLink key={id} active={tab === id || (id === 'wellbeing' && tab === 'cycle')} onClick={() => go(TAB_PATH[id])} icon={<Icon size={20} />} label={label} />
           ))}
         </nav>
         <button
           onClick={() => openCompanion()}
-          className="mt-5 flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-primary px-3 text-[14px] font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+          className="glow-btn mt-6 flex min-h-[48px] items-center justify-center gap-2 rounded-full px-3 text-[14px] font-semibold transition-transform active:scale-[0.97] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           aria-label="Ask Bermi"
         >
-          <Sparkles size={18} /> <span className="hidden xl:inline">Ask Bermi</span>
+          <Sparkles size={19} /> <span className="hidden xl:inline">Ask Bermi</span>
         </button>
-        <div className="mt-auto flex flex-col gap-1">
+        <p className="mt-auto hidden px-3 pb-3 text-[11.5px] leading-snug text-white/45 xl:block">Your life better organized, your potential better supported.</p>
+        <div className="mt-auto flex flex-col gap-1.5 xl:mt-0">
           <RailLink onClick={() => go('/chat')} icon={<MessageSquare size={20} />} label="Full chat" />
           <RailLink onClick={() => setAccount(true)} icon={<Settings size={20} />} label={name || 'Account'} />
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Phone top bar */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-edge bg-surface/90 px-4 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
-          <div className="flex items-center gap-2">
-            <BermiMark size={26} className="text-primary" />
-            <span className="text-[16px] font-semibold tracking-tight">Bermi</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => go('/chat')} className={btn.icon} aria-label="Open full chat"><MessageSquare size={20} /></button>
-            <button onClick={() => setAccount(true)} className={btn.icon} aria-label="Account and settings"><Settings size={20} /></button>
-          </div>
-        </header>
-
+      <div className="min-w-0 md:pl-[96px] xl:pl-[252px]">
         {user.is_guest && (
           <div className="bg-primary-soft px-4 py-1.5 text-center text-[12.5px] text-primary">
             You’re using Bermi as a guest — free for one day.{' '}
@@ -137,36 +132,38 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
           </div>
         )}
 
-        <main id="life-main" tabIndex={-1} className="mx-auto w-full max-w-[1040px] flex-1 px-4 pb-[calc(112px+env(safe-area-inset-bottom))] pt-5 outline-none md:px-8 md:pb-16 md:pt-9">
+        <main id="life-main" tabIndex={-1} className="mx-auto w-full max-w-[1080px] px-4 pb-[calc(92px+env(safe-area-inset-bottom))] pt-5 outline-none md:px-6 md:pb-14 md:pt-4 lg:pr-8">
           <Suspense fallback={<ScreenSkeleton />}>
             {tab === 'day' && <MyDay user={user} name={name} />}
             {tab === 'learning' && <MyLearning go={go} />}
             {tab === 'money' && <MyMoney />}
-            {tab === 'wellbeing' && <MyWellbeing />}
+            {tab === 'wellbeing' && <MyWellbeing go={go} />}
+            {tab === 'cycle' && <MyCycle go={go} />}
           </Suspense>
         </main>
-
-        {/* Phone bottom bar with the assistant integrated in the centre */}
-        <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 border-t border-edge bg-surface/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
-          <ul className="mx-auto grid h-[62px] max-w-md grid-cols-5 items-stretch">
-            <BarItem tab={TABS[0]} active={tab === 'day'} onClick={() => go(TAB_PATH.day)} short="Day" />
-            <BarItem tab={TABS[1]} active={tab === 'learning'} onClick={() => go(TAB_PATH.learning)} short="Learn" />
-            <li className="relative flex items-start justify-center">
-              <button
-                onClick={() => openCompanion()}
-                aria-label="Ask Bermi"
-                className="absolute -top-5 grid h-[58px] w-[58px] place-items-center rounded-full bg-primary text-on-primary shadow-[0_8px_24px_color-mix(in_srgb,var(--primary)_45%,transparent)] ring-4 ring-surface transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-              >
-                <Sparkles size={24} />
-              </button>
-            </li>
-            <BarItem tab={TABS[2]} active={tab === 'money'} onClick={() => go(TAB_PATH.money)} short="Money" />
-            <BarItem tab={TABS[3]} active={tab === 'wellbeing'} onClick={() => go(TAB_PATH.wellbeing)} short="Well-being" />
-          </ul>
-        </nav>
       </div>
 
+      {/* Phone: floating pill dock, the assistant at its heart */}
+      <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden">
+        <ul className="dock grid h-[58px] w-full max-w-[380px] grid-cols-5 items-center rounded-full px-2">
+          <BarItem tab={TABS[0]} active={tab === 'day'} onClick={() => go(TAB_PATH.day)} />
+          <BarItem tab={TABS[1]} active={tab === 'learning'} onClick={() => go(TAB_PATH.learning)} />
+          <li className="flex justify-center">
+            <button
+              onClick={() => openCompanion()}
+              aria-label="Ask Bermi"
+              className="glow-btn grid h-[46px] w-[46px] place-items-center rounded-full transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            >
+              <Sparkles size={21} />
+            </button>
+          </li>
+          <BarItem tab={TABS[2]} active={tab === 'money'} onClick={() => go(TAB_PATH.money)} />
+          <BarItem tab={TABS[3]} active={tab === 'wellbeing' || tab === 'cycle'} onClick={() => go(TAB_PATH.wellbeing)} />
+        </ul>
+      </nav>
+
       <Sheet open={account} onClose={() => setAccount(false)} title={name || 'Account'}>
+        <ThemeQuick />
         <div className="space-y-1">
           <MenuRow icon={<Settings size={18} />} label="Settings & appearance" onClick={() => { setAccount(false); setSettings(true) }} />
           <MenuRow icon={<MessageSquare size={18} />} label="Full chat" onClick={() => { setAccount(false); go('/chat') }} />
@@ -174,6 +171,7 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
           {isAdmin && <MenuRow icon={<Shield size={18} />} label="Bermi Control" onClick={() => { setAccount(false); go('/admin') }} />}
           <MenuRow icon={<LogOut size={18} />} label="Sign out" onClick={signOut} />
         </div>
+        <p className="mt-4 text-center text-[12px] text-ink-faint">Your life better organized, your potential better supported.</p>
       </Sheet>
 
       {settings && (
@@ -188,6 +186,7 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
         />
       )}
     </div>
+    </ShellCtl.Provider>
   )
 }
 
@@ -197,8 +196,8 @@ function RailLink({ active, onClick, icon, label }: { active?: boolean; onClick:
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       title={label}
-      className={`flex min-h-[44px] items-center justify-center gap-3 rounded-xl px-3 text-[14px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 xl:justify-start ${
-        active ? 'bg-primary-soft text-primary' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+      className={`flex min-h-[48px] items-center justify-center gap-3 rounded-full px-3 text-[14.5px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white xl:justify-start xl:px-4 ${
+        active ? 'bg-white text-[#0B1020]' : 'text-white/70 hover:bg-white/10 hover:text-white'
       }`}
     >
       <span className="shrink-0">{icon}</span>
@@ -208,18 +207,18 @@ function RailLink({ active, onClick, icon, label }: { active?: boolean; onClick:
   )
 }
 
-function BarItem({ tab, active, onClick, short }: { tab: (typeof TABS)[number]; active: boolean; onClick: () => void; short: string }) {
+function BarItem({ tab, active, onClick }: { tab: (typeof TABS)[number]; active: boolean; onClick: () => void }) {
   const Icon = tab.icon
   return (
-    <li className="flex">
+    <li className="flex justify-center">
       <button
         onClick={onClick}
         aria-current={active ? 'page' : undefined}
         aria-label={tab.label}
-        className={`flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 ${active ? 'text-primary' : 'text-ink-muted'}`}
+        title={tab.label}
+        className={`grid h-[44px] w-[44px] place-items-center rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${active ? 'bg-white text-[#0B1020] shadow-[0_6px_18px_rgb(0_0_0/0.35)]' : 'text-white/70 hover:text-white'}`}
       >
-        <Icon size={22} strokeWidth={active ? 2.3 : 1.9} />
-        <span className="text-[10.5px] font-medium leading-none">{short}</span>
+        <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
       </button>
     </li>
   )
