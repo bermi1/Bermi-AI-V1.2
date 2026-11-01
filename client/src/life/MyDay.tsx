@@ -4,14 +4,15 @@ import type { AuthUser, Conversation } from '../lib/types'
 import * as api from '../lib/api'
 import { addDays, lifeApi, type DayView, type EventData, type EventType, type FocusData, type GoalData, type Item, type Recurring, type TaskData } from './api'
 import { useCompanion } from './Companion'
+import { BriefingTeaser } from './BriefingTeaser'
 import { useAct, useNow, useToday } from './hooks'
 import {
-  BarBlobs, btn, Chip, DayStrip, EmptyState, ErrorState, field, fmtDateLong, fmtDuration, fmtTime, Hero, minToTime, Ring, Section, Sheet, Skeleton, Spinner, toMin, useAsync, notifyLifeChanged,
+  BarBlobs, btn, Chip, DayStrip, EmptyState, ErrorState, field, fmtDateLong, fmtDuration, fmtTime, Hero, minToTime, Ring, Section, Sheet, Skeleton, Spinner, toMin, useAsync, useToast, notifyLifeChanged,
 } from './ui'
 
 const greeting = (h: number) => (h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
 
-export function MyDay({ user, name }: { user: AuthUser; name: string }) {
+export function MyDay({ user, name, go }: { user: AuthUser; name: string; go?: (to: string) => void }) {
   const today = useToday()
   const [date, setDate] = useState(today)
   // Follow midnight rollover only when the person was looking at "today".
@@ -73,6 +74,7 @@ export function MyDay({ user, name }: { user: AuthUser; name: string }) {
           </div>
           <div>
             <FocusTimer onLogged={() => { q.reload(true); notifyLifeChanged() }} />
+            {go && <BriefingTeaser go={go} />}
             <Reflect day={day} date={date} now={now} reload={() => q.reload(true)} />
             <Goals goals={day.goals} reload={() => q.reload(true)} />
           </div>
@@ -181,6 +183,9 @@ function HeroTiles({ day, isToday, now, date, today, onAsk }: { day: DayView; is
   const week = Array.from({ length: 7 }, (_, i) => addDays(from, i))
   const mins = week.map((d) => (focus.data ?? []).filter((f) => f.data.date === d).reduce((n, f) => n + f.data.minutes, 0))
   const total = mins.reduce((a, b) => a + b, 0)
+  const measured = (focus.data ?? []).filter((f) => f.data.awayMin != null)
+  const measuredMin = measured.reduce((n, f) => n + f.data.minutes, 0)
+  const quality = measuredMin > 0 ? focusQuality(measuredMin, measured.reduce((n, f) => n + (f.data.awayMin ?? 0), 0)) : null
   const labels = week.map((d) => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: 'narrow' }) })
   void today
 
@@ -209,7 +214,7 @@ function HeroTiles({ day, isToday, now, date, today, onAsk }: { day: DayView; is
       </div>
       <div className="tile-glass p-3.5 md:p-4">
         <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-white/60">Focus · 7 days</p>
-        <p className="mt-1 text-[22px] font-semibold tabular-nums leading-none">{fmtDuration(total) || '0m'}</p>
+        <p className="mt-1 text-[22px] font-semibold tabular-nums leading-none">{fmtDuration(total) || '0m'}{quality != null && <span className="ml-2 text-[13px] font-medium text-white/70">{quality}% focused</span>}</p>
         <div className="mt-3"><BarBlobs onDark values={mins} labels={labels} highlight={6} label={`Focus minutes per day over the last week: ${mins.join(', ')}`} /></div>
       </div>
     </div>
@@ -452,11 +457,17 @@ function ItemSheet({ kind, date, day, onClose, onSaved }: { kind: null | 'task' 
 
 // ------------------------------------------------------------- focus timer
 
-interface Running { endAt: number; minutes: number; label: string; startedAt: number; paused?: number }
+interface Running { endAt: number; minutes: number; label: string; startedAt: number; paused?: number; awayMs?: number; leaves?: number; hiddenAt?: number }
+const GUARD_KEY = 'bermi-focus-guard'
+const guardOn = () => { try { return localStorage.getItem(GUARD_KEY) !== 'off' } catch { return true } }
+/** Share of the session spent inside the app (null when not measured). */
+export const focusQuality = (minutes: number, awayMin?: number | null) => (awayMin == null || minutes <= 0 ? null : Math.max(0, Math.min(100, Math.round(((minutes - awayMin) / minutes) * 100))))
+const fmtAway = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)} min`)
 const KEY = 'bermi-focus-run'
 
 function FocusTimer({ onLogged }: { onLogged: () => void }) {
   const act = useAct()
+  const toast = useToast()
   const [run, setRun] = useState<Running | null>(() => {
     try { return JSON.parse(localStorage.getItem(KEY) || 'null') } catch { return null }
   })
@@ -470,27 +481,55 @@ function FocusTimer({ onLogged }: { onLogged: () => void }) {
     setRun(r)
     try { r ? localStorage.setItem(KEY, JSON.stringify(r)) : localStorage.removeItem(KEY) } catch { /* ignore */ }
   }
-  const log = async (mins: number, lbl: string) => {
+  const [guard, setGuard] = useState(guardOn)
+  const toggleGuard = () => { const n = !guard; setGuard(n); try { localStorage.setItem(GUARD_KEY, n ? 'on' : 'off') } catch { /* ignore */ } }
+  const log = async (mins: number, lbl: string, r?: Running | null) => {
     if (mins < 1) return
+    const measured = Boolean(r && guardOn())
+    const away = measured ? Math.min(mins, Math.round(((r!.awayMs ?? 0) / 60_000) * 10) / 10) : null
+    const q = focusQuality(mins, away)
     await act(async () => {
-      await lifeApi.create('focus', { date: ymd(), minutes: Math.min(Math.round(mins), 600), label: lbl })
+      await lifeApi.create('focus', { date: ymd(), minutes: Math.min(Math.round(mins), 600), label: lbl, ...(measured ? { awayMin: away, leaves: r!.leaves ?? 0 } : {}) })
       onLogged()
-    }, `Logged ${Math.round(mins)} min of focus`)
+    }, `Logged ${Math.round(mins)} min of focus${q != null ? ` · ${q}% focused` : ''}`)
   }
-  const start = () => { loggedRef.current = false; persist({ endAt: Date.now() + minutes * 60_000, minutes, label: label.trim(), startedAt: Date.now() }) }
+  const start = () => { loggedRef.current = false; persist({ endAt: Date.now() + minutes * 60_000, minutes, label: label.trim(), startedAt: Date.now(), awayMs: 0, leaves: 0 }) }
+  // Focus guard: the browser tells us when this tab/app is left. It cannot
+  // know what you did elsewhere — only that you stepped away — so that is all
+  // we record, and only while a session is running and not paused.
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    if (!run || run.paused != null || !guard) return
+    const onVis = () => {
+      const r = runRef.current
+      if (!r || r.paused != null) return
+      if (document.hidden) {
+        persist({ ...r, hiddenAt: Date.now() })
+      } else if (r.hiddenAt) {
+        const gone = Date.now() - r.hiddenAt
+        const counted = gone >= 4000
+        persist({ ...r, hiddenAt: undefined, awayMs: (r.awayMs ?? 0) + (counted ? gone : 0), leaves: (r.leaves ?? 0) + (counted ? 1 : 0) })
+        if (counted) toast(`Welcome back — you were away ${fmtAway(gone)}. Ease back in.`)
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.startedAt, run?.paused, guard])
   const pause = () => run && !run.paused && persist({ ...run, paused: Math.max(0, run.endAt - Date.now()) })
   const resume = () => run?.paused != null && persist({ ...run, endAt: Date.now() + run.paused, paused: undefined })
   const stop = () => {
     if (!run) return
     const spent = (run.minutes * 60_000 - left) / 60_000
     persist(null)
-    log(spent, run.label)
+    log(spent, run.label, run)
   }
   useEffect(() => {
     if (run && !run.paused && left <= 0 && !loggedRef.current) {
       loggedRef.current = true
       persist(null)
-      log(run.minutes, run.label)
+      log(run.minutes, run.label, run)
       try { navigator.vibrate?.(200) } catch { /* not supported */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -537,7 +576,14 @@ function FocusTimer({ onLogged }: { onLogged: () => void }) {
           )}
         </div>
       </div>
-      <p className="mt-3 text-[12px] text-white/65">Time is logged only when you finish or the timer ends.</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="text-[12px] text-white/65">
+          {run && guard ? `Focus guard on · stepped away ${run.leaves ?? 0}× (${fmtAway(run.awayMs ?? 0)})` : 'Time is logged only when you finish or the timer ends.'}
+        </p>
+        <button type="button" role="switch" aria-checked={guard} onClick={toggleGuard} className="min-h-[30px] rounded-full bg-white/15 px-3 text-[12px] font-medium text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" title="When on, Bermi notes how long you leave this app during a session. It can’t see what you do elsewhere.">
+          Focus guard {guard ? 'on' : 'off'}
+        </button>
+      </div>
     </section>
   )
 }

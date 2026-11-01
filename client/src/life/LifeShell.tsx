@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, CalendarDays, GraduationCap, HeartPulse, LogOut, MessageSquare, Settings, Shield, Sparkles, Wallet } from 'lucide-react'
+import { BookOpen, CalendarDays, GraduationCap, HeartPulse, LogOut, MessageSquare, Newspaper, Settings, Shield, Sparkles, Wallet } from 'lucide-react'
 import { BermiMark } from '../components/Logo'
 import { ThemeQuick } from '../components/ThemeQuick'
 import { SettingsDialog } from '../components/SettingsDialog'
@@ -14,21 +14,24 @@ import { ToastProvider, Skeleton, Sheet, ShellCtl } from './ui'
 const MyDay = lazy(() => import('./MyDay').then((m) => ({ default: m.MyDay })))
 const MyLearning = lazy(() => import('./MyLearning').then((m) => ({ default: m.MyLearning })))
 const MyMoney = lazy(() => import('./MyMoney').then((m) => ({ default: m.MyMoney })))
+const Discover = lazy(() => import('./Discover').then((m) => ({ default: m.Discover })))
 const MyCycle = lazy(() => import('./MyCycle').then((m) => ({ default: m.MyCycle })))
 const MyWellbeing = lazy(() => import('./MyWellbeing').then((m) => ({ default: m.MyWellbeing })))
 
-export type LifeTab = 'day' | 'learning' | 'money' | 'wellbeing' | 'cycle'
-export const TAB_PATH: Record<LifeTab, string> = { day: '/my/day', learning: '/my/learning', money: '/my/money', wellbeing: '/my/wellbeing', cycle: '/my/cycle' }
+export type LifeTab = 'day' | 'learning' | 'discover' | 'money' | 'wellbeing' | 'cycle'
+export const TAB_PATH: Record<LifeTab, string> = { day: '/my/day', learning: '/my/learning', discover: '/my/discover', money: '/my/money', wellbeing: '/my/wellbeing', cycle: '/my/cycle' }
 
 const TABS: { id: Exclude<LifeTab, 'cycle'>; label: string; icon: typeof CalendarDays }[] = [
   { id: 'day', label: 'My Day', icon: CalendarDays },
   { id: 'learning', label: 'My Learning', icon: BookOpen },
+  { id: 'discover', label: 'Discover', icon: Newspaper },
   { id: 'money', label: 'My Money', icon: Wallet },
   { id: 'wellbeing', label: 'My Wellbeing', icon: HeartPulse },
 ]
 
 export function tabFromPath(path: string): LifeTab {
   if (path.startsWith('/my/learning')) return 'learning'
+  if (path.startsWith('/my/discover')) return 'discover'
   if (path.startsWith('/my/money')) return 'money'
   if (path.startsWith('/my/wellbeing')) return 'wellbeing'
   if (path.startsWith('/my/cycle')) return 'cycle'
@@ -143,8 +146,9 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
 
         <main id="life-main" tabIndex={-1} className={`mx-auto w-full max-w-[1080px] px-4 ${listening || beatsOn ? 'pb-[calc(92px+var(--beats-h,0px)+76px+env(safe-area-inset-bottom))]' : 'pb-[calc(92px+env(safe-area-inset-bottom))]'} pt-5 outline-none md:px-6 md:pb-14 md:pt-4 lg:pr-8`}>
           <Suspense fallback={<ScreenSkeleton />}>
-            {tab === 'day' && <MyDay user={user} name={name} />}
+            {tab === 'day' && <MyDay user={user} name={name} go={go} />}
             {tab === 'learning' && <MyLearning go={go} />}
+            {tab === 'discover' && <Discover />}
             {tab === 'money' && <MyMoney />}
             {tab === 'wellbeing' && <MyWellbeing go={go} />}
             {tab === 'cycle' && <MyCycle go={go} />}
@@ -154,9 +158,10 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
 
       {/* Phone: floating pill dock, the assistant at its heart */}
       <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden">
-        <ul className="dock grid h-[58px] w-full max-w-[380px] grid-cols-5 items-center rounded-full px-2">
+        <ul className="dock grid h-[58px] w-full max-w-[420px] grid-cols-6 items-center rounded-full px-2">
           <BarItem tab={TABS[0]} active={tab === 'day'} onClick={() => go(TAB_PATH.day)} />
           <BarItem tab={TABS[1]} active={tab === 'learning'} onClick={() => go(TAB_PATH.learning)} />
+          <BarItem tab={TABS[2]} active={tab === 'discover'} onClick={() => go(TAB_PATH.discover)} />
           <li className="flex justify-center">
             <button
               onClick={() => openCompanion()}
@@ -166,8 +171,8 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
               <Sparkles size={21} />
             </button>
           </li>
-          <BarItem tab={TABS[2]} active={tab === 'money'} onClick={() => go(TAB_PATH.money)} />
-          <BarItem tab={TABS[3]} active={tab === 'wellbeing' || tab === 'cycle'} onClick={() => go(TAB_PATH.wellbeing)} />
+          <BarItem tab={TABS[3]} active={tab === 'money'} onClick={() => go(TAB_PATH.money)} />
+          <BarItem tab={TABS[4]} active={tab === 'wellbeing' || tab === 'cycle'} onClick={() => go(TAB_PATH.wellbeing)} />
         </ul>
       </nav>
 

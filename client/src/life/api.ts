@@ -71,7 +71,7 @@ export interface HabitData {
   doneDates: string[]
   active: boolean
 }
-export interface FocusData { date: string; minutes: number; label: string }
+export interface FocusData { date: string; minutes: number; label: string; awayMin?: number | null; leaves?: number | null }
 export interface SessionData { date: string; type: 'breathing' | 'meditation' | 'reflection' | 'sleep'; minutes: number }
 export interface ReadingData {
   bookId: string
@@ -259,6 +259,102 @@ export interface CreditsView {
 
 // ---------------------------------------------------------------- errors
 
+
+// ---- information & opportunities briefing
+export type FeedKind = 'headline' | 'opportunity' | 'read' | 'research' | 'book' | 'mindset'
+export interface BriefingPrefsData {
+  personas: string[]
+  topics: Record<string, number>
+  custom: string[]
+  country: string
+  lang: 'en' | 'sw' | 'both'
+  mutedTopics: string[]
+  mutedSources: string[]
+  hidden: string[]
+  ambition: string
+  onboarded: boolean
+}
+export interface FeedSavedData {
+  url: string
+  title: string
+  source: string
+  kind: FeedKind
+  summary: string
+  publishedAt: string
+  deadline: string
+  read: boolean
+  note: string
+  savedAt: string
+}
+export interface FeedItem {
+  id: string
+  title: string
+  url: string
+  source: string
+  sourceId: string | null
+  home: string | null
+  publishedAt: string | null
+  summary: string
+  image: string | null
+  kind: FeedKind
+  topic: string | null
+  custom: string | null
+  deadline: string | null
+  why: string[]
+  cluster: number
+  also: string[]
+  ageH: number | null
+  rel: number
+}
+export interface BriefingPlanView {
+  topics: { id: string; label: string; weight: number; from: string[] }[]
+  customs: string[]
+  country: { code: string; name: string } | null
+  lang: 'en' | 'sw' | 'both'
+  ambition: string
+  searches: string[]
+  empty: boolean
+}
+export interface BriefingView {
+  plan: BriefingPlanView
+  empty?: boolean
+  generatedAt?: string
+  sections: null | {
+    forYou: FeedItem[]
+    breaking: FeedItem[]
+    opportunities: FeedItem[]
+    reads: FeedItem[]
+    research: FeedItem[]
+    books: FeedItem[]
+    mindset: FeedItem[]
+    local: FeedItem[]
+  }
+  official?: { id: string; name: string; url: string; topics: string[] }[]
+  meta?: {
+    candidates: number
+    shown: number
+    sourcesAnswered: number
+    registrySize: number
+    sources: { chosen: number; fresh: number; refreshed: number; stale: number; failed: number }
+    lanes: { run: number; ok: number; failed: number }
+    warming: boolean
+    offline: boolean
+  }
+}
+export interface BriefingCatalog {
+  topics: { id: string; label: string; group: string }[]
+  personas: { id: string; label: string }[]
+  countries: { code: string; name: string }[]
+  registry: { sources: number; withFeeds: number }
+}
+export interface BriefingDigest {
+  summary: string
+  why: string
+  actions: string[]
+  sources: { title: string; url: string; source: string }[]
+  generatedAt: string
+}
+
 export class LifeError extends Error {
   code?: string
   status: number
@@ -332,6 +428,10 @@ export const lifeApi = {
   audiobookTracks: (id: string) => req<{ tracks: AudioTrack[] }>(`/audiobooks/${encodeURIComponent(id)}/tracks`).then((r) => r.tracks),
   pickAudio: (text: string, idemKey: string) => post<AudioPick>('/audio/pick', { text, idemKey }),
   credits: () => req<CreditsView>('/credits'),
+  briefing: (refresh = false) => req<BriefingView>(`/briefing${refresh ? '?refresh=1' : ''}`, undefined, 40_000),
+  briefingPlan: () => req<{ plan: BriefingPlanView }>('/briefing/plan').then((r) => r.plan),
+  briefingCatalog: () => req<BriefingCatalog>('/briefing/catalog'),
+  briefingDigest: (idemKey: string) => post<{ digest: BriefingDigest; creditsUsed: number }>('/briefing/digest', { idemKey }, 45_000),
   pushStatus: () => req<{ configured: boolean; scheduler: boolean }>('/push/status'),
   plan: (body: { text: string; date: string; time: string; idemKey: string }) =>
     post<Proposal>('/companion/plan', body, 60_000),

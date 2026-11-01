@@ -29,6 +29,8 @@ import { newsRouter } from './routes/news.js'
 import { lifeRouter } from './routes/life.js'
 import { admin2Router } from './routes/admin2.js'
 import { refreshAllSources } from './news.js'
+import { refreshRegistry } from './briefing/index.js'
+import { briefingRouter } from './routes/briefing.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -74,8 +76,10 @@ app.get('/api/cron/refresh-news', async (req, res, next) => {
     const secret = process.env.CRON_SECRET
     const provided = req.headers.authorization?.replace(/^Bearer\s+/i, '')
     if (!secret || provided !== secret) return res.status(401).json({ error: 'Unauthorized' })
-    const results = await refreshAllSources()
-    res.json({ ok: true, results })
+    // The legacy list and the new briefing registry refresh side by side, each
+    // inside its own time budget, so one slow site never starves the other.
+    const [legacy, briefing] = await Promise.allSettled([refreshAllSources(), refreshRegistry({ budgetMs: 38_000 })])
+    res.json({ ok: true, results: legacy.status === 'fulfilled' ? legacy.value : [], briefing: briefing.status === 'fulfilled' ? briefing.value : { error: String(briefing.reason?.message || briefing.reason) } })
   } catch (err) {
     next(err)
   }
@@ -108,6 +112,7 @@ app.use('/api', sttRouter)
 app.use('/api', voicesRouter)
 app.use('/api', newsRouter)
 app.use('/api', lifeRouter)
+app.use('/api', briefingRouter)
 app.use('/api', admin2Router)
 
 // Async route errors land here instead of crashing the process.

@@ -141,6 +141,7 @@ function AIOps({ me }: { me: CtlMe }) {
         <div className="flex gap-2"><input value={cap} onChange={(e) => setCap(e.target.value)} type="number" min={0} disabled={!w} aria-label="Daily credit cap" className={`${field} max-w-[200px]`} placeholder="No cap" />{w && <button className={btn.primary} onClick={() => act(() => ctl('/ai/cap', send('POST', { dailyCap: cap === '' ? null : Number(cap) })), 'Cap saved')}>Save</button>}</div>
       </Card>
       {w && <ProviderTest />}
+      <BriefingSources w={w} />
       <Card title="Providers">
         {!s.providers || s.providers.length === 0 ? <p className="text-[13px] text-ink-muted">No AI provider keys are configured on this server.</p> : (
           <ul className="space-y-1.5 text-[13px]">{s.providers.map((p) => <li key={p.id} className="flex justify-between"><span>{p.id}</span><span className="text-ink-muted">{p.totalKeys} key{p.totalKeys === 1 ? '' : 's'} · {p.coolingKeys ? `${p.coolingKeys} cooling${p.nextRetryInSeconds ? `, retry in ${p.nextRetryInSeconds}s` : ''}` : 'healthy'}</span></li>)}</ul>
@@ -187,6 +188,57 @@ function ProviderTest() {
             ))}
           </ul>
         )
+      )}
+    </Card>
+  )
+}
+
+
+interface SrcRow { id: string; name: string; home: string; region: string; kind: string; tier: number; lang: string; topics: string[]; linkOnly: boolean; disabled: boolean; status: 'ok' | 'degraded' | 'failing' | 'untested' | 'link-only'; items: number; lastOk: string | null; error: string | null; fails: number }
+interface SrcState { sources: SrcRow[]; summary: { total: number; ok: number; degraded: number; failing: number; untested: number; linkOnly: number } }
+
+function BriefingSources({ w }: { w: boolean }) {
+  const toast = useToast()
+  const q = useAsync(() => ctl<SrcState>('/briefing/sources'), [])
+  const [busy, setBusy] = useState(false)
+  const [filter, setFilter] = useState<'problems' | 'all'>('problems')
+  const refresh = async () => {
+    setBusy(true)
+    try {
+      const r = await ctl<{ results: { attempted: number; ok: number; failed: number; skippedForTime: number } }>('/briefing/refresh', send('POST', {}))
+      toast(`Checked ${r.results.attempted} feeds: ${r.results.ok} answered, ${r.results.failed} did not${r.results.skippedForTime ? `, ${r.results.skippedForTime} left for the next run` : ''}.`)
+      q.reload(true)
+    } catch (e) { toast((e as Error).message, 'error') } finally { setBusy(false) }
+  }
+  const toggle = async (row: SrcRow) => {
+    try { await ctl('/briefing/source', send('POST', { id: row.id, disabled: !row.disabled })); q.reload(true) } catch (e) { toast((e as Error).message, 'error') }
+  }
+  const sm = q.data?.summary
+  const rows = (q.data?.sources ?? []).filter((r) => filter === 'all' || r.status === 'failing' || r.status === 'degraded' || r.disabled)
+  return (
+    <Card title="Briefing sources (news & opportunities)">
+      <p className="mb-3 text-[13px] text-ink-muted">The registry behind every person’s briefing. Feeds were written from publisher knowledge, so this board shows what actually answers. Failing feeds back off automatically and never break anyone’s feed; live search lanes cover the gaps.</p>
+      {q.loading && !q.data ? <Skeleton className="h-20" /> : q.error ? <p className="text-[13px] text-danger">{q.error.message}</p> : sm && (
+        <>
+          <p className="text-[13px]"><strong>{sm.ok}</strong> working · <strong>{sm.degraded}</strong> degraded · <strong>{sm.failing}</strong> failing · {sm.untested} not checked yet · {sm.linkOnly} official link-only · {sm.total} total</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {w && <button className={btn.primary} onClick={refresh} disabled={busy}>{busy ? <Spinner /> : null} Check all feeds now</button>}
+            <button className={btn.ghost} onClick={() => setFilter(filter === 'problems' ? 'all' : 'problems')}>{filter === 'problems' ? 'Show every source' : 'Show only problems'}</button>
+          </div>
+          {rows.length === 0 ? <p className="mt-3 text-[13px] text-ink-muted">{filter === 'problems' ? 'No failing sources. (Feeds you haven’t checked yet show as “not checked”.)' : 'No sources.'}</p> : (
+            <ul className="mt-3 max-h-[420px] divide-y divide-edge overflow-y-auto rounded-xl border border-edge text-[13px]">
+              {rows.map((r) => (
+                <li key={r.id} className="flex items-center gap-3 px-3 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{r.name} <span className="font-normal text-ink-muted">· {r.region} · {r.kind}</span></span>
+                    <span className="block truncate text-[12px] text-ink-muted">{r.disabled ? 'Disabled · ' : ''}{r.status}{r.items ? ` · ${r.items} items` : ''}{r.error ? ` · ${r.error}` : ''}</span>
+                  </span>
+                  {w && !r.linkOnly && <button className={btn.ghost} onClick={() => toggle(r)}>{r.disabled ? 'Enable' : 'Disable'}</button>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </Card>
   )

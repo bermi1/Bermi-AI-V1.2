@@ -84,3 +84,24 @@ buy/sell advice; investing categories always show an educational-only notice.
 - Large-document background queue is not implemented; uploads are converted to text and capped at 40,000 characters.
 - Credit concurrency on Supabase uses an advisory-lock SQL function that has not been exercised against a live database.
 - YouTube/Archive availability and cover loading depend on those hosts.
+
+## Discover — the personal briefing (news, opportunities, reading)
+
+Open **Discover** (`/my/discover`). Bermi turns who you are into a live, explainable feed.
+
+**What it understands** — your profile interests and goals, the persona you pick ("Investor", "Medical student"…), topics you follow, free-text interests (any topic works), an ambition sentence, your country/city and language (English / Kiswahili / both). Code: `server/src/briefing/{topics,countries,plan}.js`. Faith topics appear only if you choose them.
+
+**Where it looks**
+- A registry of ~170 live RSS/Atom feeds plus ~25 official, link-only institutions (`briefing/sources.js`), each tagged by topic, region, language, kind and trust tier.
+- Live search lanes that reach beyond the registry: Google News (local edition for your country, any interest), PubMed and arXiv (research), Open Library (books), Remotive (remote jobs), Tavily as a last resort for custom interests.
+- Only headlines, a short snippet, a link and a thumbnail URL are kept. Full articles are never copied.
+
+**How it ranks** (`briefing/rank.js`) — relevance to what you follow × freshness (per kind) × locality × source trust × language, with near-duplicate stories merged ("N outlets"), per-source diversity caps, closed opportunities removed, and deadlines shown only when the text states one. "Breaking" requires < 3 h old **and** a primary newsroom or multiple outlets. Every card says why it is there.
+
+**Reliability** — one cache entry per source/lane, shared across users; failing feeds back off (10 min → 24 h) and fall back to their last good copy; a request refreshes stale data for at most ~9 s; the daily cron works through the whole registry within its own budget. Bermi Control → AI operations → *Briefing sources* shows which feeds actually answer and lets an admin check all feeds or disable one.
+
+**Honesty** — feed URLs were written from publisher knowledge and are **not verified from the build environment**; the board shows the truth after deploy. If nothing can be reached the screen says so; nothing is invented.
+
+**Credits** — reading the feed is free. "Brief me" (an AI summary of already-fetched headlines tied to your goals) costs 2 credits and refunds on failure.
+
+**Focus guard** — during a focus session, the Focus timer records how long you leave the app (Page Visibility). It cannot see what you do elsewhere; it only notes that you stepped away, and shows "% focused". Switch it off in the timer.

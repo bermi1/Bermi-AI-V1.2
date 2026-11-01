@@ -252,6 +252,10 @@ export const KINDS = {
         date: date(d.date ?? prev?.date, 'date', { required: true }),
         minutes: num(d.minutes ?? prev?.minutes, 'minutes', { min: 1, max: 600, required: true, int: true }),
         label: str(d.label ?? prev?.label ?? '', 120),
+        // Focus quality: measured by the app (how long the app/tab was left
+        // during the session), never guessed. null = not measured.
+        awayMin: d.awayMin === undefined ? (prev?.awayMin ?? null) : d.awayMin === null ? null : num(d.awayMin, 'awayMin', { min: 0, max: 600 }),
+        leaves: d.leaves === undefined ? (prev?.leaves ?? null) : d.leaves === null ? null : num(d.leaves, 'leaves', { min: 0, max: 500, int: true }),
       }
     },
     whenKey: (d) => d.date,
@@ -397,6 +401,58 @@ export const KINDS = {
       }
     },
     whenKey: (d) => d.date ?? '0',
+  },
+  // Personal information-feed settings: who the person is, what they follow,
+  // where they are, and what they have muted or hidden. Private; deleting it
+  // resets the briefing to a neutral state.
+  briefing_prefs: {
+    max: 1,
+    sanitize(d, prev) {
+      const strList = (v, fb, n, len) => (Array.isArray(v ?? fb) ? (v ?? fb).map((x) => str(x, len)).filter(Boolean).slice(0, n) : [])
+      const rawTopics = d.topics ?? prev?.topics ?? {}
+      const topics = {}
+      if (rawTopics && typeof rawTopics === 'object' && !Array.isArray(rawTopics)) {
+        for (const [k, v] of Object.entries(rawTopics).slice(0, 40)) {
+          const w = Number(v)
+          if (/^[a-z][a-z0-9-]{1,30}$/.test(k) && Number.isFinite(w)) topics[k] = Math.max(0, Math.min(1, Math.round(w * 100) / 100))
+        }
+      }
+      return {
+        personas: strList(d.personas, prev?.personas, 6, 30),
+        topics,
+        custom: strList(d.custom, prev?.custom, 8, 60),
+        country: str(d.country ?? prev?.country ?? '', 2).toUpperCase(),
+        lang: oneOf(d.lang ?? prev?.lang, ['en', 'sw', 'both'], 'en', 'lang'),
+        mutedTopics: strList(d.mutedTopics, prev?.mutedTopics, 40, 30),
+        mutedSources: strList(d.mutedSources, prev?.mutedSources, 60, 40),
+        hidden: strList(d.hidden, prev?.hidden, 300, 20),
+        ambition: str(d.ambition ?? prev?.ambition ?? '', 240),
+        onboarded: d.onboarded == null ? Boolean(prev?.onboarded) : Boolean(d.onboarded),
+      }
+    },
+    whenKey: () => '0',
+  },
+  // An article, opportunity or book the person saved from the briefing. The
+  // feed refreshes constantly, so what they kept is stored in full.
+  feed_saved: {
+    max: 300,
+    sanitize(d, prev) {
+      const url = str(d.url ?? prev?.url, 800, { required: true, field: 'url' })
+      if (!/^https?:\/\//i.test(url)) throw new ValidationError('url must be an http(s) link')
+      return {
+        url,
+        title: str(d.title ?? prev?.title, 300, { required: true, field: 'title' }),
+        source: str(d.source ?? prev?.source ?? '', 120),
+        kind: oneOf(d.kind ?? prev?.kind, ['headline', 'opportunity', 'read', 'research', 'book', 'mindset'], 'headline', 'kind'),
+        summary: str(d.summary ?? prev?.summary ?? '', 400),
+        publishedAt: str(d.publishedAt ?? prev?.publishedAt ?? '', 40),
+        deadline: str(d.deadline ?? prev?.deadline ?? '', 12),
+        read: d.read == null ? Boolean(prev?.read) : Boolean(d.read),
+        note: str(d.note ?? prev?.note ?? '', 600),
+        savedAt: str(prev?.savedAt ?? d.savedAt ?? new Date().toISOString(), 40),
+      }
+    },
+    whenKey: () => '0',
   },
   // Optional, private, user-consented. Dates only; estimates are never
   // presented as medical advice (see the screen's disclaimer).

@@ -4,6 +4,7 @@ import { isAdmin } from './admin.js'
 import { providerHealth, testProviders } from '../openrouter.js'
 import * as credits from '../credits.js'
 import { allContent, saveOverride } from '../life/content.js'
+import { sourceHealth, refreshRegistry, setSourceDisabled } from '../briefing/index.js'
 
 // "Bermi Control": the operational admin layer. Authorisation is enforced HERE,
 // on the server, per endpoint — hiding a button in the UI is never the control.
@@ -23,7 +24,7 @@ const ROLE_PERMS = {
   analytics: ['metrics.read'],
 }
 const SMALL_ADJUST_LIMIT = 50
-const PRIVATE_KINDS = new Set(['cycle', 'wellbeing_prefs', 'mood', 'gratitude', 'reflection', 'session', 'note', 'profile', 'notify_prefs', 'budget', 'expense', 'saving', 'idea', 'cycle'])
+const PRIVATE_KINDS = new Set(['cycle', 'wellbeing_prefs', 'mood', 'gratitude', 'reflection', 'session', 'note', 'profile', 'notify_prefs', 'budget', 'expense', 'saving', 'idea', 'cycle', 'briefing_prefs', 'feed_saved'])
 
 async function roleOf(user) {
   if (isAdmin(user)) return 'super' // the owner allowlist always keeps full access
@@ -114,6 +115,32 @@ admin2Router.post('/admin/ctl/ai/test', guard('ai.write', async (req, res) => {
   const results = await testProviders()
   await audit(req, 'ai.test', null, { working: results.map((r) => `${r.provider}:${r.workingKeys}/${r.keys.length}`) })
   res.json({ results, anyWorking: results.some((r) => r.workingKeys > 0) })
+}))
+
+// Briefing source registry: which of the 100+ feeds are actually answering.
+admin2Router.get('/admin/ctl/briefing/sources', guard('ai.read', async (_req, res) => {
+  const sources = await sourceHealth()
+  const count = (s) => sources.filter((x) => x.status === s).length
+  res.json({ sources, summary: { total: sources.length, ok: count('ok'), degraded: count('degraded'), failing: count('failing'), untested: count('untested'), linkOnly: count('link-only') } })
+}))
+
+admin2Router.post('/admin/ctl/briefing/refresh', guard('ai.write', async (req, res) => {
+  const results = await refreshRegistry({ budgetMs: 40_000 })
+  await audit(req, 'briefing.refresh', null, results)
+  res.json({ results })
+}))
+
+admin2Router.post('/admin/ctl/briefing/source', guard('ai.write', async (req, res) => {
+  const { id, disabled } = req.body ?? {}
+  if (typeof id !== 'string') throw bad('Pick a source.')
+  let list
+  try {
+    list = await setSourceDisabled(id, Boolean(disabled))
+  } catch (e) {
+    throw bad(e.message)
+  }
+  await audit(req, disabled ? 'briefing.source.disable' : 'briefing.source.enable', id, null)
+  res.json({ ok: true, disabled: list })
 }))
 
 admin2Router.post('/admin/ctl/ai/kill', guard('ai.write', async (req, res) => {
