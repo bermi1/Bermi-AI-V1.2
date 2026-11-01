@@ -150,6 +150,7 @@ async function groqProvider() {
   return {
     id: 'groq',
     keys,
+    modelsUrl: 'https://api.groq.com/openai/v1/models',
     models: GROQ_MODELS,
     url: 'https://api.groq.com/openai/v1/chat/completions',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
@@ -169,6 +170,7 @@ async function cerebrasProvider() {
   return {
     id: 'cerebras',
     keys,
+    modelsUrl: 'https://api.cerebras.ai/v1/models',
     models: CEREBRAS_MODELS,
     url: 'https://api.cerebras.ai/v1/chat/completions',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
@@ -190,6 +192,7 @@ async function nvidiaProvider() {
   return {
     id: 'nvidia',
     keys,
+    modelsUrl: 'https://integrate.api.nvidia.com/v1/models',
     models: NVIDIA_MODELS,
     url: 'https://integrate.api.nvidia.com/v1/chat/completions',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),

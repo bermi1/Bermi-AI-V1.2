@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { storage } from '../storage/index.js'
 import { isAdmin } from './admin.js'
-import { providerHealth } from '../openrouter.js'
+import { providerHealth, testProviders } from '../openrouter.js'
 import * as credits from '../credits.js'
 import { allContent, saveOverride } from '../life/content.js'
 
@@ -107,6 +107,13 @@ admin2Router.get('/admin/ctl/ai', guard('ai.read', async (_req, res) => {
     credits.getEntitlements(),
   ])
   res.json({ disabled: disabled === '1', dailyCap: Number(cap) > 0 ? Number(cap) : null, providers: health, entitlements: ent })
+}))
+
+// One tiny live request per key per provider, so "AI is down" becomes a diagnosis.
+admin2Router.post('/admin/ctl/ai/test', guard('ai.write', async (req, res) => {
+  const results = await testProviders()
+  await audit(req, 'ai.test', null, { working: results.map((r) => `${r.provider}:${r.workingKeys}/${r.keys.length}`) })
+  res.json({ results, anyWorking: results.some((r) => r.workingKeys > 0) })
 }))
 
 admin2Router.post('/admin/ctl/ai/kill', guard('ai.write', async (req, res) => {

@@ -131,6 +131,7 @@ export function Welcome({ onGetStarted, onSignIn }: { onGetStarted: () => void; 
       </header>
 
       <main className="flex flex-1 flex-col justify-center py-6" aria-roledescription="carousel" aria-label="Welcome to Bermi">
+        <h1 className="sr-only">Bermi — your life better organized, your potential better supported</h1>
         <div className="touch-pan-y select-none overflow-hidden" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
           <div className="flex" style={{ transform: `translateX(calc(${-i * 100}% + ${drag}px))`, transition: start.current != null ? 'none' : 'transform 650ms cubic-bezier(.22,1,.36,1)' }}>
             {SLIDES.map((s, k) => (

@@ -1,5 +1,6 @@
 import { resolveModelChain } from './models.js'
 import { listProviders } from './providers.js'
+import { discoveredModels, isDead, markDead } from './model-discovery.js'
 
 const KNOWN_KINDS = new Set(['core', 'fast', 'reason', 'coder', 'vision', 'math'])
 
@@ -210,7 +211,7 @@ function preferProvider(list, id) {
   return copy
 }
 
-async function buildAttempts(uiModelId, { web = false } = {}) {
+async function buildAttempts(uiModelId, { web = false, skipDead = true } = {}) {
   const providers = await listProviders()
   const kind = uiModelId?.startsWith('bermi-') ? uiModelId.slice(6) : null
   const attempts = []
@@ -236,8 +237,13 @@ async function buildAttempts(uiModelId, { web = false } = {}) {
       let models = provider.models[kind] || []
       if (provider.id === 'openrouter' && dynamicCoreIds.length) {
         models = [...new Set([...dynamicCoreIds, ...models])]
+      } else if (provider.id !== 'openrouter' && provider.id !== 'local') {
+        // What this provider actually serves right now goes first; the static
+        // list stays behind it as a fallback.
+        models = [...new Set([...(await discoveredModels(provider, kind)), ...models])]
       }
       for (const realModel of models) {
+        if (skipDead && isDead(provider.id, realModel)) continue
         for (const key of provider.keys) {
           attempts.push({ provider, key, realModel, web: web && provider.supportsWebPlugin })
         }
@@ -260,6 +266,9 @@ async function buildAttempts(uiModelId, { web = false } = {}) {
   const now = Date.now()
   const healthy = attempts.filter((a) => (cooldown.get(cooldownKey(a.provider.id, a.key)) ?? 0) < now)
   const cooling = attempts.filter((a) => !healthy.includes(a))
+  // If every candidate was ruled out as retired, try them again rather than
+  // reporting "no provider configured" — catalogs do bring models back.
+  if (!attempts.length && skipDead) return buildAttempts(uiModelId, { web, skipDead: false })
   return [...healthy, ...cooling]
 }
 
@@ -307,6 +316,7 @@ export async function streamCompletion({ model, messages, signal, web = false })
     lastErr.status = res.status
     trace.push(`${provider.id}/${realModel}: ${res.status} — ${lastErr.message}`)
     if (res.status === 413) oversizedModels.add(realModel)
+    if (res.status === 404 || res.status === 410) { oversizedModels.add(realModel); markDead(provider.id, realModel) }
     // Every non-2xx just moves on to the next attempt — provider/model/key
     // outages should never take the whole request down while any other
     // option remains. Only cool the (provider, key) down when the failure
@@ -349,6 +359,7 @@ export async function complete({ model, messages, maxTokens = 1024 }) {
     lastErr.status = res.status
     trace.push(`${provider.id}/${realModel}: ${res.status} — ${lastErr.message}`)
     if (res.status === 413) oversizedModels.add(realModel)
+    if (res.status === 404 || res.status === 410) { oversizedModels.add(realModel); markDead(provider.id, realModel) }
     if (isExhausted(res.status)) cooldown.set(cooldownKey(provider.id, key), Date.now() + COOLDOWN_MS)
   }
   const finalErr = lastErr ?? new Error('No model available')
@@ -388,4 +399,39 @@ export async function fetchLiveModels() {
   if (!res.ok) throw new Error(await errorDetail(res))
   const body = await res.json()
   return body.data ?? []
+}
+
+/**
+ * Live self-test for the admin: one tiny request per key per provider, so "AI is
+ * down" turns into "Groq key 2 is rejected, NVIDIA's model was retired". Never
+ * returns key material.
+ */
+export async function testProviders({ perProviderModels = 2 } = {}) {
+  const providers = await listProviders()
+  const out = []
+  for (const provider of providers) {
+    const found = provider.id === 'openrouter' || provider.id === 'local' ? [] : await discoveredModels(provider, 'fast')
+    const models = [...new Set([...found, ...(provider.models.fast || [])])].slice(0, perProviderModels)
+    const keys = []
+    for (let i = 0; i < provider.keys.length; i++) {
+      const tried = []
+      let ok = false
+      for (const model of models) {
+        let status = 0
+        let message = ''
+        try {
+          const res = await fetchAttempt(provider, provider.keys[i], model, [{ role: 'user', content: 'Reply with the single word: ok' }], { stream: false, maxTokens: 5 }, undefined)
+          status = res.status
+          if (res.ok) { ok = true } else message = (await errorDetail(res)).slice(0, 140)
+        } catch (err) {
+          message = `network error: ${err.message}`.slice(0, 140)
+        }
+        tried.push({ model, status, message })
+        if (ok) break
+      }
+      keys.push({ key: i + 1, ok, tried })
+    }
+    out.push({ provider: provider.id, keys, workingKeys: keys.filter((k) => k.ok).length })
+  }
+  return out
 }

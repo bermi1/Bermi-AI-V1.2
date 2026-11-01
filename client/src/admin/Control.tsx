@@ -140,6 +140,7 @@ function AIOps({ me }: { me: CtlMe }) {
         <p className="mb-2 text-[13px] text-ink-muted">Stops AI spending across all users once this many credits are used in a day. Leave empty for no cap.</p>
         <div className="flex gap-2"><input value={cap} onChange={(e) => setCap(e.target.value)} type="number" min={0} disabled={!w} aria-label="Daily credit cap" className={`${field} max-w-[200px]`} placeholder="No cap" />{w && <button className={btn.primary} onClick={() => act(() => ctl('/ai/cap', send('POST', { dailyCap: cap === '' ? null : Number(cap) })), 'Cap saved')}>Save</button>}</div>
       </Card>
+      {w && <ProviderTest />}
       <Card title="Providers">
         {!s.providers || s.providers.length === 0 ? <p className="text-[13px] text-ink-muted">No AI provider keys are configured on this server.</p> : (
           <ul className="space-y-1.5 text-[13px]">{s.providers.map((p) => <li key={p.id} className="flex justify-between"><span>{p.id}</span><span className="text-ink-muted">{p.totalKeys} key{p.totalKeys === 1 ? '' : 's'} · {p.coolingKeys ? `${p.coolingKeys} cooling${p.nextRetryInSeconds ? `, retry in ${p.nextRetryInSeconds}s` : ''}` : 'healthy'}</span></li>)}</ul>
@@ -156,6 +157,38 @@ function AIOps({ me }: { me: CtlMe }) {
         </Card>
       )}
     </div>
+  )
+}
+
+function ProviderTest() {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<{ provider: string; workingKeys: number; keys: { key: number; ok: boolean; tried: { model: string; status: number; message: string }[] }[] }[] | null>(null)
+  const run = async () => {
+    setBusy(true)
+    try { setRes((await ctl<{ results: NonNullable<typeof res> }>('/ai/test', send('POST', {}))).results) } catch (e) { toast((e as Error).message, 'error') } finally { setBusy(false) }
+  }
+  return (
+    <Card title="Test the AI providers">
+      <p className="mb-3 text-[13px] text-ink-muted">Sends one tiny request through every key to show what works right now. Uses a few tokens; never shows the keys.</p>
+      <button className={btn.primary} onClick={run} disabled={busy}>{busy ? <Spinner /> : null} Run test</button>
+      {res && (
+        res.length === 0 ? <p className="mt-3 text-[13px]">No provider keys are configured.</p> : (
+          <ul className="mt-4 space-y-3">
+            {res.map((p) => (
+              <li key={p.provider} className="rounded-xl border border-edge p-3 text-[13px]">
+                <p className="font-semibold capitalize">{p.provider} — {p.workingKeys} of {p.keys.length} key{p.keys.length === 1 ? '' : 's'} working</p>
+                <ul className="mt-1.5 space-y-1 text-ink-muted">
+                  {p.keys.map((k) => (
+                    <li key={k.key}>Key {k.key}: {k.ok ? '✅ works' : '❌ failed'} — {k.tried.map((t) => `${t.model} → ${t.status || 'no answer'}${t.status && t.status < 300 ? '' : ` (${t.message || 'error'})`}`).join('; ')}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </Card>
   )
 }
 

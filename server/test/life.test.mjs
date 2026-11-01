@@ -337,6 +337,8 @@ test('admin metrics never break out private feature adoption', async (t) => {
   t.after(() => server.close())
   await api('/life/items', { method: 'POST', body: JSON.stringify({ kind: 'cycle', data: { date: '2026-11-02', kind: 'period_start' } }) })
   await api('/life/items', { method: 'POST', body: JSON.stringify({ kind: 'task', data: { title: 'x' } }) })
+  const t = await (await api('/admin/ctl/ai/test', { method: 'POST', body: '{}' })).json()
+  assert.ok(Array.isArray(t.results) && typeof t.anyWorking === 'boolean', 'the admin can self-test the AI providers')
   const m = await (await api('/admin/ctl/metrics')).json()
   const kinds = (m.adoption ?? []).map((r) => r.kind)
   assert.ok(kinds.includes('task'))
@@ -443,4 +445,32 @@ test('beat picker: plain requests become a mix; heavy focus keeps the beat lower
   assert.equal(d.source, 'default', 'with no AI configured an unclear request gets an honest default')
   assert.equal((await (await api('/life/credits')).json()).balance, before, 'and costs nothing')
   assert.equal((await post('x')).status, 400)
+})
+
+test('model discovery: picks live, chat-capable models and forgets retired ones', async () => {
+  const { rankModels, listProviderModels, markDead, isDead, sizeB, _resetForTests } = await import('../src/model-discovery.js')
+  _resetForTests()
+  assert.equal(sizeB('llama-3.1-8b-instant'), 8)
+  assert.equal(sizeB('openai/gpt-oss-120b'), 120)
+  assert.equal(sizeB('meta-llama/llama-4-scout-17b-16e-instruct'), 17)
+  const groq = ['whisper-large-v3', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3-32b', 'meta-llama/llama-guard-4-12b', 'playai-tts', 'meta-llama/llama-4-scout-17b-16e-instruct']
+  const fast = rankModels(groq, 'fast')
+  assert.deepEqual(fast.slice(0, 2), ['llama-3.1-8b-instant', 'meta-llama/llama-4-scout-17b-16e-instruct'])
+  assert.ok(fast.every((m) => !/whisper|guard|tts/.test(m)))
+  const core = rankModels(groq, 'core')
+  assert.equal(core[0], 'openai/gpt-oss-120b')
+  assert.ok(core.includes('llama-3.3-70b-versatile'))
+  assert.deepEqual(rankModels(groq, 'coder'), [], 'other kinds keep their static lists')
+  assert.deepEqual(rankModels(['nvidia/nv-embedqa-e5-v5', 'meta/llama-3.2-11b-vision-instruct', 'meta/llama-3.1-8b-instruct'], 'fast'), ['meta/llama-3.1-8b-instruct'])
+
+  const provider = { id: 'testprov', keys: ['k'], modelsUrl: 'https://x.invalid/models', headers: () => ({}) }
+  const list = await listProviderModels(provider, async () => ({ ok: true, json: async () => ({ data: [{ id: 'llama-3.1-8b-instant' }, { id: 'qwen/qwen3-32b' }] }) }))
+  assert.deepEqual(list, ['llama-3.1-8b-instant', 'qwen/qwen3-32b'])
+  const broken = { id: 'broken', keys: ['k'], modelsUrl: 'https://x.invalid/models', headers: () => ({}) }
+  assert.deepEqual(await listProviderModels(broken, async () => { throw new Error('offline') }), [], 'an unreachable catalog is harmless')
+
+  markDead('groq', 'old-model')
+  assert.equal(isDead('groq', 'old-model'), true)
+  assert.equal(isDead('groq', 'other-model'), false)
+  _resetForTests()
 })
