@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Headphones, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from 'lucide-react'
-import type { AudioAsset } from './api'
-import { EmptyState } from './ui'
+import { useMemo, useRef, useState } from 'react'
+import { Headphones, Pause, Play, Sparkles } from 'lucide-react'
+import { lifeApi, type AudioAsset } from './api'
+import { newIdemKey } from './hooks'
+import { useBeats } from './beatsPlayer'
+import { EmptyState, Spinner } from './ui'
 
 // Plays the focus & mood library. Hosted audio uses a plain <audio> element;
 // YouTube links play in YouTube's own embedded player (nothing is copied), and
@@ -30,66 +32,27 @@ export const youtubeId = (url: string): string | null => {
 
 export function AudioLibrary({ audio }: { audio: AudioAsset[] }) {
   const [cat, setCat] = useState('all')
-  const [nowId, setNowId] = useState<string | null>(null)
-  const [shuffle, setShuffle] = useState(false)
-  const [loop, setLoop] = useState(true)
-  const [broken, setBroken] = useState<Set<string>>(new Set())
-  const frame = useRef<HTMLIFrameElement>(null)
-  const [paused, setPaused] = useState(false)
-
+  const beats = useBeats()
   const list = useMemo(() => audio.filter((a) => cat === 'all' || a.category === cat), [audio, cat])
-  const now = audio.find((a) => a.id === nowId) ?? null
   const counts = useMemo(() => {
     const m = new Map<string, number>()
     for (const a of audio) m.set(a.category ?? '', (m.get(a.category ?? '') ?? 0) + 1)
     return m
   }, [audio])
+  const nowId = beats.active ? beats.queue[beats.index]?.id : null
 
-  const step = (dir: 1 | -1) => {
-    const playable = list.filter((a) => !broken.has(a.id))
-    if (!playable.length) return
-    if (shuffle && dir === 1) {
-      const pool = playable.filter((a) => a.id !== nowId)
-      setNowId((pool.length ? pool : playable)[Math.floor(Math.random() * (pool.length || playable.length))].id)
-      return
-    }
-    const i = playable.findIndex((a) => a.id === nowId)
-    const next = i === -1 ? 0 : i + dir
-    if (next >= playable.length || next < 0) {
-      if (loop || dir === -1) setNowId(playable[(next + playable.length) % playable.length].id)
-      return
-    }
-    setNowId(playable[next].id)
+  const playFrom = (id: string) => {
+    const i = list.findIndex((a) => a.id === id)
+    const rotated = [...list.slice(i), ...list.slice(0, i)]
+    beats.start(rotated, { title: CATEGORIES.find((c) => c.id === cat)?.full ?? 'Beats', note: null, scene: beats.scene, ambient: beats.ambient })
   }
-  const stepRef = useRef(step)
-  stepRef.current = step
-
-  // YouTube posts player events to the page once we say we're listening.
-  const yt = now ? youtubeId(now.url) : null
-  useEffect(() => {
-    setPaused(false)
-    if (!yt) return
-    const onMsg = (e: MessageEvent) => {
-      if (!/youtube(-nocookie)?\.com$/.test(new URL(e.origin).hostname) || typeof e.data !== 'string') return
-      let d: { event?: string; info?: unknown }
-      try { d = JSON.parse(e.data) } catch { return }
-      if (d.event === 'onStateChange' && d.info === 0) stepRef.current(1)
-      if (d.event === 'onStateChange' && typeof d.info === 'number') setPaused(d.info === 2)
-      if (d.event === 'onError') setBroken((b) => new Set(b).add(now!.id))
-    }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yt, now?.id])
-
-  const command = (fn: 'playVideo' | 'pauseVideo') => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: fn, args: [] }), '*')
-  const isBroken = now ? broken.has(now.id) : false
 
   if (!audio.length)
     return <EmptyState icon={<Headphones size={26} />} title="No audio yet" body="Audio appears here once the Bermi team publishes tracks with a licence we can show." />
 
   return (
     <div>
+      <BeatDJ audio={audio} />
       <div role="radiogroup" aria-label="Mood" className="mb-3 flex justify-between gap-1">
         {CATEGORIES.filter((c) => c.id === 'all' || counts.get(c.id)).map((c) => (
           <button
@@ -106,60 +69,57 @@ export function AudioLibrary({ audio }: { audio: AudioAsset[] }) {
         ))}
       </div>
 
-      {now && (
-        <div className="tile-accent mb-3 p-4">
-          <p className="text-[11.5px] font-medium uppercase tracking-[0.1em] text-white/65">Now playing</p>
-          <p className="mt-1 text-[16px] font-semibold leading-snug">{now.title}</p>
-          <p className="text-[12.5px] text-white/70">{[now.author, now.minutes ? `${now.minutes} min` : null].filter(Boolean).join(' · ') || ' '}</p>
-          {yt && !isBroken && (
-            <div className="mt-3 overflow-hidden rounded-2xl bg-black">
-              <iframe
-                ref={frame}
-                key={now.id}
-                title={`Player: ${now.title}`}
-                className="aspect-video w-full"
-                src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
-                allow="autoplay; encrypted-media; picture-in-picture"
-                referrerPolicy="strict-origin-when-cross-origin"
-                onLoad={() => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*')}
-              />
-            </div>
-          )}
-          {!yt && <audio key={now.id} controls autoPlay src={now.url} preload="none" className="mt-3 w-full" onEnded={() => step(1)} />}
-          {isBroken && (
-            <p role="alert" className="mt-3 rounded-xl bg-black/25 p-3 text-[13px]">
-              This one can’t play inside Bermi (the uploader may have removed it or turned off embedding).{' '}
-              <a href={now.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 font-semibold underline">Open on YouTube <ExternalLink size={12} /></a>
-            </p>
-          )}
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => step(-1)} aria-label="Previous track" className="grid h-11 w-11 place-items-center rounded-full bg-white/15 hover:bg-white/25"><SkipBack size={18} /></button>
-              {yt && !isBroken && (
-                <button onClick={() => { command(paused ? 'playVideo' : 'pauseVideo'); setPaused(!paused) }} aria-label={paused ? 'Play' : 'Pause'} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[#0B1020]">{paused ? <Play size={18} /> : <Pause size={18} />}</button>
-              )}
-              <button onClick={() => step(1)} aria-label="Next track" className="grid h-11 w-11 place-items-center rounded-full bg-white/15 hover:bg-white/25"><SkipForward size={18} /></button>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => setShuffle((v) => !v)} aria-pressed={shuffle} aria-label="Shuffle" className={`grid h-10 w-10 place-items-center rounded-full ${shuffle ? 'bg-white text-[#0B1020]' : 'bg-white/15 hover:bg-white/25'}`}><Shuffle size={16} /></button>
-              <button onClick={() => setLoop((v) => !v)} aria-pressed={loop} aria-label="Repeat the list" className={`grid h-10 w-10 place-items-center rounded-full ${loop ? 'bg-white text-[#0B1020]' : 'bg-white/15 hover:bg-white/25'}`}><Repeat size={16} /></button>
-            </div>
-          </div>
-          <p className="mt-3 text-[11px] leading-snug text-white/60">{now.attribution || now.license}</p>
-        </div>
-      )}
-
       <ul className="divide-y divide-edge">
         {list.map((a) => (
           <li key={a.id}>
-            <button onClick={() => setNowId(a.id)} aria-pressed={nowId === a.id} className="flex min-h-[54px] w-full items-center gap-3 py-2 text-left">
-              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${nowId === a.id ? 'bg-primary text-on-primary' : 'bg-primary-soft text-primary'}`}>{nowId === a.id ? <Play size={16} /> : <Headphones size={17} />}</span>
-              <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium">{a.title}</span><span className="block truncate text-[12px] text-ink-muted">{[a.author, a.minutes ? `${a.minutes >= 60 ? `${Math.floor(a.minutes / 60)}h${a.minutes % 60 ? ` ${a.minutes % 60}m` : ''}` : `${a.minutes}m`}` : null, broken.has(a.id) ? 'unavailable' : null].filter(Boolean).join(' · ') || 'YouTube'}</span></span>
+            <button onClick={() => playFrom(a.id)} aria-pressed={nowId === a.id} className="flex min-h-[54px] w-full items-center gap-3 py-2 text-left">
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${nowId === a.id ? 'bg-primary text-on-primary' : 'bg-primary-soft text-primary'}`}>{nowId === a.id && beats.playing ? <Pause size={16} /> : nowId === a.id ? <Play size={16} /> : <Headphones size={17} />}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium">{a.title}</span><span className="block truncate text-[12px] text-ink-muted">{[a.author, a.minutes ? `${a.minutes >= 60 ? `${Math.floor(a.minutes / 60)}h${a.minutes % 60 ? ` ${a.minutes % 60}m` : ''}` : `${a.minutes}m`}` : null, beats.broken.has(a.id) ? 'unavailable' : null].filter(Boolean).join(' · ') || 'YouTube'}</span></span>
             </button>
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-[11.5px] leading-snug text-ink-faint">Streamed from YouTube in its own player — Bermi doesn’t host or copy these tracks. Whether music helps you concentrate is personal; use what works for you and keep the volume comfortable.</p>
+      <p className="mt-3 text-[11.5px] leading-snug text-ink-faint">Streamed from YouTube in its own player — Bermi doesn’t host or copy these tracks. It keeps playing while you move around Bermi (a locked phone screen may pause it). Whether music helps you concentrate is personal; keep the volume comfortable.</p>
+    </div>
+  )
+}
+
+const EXAMPLES = ['I need to study hard — play the best beat and balance the sound', 'Gym time, get me pumped', 'I feel like giving up. Keep me going', 'Something warm and emotional, quiet']
+
+/** Type what you need; Bermi picks the beats and balances the sound. */
+function BeatDJ({ audio }: { audio: AudioAsset[] }) {
+  const beats = useBeats()
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const idem = useRef(newIdemKey())
+  const go = async (t = text) => {
+    const q = t.trim()
+    if (q.length < 2 || busy) return
+    setBusy(true); setMsg(null)
+    try {
+      const pick = await lifeApi.pickAudio(q, idem.current)
+      idem.current = newIdemKey()
+      const tracks = pick.trackIds.map((id) => audio.find((a) => a.id === id)).filter((x): x is AudioAsset => !!x)
+      if (!tracks.length) { setMsg({ ok: false, text: 'I couldn’t find tracks for that. Try “study”, “gym”, “focus” or “emotional”.' }); return }
+      beats.start(tracks, { title: pick.title, note: pick.reason, beatVolume: pick.beatVolume, scene: pick.scene, ambient: pick.ambient || 0.2 })
+      setMsg({ ok: true, text: pick.reason })
+      setText('')
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message })
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="mb-4 rounded-2xl bg-primary-soft p-3.5">
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void go() }}>
+        <label htmlFor="dj" className="sr-only">Tell Bermi what you need</label>
+        <input id="dj" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} placeholder="What do you need? e.g. study hard, gym, calm…" className="min-w-0 flex-1 rounded-xl border border-edge bg-surface-raised px-3.5 py-2.5 text-[14px] outline-none placeholder:text-ink-faint focus:border-primary" />
+        <button disabled={busy || text.trim().length < 2} className="inline-flex min-h-[42px] items-center gap-1.5 rounded-xl bg-primary px-4 text-[13.5px] font-semibold text-on-primary disabled:opacity-40">{busy ? <Spinner size={15} /> : <Sparkles size={15} />} Play</button>
+      </form>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {EXAMPLES.map((x) => <button key={x} type="button" onClick={() => void go(x)} className="rounded-full bg-surface-raised px-3 py-1.5 text-left text-[12px] text-ink-muted hover:text-ink">{x}</button>)}
+      </div>
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`mt-2.5 text-[12.5px] leading-snug ${msg.ok ? 'text-ink-muted' : 'text-ink'}`}>{msg.ok ? '▶ ' : ''}{msg.text}</p>}
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { BookOpenCheck, Check, Clock, ExternalLink, Headphones, Play, Sparkles } from 'lucide-react'
+import { BookOpenCheck, Check, Clock, ExternalLink, Headphones, Pause, Play, Sparkles } from 'lucide-react'
 import { lifeApi, type Audiobook, type SavedData } from './api'
 import { useAct, useItems } from './hooks'
+import { useAudiobook } from './audioPlayer'
 import { EmptyState } from './ui'
 
 // A shelf of public-domain audiobooks (human-read LibriVox recordings played
@@ -74,9 +75,11 @@ export function Audiobooks({ books }: { books: Audiobook[] }) {
   const [nowId, setNowId] = useState<string | null>(null)
   const saved = useItems<SavedData>('saved')
   const act = useAct()
+  const player = useAudiobook()
   const finished = useMemo(() => new Map(saved.items.filter((s) => s.data.type === 'audio').map((s) => [s.data.ref, s.id])), [saved.items])
   const list = books.filter((b) => cat === 'all' || b.category === cat)
   const now = books.find((b) => b.id === nowId) ?? null
+  const resume = now ? player.saved(now.id) : null
   const cats = Object.keys(THEMES).filter((c) => books.some((b) => b.category === c))
 
   if (!books.length) return <EmptyState icon={<Headphones size={26} />} title="No audiobooks yet" body="Audiobooks appear here once the Bermi team publishes them with a licence we can show." />
@@ -113,15 +116,14 @@ export function Audiobooks({ books }: { books: Audiobook[] }) {
               {now.blurb && <p className="mt-2.5 text-[14px] leading-relaxed text-white/90">{now.blurb}</p>}
             </div>
           </div>
-          <div className="mt-4 overflow-hidden rounded-2xl bg-black/30">
-            <iframe
-              key={now.archiveId}
-              title={`Audiobook player: ${now.title}`}
-              src={`https://archive.org/embed/${encodeURIComponent(now.archiveId)}?playlist=1&list_height=150`}
-              className="h-[270px] w-full"
-              allow="autoplay; fullscreen"
-              loading="lazy"
-            />
+          <div className="mt-4">
+            <button
+              onClick={() => player.play(now)}
+              className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full bg-white text-[15.5px] font-semibold text-[#0B1020] shadow-[0_14px_34px_-10px_rgba(255,255,255,0.45)] transition-transform active:scale-[0.98]"
+            >
+              {player.book?.id === now.id && player.playing ? <><Pause size={18} /> Playing · open player</> : <><Play size={18} className="translate-x-px" /> {resume ? `Resume · chapter ${resume.i + 1}` : 'Listen now'}</>}
+            </button>
+            <p className="mt-2 text-center text-[11.5px] text-white/60">Keeps playing while you use the rest of Bermi.</p>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -137,7 +139,7 @@ export function Audiobooks({ books }: { books: Audiobook[] }) {
             </button>
             {now.sourceUrl && <a href={now.sourceUrl} target="_blank" rel="noreferrer noopener" className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white/15 px-4 text-[13px] font-medium text-white hover:bg-white/25">Open on the Internet Archive <ExternalLink size={12} /></a>}
           </div>
-          <p className="mt-3 text-[11px] leading-snug text-white/60">{now.license} Audio plays from archive.org’s player. Older books reflect the views and language of their time.</p>
+          <p className="mt-3 text-[11px] leading-snug text-white/60">{now.license} Older books reflect the views and language of their time.</p>
         </div>
       ) : (
         <div className="tile flex items-center gap-3 p-4 text-[13.5px] text-ink-muted">

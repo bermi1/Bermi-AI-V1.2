@@ -3,9 +3,10 @@
 -- the SQL editor / MCP; SQLite creates the equivalent tables on startup
 -- (server/src/storage/sqlite.js). RLS is enabled with NO policies: these tables
 -- are reachable only through the server's service-role key, never from a browser.
+-- user ids are stored as text so this works whatever type bermi_users.id has.
 
 create table if not exists bermi_life_items (
-  user_id    uuid        not null,
+  user_id    text        not null,
   id         text        not null,
   kind       text        not null,
   data       jsonb       not null default '{}'::jsonb,
@@ -21,7 +22,7 @@ alter table bermi_life_items enable row level security;
 -- operation idempotent so a retried request can never be charged twice.
 create table if not exists bermi_credit_ledger (
   id         bigserial   primary key,
-  user_id    uuid        not null,
+  user_id    text        not null,
   idem_key   text        not null,
   kind       text        not null,   -- grant | reserve | settle | refund | adjust
   amount     integer     not null,   -- signed
@@ -48,13 +49,13 @@ alter table bermi_audit_log enable row level security;
 -- Atomic apply: serialises per user with an advisory lock, so two simultaneous
 -- requests can never overspend the same balance.
 create or replace function bermi_credit_apply(
-  p_user uuid, p_idem text, p_kind text, p_amount integer,
+  p_user text, p_idem text, p_kind text, p_amount integer,
   p_feature text, p_ref text, p_meta jsonb, p_require_balance boolean
 ) returns table (ok boolean, duplicate boolean, balance integer)
 language plpgsql security definer set search_path = public as $$
 declare bal integer;
 begin
-  perform pg_advisory_xact_lock(hashtext(p_user::text));
+  perform pg_advisory_xact_lock(hashtext(p_user));
   select coalesce(sum(amount), 0) into bal from bermi_credit_ledger where user_id = p_user;
   if exists (select 1 from bermi_credit_ledger where user_id = p_user and idem_key = p_idem) then
     return query select true, true, bal; return;
@@ -66,8 +67,8 @@ begin
     values (p_user, p_idem, p_kind, p_amount, p_feature, p_ref, p_meta);
   return query select true, false, bal + p_amount;
 end $$;
-revoke all on function bermi_credit_apply(uuid, text, text, integer, text, text, jsonb, boolean) from public, anon, authenticated;
-grant execute on function bermi_credit_apply(uuid, text, text, integer, text, text, jsonb, boolean) to service_role;
+revoke all on function bermi_credit_apply(text, text, text, integer, text, text, jsonb, boolean) from public, anon, authenticated;
+grant execute on function bermi_credit_apply(text, text, text, integer, text, text, jsonb, boolean) to service_role;
 
 create or replace function bermi_life_adoption()
 returns table (kind text, users bigint, items bigint)

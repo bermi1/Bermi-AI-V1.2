@@ -230,6 +230,21 @@ function Workspace({ user, onSignedOut, onHome }: { user: AuthUser; onSignedOut:
     [],
   )
 
+  // Handoffs from the Life OS home: open a given conversation or My space.
+  useEffect(() => {
+    try {
+      const conv = localStorage.getItem('bermi-open-conversation')
+      const view = localStorage.getItem('bermi-open-view')
+      localStorage.removeItem('bermi-open-conversation')
+      localStorage.removeItem('bermi-open-view')
+      if (conv) selectConversation(conv)
+      else if (view === 'dashboard') setView('dashboard')
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     refreshConversations()
     refreshDocuments()

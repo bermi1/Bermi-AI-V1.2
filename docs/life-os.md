@@ -40,6 +40,21 @@ and global daily cap (Bermi Control). Priced features: `companion_plan`, `study_
   Voice mode sends what you say, reads the reply aloud and listens for "confirm" / "cancel". "Open my money" style commands run
   on the device with no AI and no credits.
 
+## Audio that keeps playing
+
+- **Audiobooks** (`audioPlayer.tsx`): Bermi's own player — chapters from the Internet Archive (`GET /api/life/audiobooks/:id/tracks`,
+  cached, published books only), ±15/30 s, speed, sleep timer, per-book resume, lock-screen controls. One audio element lives at
+  the top of the app, so it plays on while you move around.
+- **Beats** (`beatsPlayer.tsx`): one YouTube player lives at the top of the app as a small visible card that grows into a panel;
+  tracks change through the player API so it never restarts when you navigate. A generated ambient layer (hush / rain / air) can
+  sit underneath, with a beat-vs-ambient balance. Starting a book pauses the beats and vice versa.
+- **"Play me the best beat"** (`POST /api/life/audio/pick`, `life/dj.js`): type what you need ("study hard, balance the sound").
+  Keyword rules (English + Kiswahili) pick a mood, a playlist, the beat volume and the ambient layer — free and instant. Only a
+  request the rules can't read uses a 1-credit AI classification (refunded on failure); otherwise an honest default is used.
+  The companion understands "play me something to focus" too.
+- **Limits**: YouTube may pause when a phone locks its screen or the browser is backgrounded; audiobooks (plain audio) continue.
+  Archive/YouTube availability can't be guaranteed.
+
 ## Content
 
 - Books/concepts/verses/sessions are seeded and layered with admin overrides; only `published` items reach users.

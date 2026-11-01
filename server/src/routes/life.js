@@ -10,6 +10,8 @@ import { planSaving, monthSummary, contributed } from '../life/money.js'
 import { publishedContent, pickDaily } from '../life/content.js'
 import { sanitizeKit } from '../life/kinds.js'
 import { runAgent, contextAllowed } from '../life/agent.js'
+import { getTracks } from '../life/audiobook.js'
+import { buildPick, detectIntent, MOODS } from '../life/dj.js'
 
 export const lifeRouter = Router()
 
@@ -433,6 +435,21 @@ lifeRouter.get(
   }),
 )
 
+// Chapter list for the in-app audiobook player (published audiobooks only).
+lifeRouter.get(
+  '/life/audiobooks/:id/tracks',
+  rateLimit({ windowMs: 60_000, max: 40, message: 'Slow down a little.' }),
+  wrap(async (req, res) => {
+    const book = (await publishedContent()).audiobooks.find((b) => b.id === req.params.id)
+    if (!book) return res.status(404).json({ error: 'Audiobook not found' })
+    try {
+      res.json({ tracks: await getTracks(book.archiveId) })
+    } catch (err) {
+      res.status(err.status || 502).json({ code: 'audio_unavailable', error: err.message })
+    }
+  }),
+)
+
 lifeRouter.get(
   '/life/concept/:id',
   wrap(async (req, res) => {
@@ -616,6 +633,47 @@ lifeRouter.post(
     await storage.upsertLifeItem(req.user.id, { id: idea.id, kind: 'idea', data, when_key })
     const item = await storage.getLifeItem(req.user.id, idea.id)
     res.json({ item, creditsUsed: reservation.cost, notice: ['invest', 'stock', 'savings'].includes(idea.data.category) ? INVEST_NOTE : null })
+  }),
+)
+
+// "Play me the best beat": free keyword rules first; a tiny AI classification
+// (1 credit, refunded on failure) only when the request matches nothing.
+lifeRouter.post(
+  '/life/audio/pick',
+  rateLimit({ windowMs: 60_000, max: 20, message: 'Slow down a little.' }),
+  wrap(async (req, res) => {
+    const text = String(req.body?.text ?? '').trim().slice(0, 300)
+    if (text.length < 2) throw new ValidationError('Tell me what you need — for example “I want to study hard”.')
+    const audio = (await publishedContent()).audio
+    if (!audio.length) return res.status(404).json({ error: 'There is no audio in the library yet.' })
+
+    const intent = detectIntent(text)
+    if (intent.moods.length) return res.json(buildPick({ text, audio, moods: intent.moods, source: 'rules' }))
+
+    // Nothing matched: ask a small model to choose a mood, if there are credits.
+    const idemKey = String(req.body?.idemKey || randomUUID()).slice(0, 80)
+    const reservation = await credits.reserve(req.user.id, { feature: 'audio_pick', idemKey })
+    if (reservation.ok) {
+      try {
+        const raw = await complete({
+          model: 'bermi-fast',
+          maxTokens: 60,
+          messages: [
+            { role: 'system', content: `Choose the single best music mood for what the person says. Reply with ONLY JSON like {"mood":"deep-focus"} where mood is one of: ${MOODS.join(', ')}.` },
+            { role: 'user', content: text },
+          ],
+        })
+        const mood = extractJson(raw ?? '')?.mood
+        if (raw != null && MOODS.includes(mood)) return res.json(buildPick({ text, audio, moods: [mood], source: 'ai' }))
+        await credits.refund(req.user.id, reservation, raw == null ? 'no provider configured' : 'unusable output')
+      } catch (err) {
+        await credits.refund(req.user.id, reservation, `provider error: ${err.message}`)
+      }
+    }
+    // Honest default: a calm focus mix, and say it was a default.
+    const pick = buildPick({ text, audio, moods: ['deep-focus', 'study'], source: 'default' })
+    pick.reason = `I wasn't sure what you meant, so here's a calm focus mix. ${pick.reason.split('. ').slice(1).join('. ')}`
+    res.json(pick)
   }),
 )
 

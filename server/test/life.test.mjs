@@ -385,3 +385,62 @@ test('free-first provider order and the NVIDIA_NIM key alias', async () => {
   assert.ok(ids.indexOf('nvidia') < ids.indexOf('openrouter'))
   delete process.env.NVIDIA_NIM; delete process.env.GROQ_API_KEY; delete process.env.OPENROUTER_API_KEY
 })
+
+test('audiobook chapters: one MP3 rendition per chapter, ordered, lengths parsed', async () => {
+  const { pickTracks, parseLength, getTracks } = await import('../src/life/audiobook.js')
+  assert.equal(parseLength('754.12'), 754)
+  assert.equal(parseLength('12:34'), 754)
+  assert.equal(parseLength('01:02:03'), 3723)
+  assert.equal(parseLength('nonsense'), 0)
+  const meta = {
+    files: [
+      { name: 'book_10_x_64kb.mp3', format: '64Kbps MP3', track: '10', length: '600' },
+      { name: 'book_02_x_64kb.mp3', format: '64Kbps MP3', track: '02', title: 'Chapter 2', length: '03:00' },
+      { name: 'book_01_x_64kb.mp3', format: '64Kbps MP3', track: '01', title: 'Preface', length: '65.5' },
+      { name: 'book_01_x_128kb.mp3', format: '128Kbps MP3', track: '01', length: '65.5' },
+      { name: 'book.m4b', format: 'LibriVox Apple Audiobook' },
+      { name: 'cover.jpg', format: 'JPEG' },
+    ],
+  }
+  const t = pickTracks(meta, 'some_id')
+  assert.deepEqual(t.map((x) => x.name), ['book_01_x_64kb.mp3', 'book_02_x_64kb.mp3', 'book_10_x_64kb.mp3'])
+  assert.equal(t[0].title, 'Preface')
+  assert.equal(t[2].title, 'book 10 x', 'untitled files get a readable name')
+  assert.equal(t[1].seconds, 180)
+  assert.match(t[0].url, /^https:\/\/archive\.org\/download\/some_id\/book_01_x_64kb\.mp3$/)
+  // Only well-formed ids are ever looked up, and failures surface as a clean error.
+  await assert.rejects(() => getTracks('../../etc/passwd'), /Invalid/)
+  await assert.rejects(() => getTracks('valid_id_for_test', async () => ({ ok: false, status: 503 })), /could not be loaded/)
+  const ok = await getTracks('valid_id_two', async () => ({ ok: true, json: async () => meta }))
+  assert.equal(ok.length, 3)
+})
+
+test('beat picker: plain requests become a mix; heavy focus keeps the beat lower with ambient underneath', async (t) => {
+  const { detectIntent, mixFor } = await import('../src/life/dj.js')
+  assert.equal(detectIntent('I want to study and focus heavily, play me the best beat and balance the sound').moods[0], 'deep-focus')
+  assert.equal(detectIntent('going to the gym, get me pumped').moods[0], 'motivation')
+  assert.equal(detectIntent("I feel like giving up. don't quit on me").moods[0], 'never-give-up')
+  assert.equal(detectIntent('missing her, something emotional').moods[0], 'emotional')
+  assert.equal(detectIntent('lofi to revise').moods[0], 'study')
+  assert.equal(detectIntent('banana').moods.length, 0)
+  const heavy = mixFor('study hard, serious exam', 'deep-focus')
+  const light = mixFor('chill study', 'study')
+  assert.equal(heavy.scene, 'brown'); assert.ok(heavy.beatVolume <= 55)
+  assert.equal(light.scene, 'rain')
+  assert.equal(mixFor('gym time, no ambient', 'motivation').scene, null)
+  assert.equal(mixFor('just the beat please, deep focus', 'deep-focus').scene, null)
+
+  const { server, api } = await boot()
+  t.after(() => server.close())
+  const post = (text) => api('/life/audio/pick', { method: 'POST', body: JSON.stringify({ text }) })
+  const r = await (await post('I want to study focus heavily — play me the best beat and balance the sound')).json()
+  assert.equal(r.mood, 'deep-focus'); assert.equal(r.source, 'rules')
+  assert.ok(r.trackIds.length >= 3 && r.scene === 'brown' && r.ambient > 0)
+  const { audio } = await (await api('/life/content?date=2026-11-02')).json()
+  assert.ok(r.trackIds.every((id) => audio.some((a) => a.id === id)), 'only library tracks are ever returned')
+  const before = (await (await api('/life/credits')).json()).balance
+  const d = await (await post('zzzz qqq')).json()
+  assert.equal(d.source, 'default', 'with no AI configured an unclear request gets an honest default')
+  assert.equal((await (await api('/life/credits')).json()).balance, before, 'and costs nothing')
+  assert.equal((await post('x')).status, 400)
+})

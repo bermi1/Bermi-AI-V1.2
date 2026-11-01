@@ -4,6 +4,7 @@ import { lifeApi, LifeError, todayYmd, type Proposal, type ProposedAction } from
 import { btn, field, notifyLifeChanged, Sheet, Spinner, useToast, fmtDateShort, fmtMoney, fmtTime } from './ui'
 import { newIdemKey } from './hooks'
 import { useOptionalTheme } from '../lib/theme'
+import { useBeats } from './beatsPlayer'
 import { transcribeAudio } from '../lib/api'
 import { useVoiceRecorder } from '../lib/useVoiceRecorder'
 
@@ -12,12 +13,16 @@ import { useVoiceRecorder } from '../lib/useVoiceRecorder'
 // nothing changes until the person taps Confirm.
 
 interface Ctl {
-  open: (prefill?: string) => void
+  open: (prefill?: string, submit?: boolean) => void
+  navigate: (to: string) => void
 }
-const CompanionCtx = createContext<Ctl>({ open: () => {} })
+const CompanionCtx = createContext<Ctl>({ open: () => {}, navigate: () => {} })
 export const useCompanion = () => useContext(CompanionCtx)
 
+export const isMusicRequest = (t: string) => /^(please )?(play|put on|start|queue)\b/i.test(t.trim()) && /(beat|beats|music|song|lofi|lo-fi|sound|focus|study|gym|workout|calm|relax|mix)/i.test(t)
+
 const SUGGESTIONS = [
+  'Play me the best beat to study',
   'Study for 2 hours tomorrow afternoon',
   'Lecture Monday 10:00 to 12:00',
   'Save TZS 40,000 in two weeks',
@@ -80,19 +85,22 @@ const stepLabel = (s: { tool: string; args: Record<string, unknown> }) => {
 export function CompanionProvider({ children, onOpenChat, onNavigate }: { children: ReactNode; onOpenChat: (text?: string) => void; onNavigate: (to: string) => void }) {
   const [open, setOpen] = useState(false)
   const [prefill, setPrefill] = useState('')
+  const [auto, setAuto] = useState(false)
   const ctl = useMemo<Ctl>(
     () => ({
-      open: (text) => {
+      open: (text, submit) => {
         setPrefill(text ?? '')
+        setAuto(!!submit && !!text)
         setOpen(true)
       },
+      navigate: onNavigate,
     }),
-    [],
+    [onNavigate],
   )
   return (
     <CompanionCtx.Provider value={ctl}>
       {children}
-      <CompanionSheet open={open} prefill={prefill} onClose={() => setOpen(false)} onOpenChat={onOpenChat} onNavigate={onNavigate} />
+      <CompanionSheet open={open} prefill={prefill} auto={auto} onClose={() => setOpen(false)} onOpenChat={onOpenChat} onNavigate={onNavigate} />
     </CompanionCtx.Provider>
   )
 }
@@ -159,8 +167,9 @@ function Orb({ state, style }: { state: 'idle' | 'listening' | 'thinking'; style
   )
 }
 
-function CompanionSheet({ open, prefill, onClose, onOpenChat, onNavigate }: { open: boolean; prefill: string; onClose: () => void; onOpenChat: (t?: string) => void; onNavigate: (to: string) => void }) {
+function CompanionSheet({ open, prefill, auto, onClose, onOpenChat, onNavigate }: { open: boolean; prefill: string; auto: boolean; onClose: () => void; onOpenChat: (t?: string) => void; onNavigate: (to: string) => void }) {
   const toast = useToast()
+  const beats = useBeats()
   const theme = useOptionalTheme()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -176,7 +185,9 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat, onNavigate }: { op
       setProposal(null)
       setError(null)
       idem.current = newIdemKey()
+      if (auto && prefill) setTimeout(() => void submitRef.current(prefill), 0)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefill])
 
   // ---- Voice -----------------------------------------------------------
@@ -281,6 +292,25 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat, onNavigate }: { op
     setBusy(true)
     setError(null)
     setProposal(null)
+    if (isMusicRequest(t)) {
+      try {
+        const pick = await lifeApi.pickAudio(t, idem.current)
+        idem.current = newIdemKey()
+        const lib = (await lifeApi.content(todayYmd())).audio
+        const tracks = pick.trackIds.map((id) => lib.find((a) => a.id === id)).filter((x): x is NonNullable<typeof x> => !!x)
+        if (!tracks.length) throw new Error('I couldn’t find beats for that.')
+        beats.start(tracks, { title: pick.title, note: pick.reason, beatVolume: pick.beatVolume, scene: pick.scene, ambient: pick.ambient || 0.2 })
+        say(`Playing ${pick.title}.`)
+        setText('')
+        onClose()
+        toast(`Playing: ${pick.title}`)
+      } catch (e) {
+        setError({ message: (e as Error).message })
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     try {
       const now = new Date()
       const p = await lifeApi.plan({ text: t, date: todayYmd(now), time: now.toTimeString().slice(0, 5), idemKey: idem.current })
@@ -328,6 +358,8 @@ function CompanionSheet({ open, prefill, onClose, onOpenChat, onNavigate }: { op
   }
   const confirmRef = useRef(confirm)
   confirmRef.current = confirm
+  const submitRef = useRef(submit)
+  submitRef.current = submit
 
   return (
     <Sheet open={open} onClose={onClose} title="Bermi" side>

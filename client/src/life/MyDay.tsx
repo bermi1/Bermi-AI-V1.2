@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CalendarClock, Check, Circle, Clock, Pause, Play, Plus, Repeat, Sparkles, Target, Timer, Trash2 } from 'lucide-react'
-import type { AuthUser } from '../lib/types'
+import { AlertTriangle, BookOpen, CalendarClock, Check, ChevronRight, Circle, FolderOpen, Headphones, Lightbulb, MessageSquare, Wind, Clock, Pause, Play, Plus, Repeat, Sparkles, Target, Timer, Trash2 } from 'lucide-react'
+import type { AuthUser, Conversation } from '../lib/types'
+import * as api from '../lib/api'
 import { addDays, lifeApi, type DayView, type EventData, type EventType, type FocusData, type GoalData, type Item, type Recurring, type TaskData } from './api'
 import { useCompanion } from './Companion'
 import { useAct, useNow, useToday } from './hooks'
@@ -48,6 +49,8 @@ export function MyDay({ user, name }: { user: AuthUser; name: string }) {
         {day && <HeroTiles day={day} isToday={isToday} now={now} date={date} today={today} onAsk={() => openCompanion()} />}
       </Hero>
 
+      <AskHome />
+
       {q.loading && !day ? (
         <div aria-busy="true" className="space-y-4"><Skeleton className="h-52 !rounded-[1.75rem]" /><Skeleton className="h-40 !rounded-[1.75rem]" /></div>
       ) : q.error && !day ? (
@@ -78,6 +81,73 @@ export function MyDay({ user, name }: { user: AuthUser; name: string }) {
 
       <ItemSheet kind={sheet} date={date} day={day} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); q.reload(true) }} />
     </div>
+  )
+}
+
+// ------------------------------------------------------------- ask + quick start
+
+/** The front door of the workspace: ask anything, jump to a tool, resume something. */
+function AskHome() {
+  const { open, navigate } = useCompanion()
+  const [text, setText] = useState('')
+  const convs = useAsync(() => api.listConversations().then((l) => l.slice(0, 3)).catch(() => [] as Conversation[]), [])
+  const learn = useAsync(() => api.learnMyEnrollments().then((l) => l.filter((e) => e.course && e.status !== 'completed').slice(0, 2)).catch(() => []), [])
+  const ask = (t = text) => { const q = t.trim(); if (q) { open(q, true); setText('') } }
+  const to = (path: string, store?: [string, string]) => () => {
+    if (store) try { sessionStorage.setItem(store[0], store[1]) } catch { /* ignore */ }
+    navigate(path)
+  }
+  const tools = [
+    { icon: Headphones, label: 'Beats', run: to('/my/learning', ['bermi-learn-tab', 'listen']) },
+    { icon: BookOpen, label: 'Audiobooks', run: to('/my/learning', ['bermi-learn-tab', 'audiobooks']) },
+    { icon: Wind, label: 'Breathe', run: to('/my/wellbeing') },
+    { icon: Lightbulb, label: 'Idea lab', run: to('/my/money', ['bermi-money-view', 'ideas']) },
+    { icon: MessageSquare, label: 'Chat', run: () => navigate('/chat') },
+    { icon: FolderOpen, label: 'My space', run: () => { try { localStorage.setItem('bermi-open-view', 'dashboard') } catch { /* ignore */ } navigate('/chat') } },
+  ]
+  return (
+    <section aria-label="Ask Bermi" className="tile mb-3 p-4 sm:mb-4 sm:p-5">
+      <h2 className="text-[18px] font-semibold tracking-tight sm:text-[20px]">Make today count</h2>
+      <p className="text-[13.5px] text-ink-muted">Ask anything, or tell Bermi what to plan.</p>
+      <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); ask() }}>
+        <label htmlFor="ask-home" className="sr-only">Ask Bermi</label>
+        <input id="ask-home" value={text} onChange={(e) => setText(e.target.value)} maxLength={600} placeholder="Ask Bermi or plan something…" className={`${field} !rounded-full !py-3`} />
+        <button className={`${btn.primary} !rounded-full !px-5`} disabled={!text.trim()}><Sparkles size={15} /> Ask</button>
+      </form>
+      <div className="scroll-x -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+        {['What’s on today?', 'Plan my study week', 'Play me a focus beat'].map((p) => (
+          <button key={p} type="button" onClick={() => ask(p)} className="min-h-[34px] shrink-0 whitespace-nowrap rounded-full bg-surface-sunken px-3.5 text-[12.5px] text-ink-muted hover:text-ink">{p}</button>
+        ))}
+      </div>
+      <ul className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6" aria-label="Quick tools">
+        {tools.map(({ icon: Icon, label, run }) => (
+          <li key={label}>
+            <button onClick={run} className="flex min-h-[64px] w-full flex-col items-center justify-center gap-1.5 rounded-2xl bg-surface-sunken text-[12px] font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"><Icon size={19} className="text-primary" aria-hidden />{label}</button>
+          </li>
+        ))}
+      </ul>
+      {((convs.data?.length ?? 0) > 0 || (learn.data?.length ?? 0) > 0) && (
+        <div className="mt-4 grid gap-4 border-t border-edge pt-4 sm:grid-cols-2">
+          {(convs.data?.length ?? 0) > 0 && (
+            <div>
+              <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Recent conversations</p>
+              <ul>{convs.data!.map((c) => (
+                <li key={c.id}><button onClick={() => { try { localStorage.setItem('bermi-open-conversation', c.id) } catch { /* ignore */ } navigate('/chat') }} className="flex min-h-[40px] w-full items-center justify-between gap-2 text-left text-[13.5px] hover:text-primary"><span className="truncate">{c.title || 'Untitled'}</span><ChevronRight size={14} className="shrink-0 text-ink-faint" aria-hidden /></button></li>
+              ))}</ul>
+            </div>
+          )}
+          {(learn.data?.length ?? 0) > 0 && (
+            <div>
+              <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Keep learning</p>
+              <ul>{learn.data!.map((e) => {
+                const done = Object.values(e.progress ?? {}).filter((p) => p.done).length
+                return <li key={e.id}><button onClick={() => navigate(`/portal/c/${e.course_id}`)} className="flex min-h-[40px] w-full items-center justify-between gap-2 text-left text-[13.5px] hover:text-primary"><span className="truncate">{e.course!.title}</span><span className="shrink-0 text-[12px] text-ink-muted">{done} done</span></button></li>
+              })}</ul>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

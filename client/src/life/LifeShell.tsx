@@ -6,6 +6,8 @@ import { SettingsDialog } from '../components/SettingsDialog'
 import * as api from '../lib/api'
 import { useTheme } from '../lib/theme'
 import type { AuthUser, ModelOption } from '../lib/types'
+import { AudioProvider, useOptionalAudiobook } from './audioPlayer'
+import { BeatsProvider, useOptionalBeats } from './beatsPlayer'
 import { CompanionProvider, useCompanion, useCompanionShortcut } from './Companion'
 import { ToastProvider, Skeleton, Sheet, ShellCtl } from './ui'
 
@@ -43,6 +45,8 @@ interface Props {
 export function LifeShell(props: Props) {
   return (
     <ToastProvider>
+      <AudioProvider>
+      <BeatsProvider>
       <CompanionProvider
         onNavigate={props.go}
         onOpenChat={(text) => {
@@ -58,6 +62,8 @@ export function LifeShell(props: Props) {
       >
         <Frame {...props} />
       </CompanionProvider>
+      </BeatsProvider>
+      </AudioProvider>
     </ToastProvider>
   )
 }
@@ -65,6 +71,8 @@ export function LifeShell(props: Props) {
 function Frame({ user, tab, go, onSignedOut }: Props) {
   const { open: openCompanion } = useCompanion()
   const { resolved } = useTheme()
+  const listening = !!useOptionalAudiobook()?.book
+  const beatsOn = !!useOptionalBeats()?.active
   useCompanionShortcut()
   const [account, setAccount] = useState(false)
   const [settings, setSettings] = useState(false)
@@ -133,7 +141,7 @@ function Frame({ user, tab, go, onSignedOut }: Props) {
           </div>
         )}
 
-        <main id="life-main" tabIndex={-1} className="mx-auto w-full max-w-[1080px] px-4 pb-[calc(92px+env(safe-area-inset-bottom))] pt-5 outline-none md:px-6 md:pb-14 md:pt-4 lg:pr-8">
+        <main id="life-main" tabIndex={-1} className={`mx-auto w-full max-w-[1080px] px-4 ${listening || beatsOn ? 'pb-[calc(92px+var(--beats-h,0px)+76px+env(safe-area-inset-bottom))]' : 'pb-[calc(92px+env(safe-area-inset-bottom))]'} pt-5 outline-none md:px-6 md:pb-14 md:pt-4 lg:pr-8`}>
           <Suspense fallback={<ScreenSkeleton />}>
             {tab === 'day' && <MyDay user={user} name={name} />}
             {tab === 'learning' && <MyLearning go={go} />}

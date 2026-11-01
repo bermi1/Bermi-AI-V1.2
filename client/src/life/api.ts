@@ -220,6 +220,8 @@ export interface Audiobook {
   sourceUrl?: string
   license: string
 }
+export interface AudioPick { source: 'rules' | 'ai' | 'default'; mood: string; title: string; trackIds: string[]; scene: 'brown' | 'rain' | 'air' | null; ambient: number; beatVolume: number; reason: string }
+export interface AudioTrack { name: string; title: string; seconds: number; url: string }
 export interface ContentView {
   audiobooks: Audiobook[]
   books: Book[]
@@ -327,6 +329,8 @@ export const lifeApi = {
     post<{ item: Item<NoteData>; creditsUsed: number }>(`/notes/${noteId}/study-kit`, { idemKey }, 90_000),
   shapeIdea: (id: string, idemKey: string) =>
     post<{ item: Item<IdeaData>; creditsUsed: number }>(`/ideas/${id}/shape`, { idemKey }, 90_000),
+  audiobookTracks: (id: string) => req<{ tracks: AudioTrack[] }>(`/audiobooks/${encodeURIComponent(id)}/tracks`).then((r) => r.tracks),
+  pickAudio: (text: string, idemKey: string) => post<AudioPick>('/audio/pick', { text, idemKey }),
   credits: () => req<CreditsView>('/credits'),
   pushStatus: () => req<{ configured: boolean; scheduler: boolean }>('/push/status'),
   plan: (body: { text: string; date: string; time: string; idemKey: string }) =>
